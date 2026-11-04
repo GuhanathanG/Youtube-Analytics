@@ -1,0 +1,9 @@
+# Core + dashboard (installed by Streamlit Cloud and by the sync job)
+sqlalchemy>=2.0,<3
+psycopg[binary]>=3.1
+requests>=2.31
+pandas>=2.1
+plotly>=5.20
+streamlit>=1.39
+langdetect>=1.0.9
+tzdata

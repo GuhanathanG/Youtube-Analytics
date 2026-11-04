@@ -1,0 +1,7 @@
+# Extra packages for the sentiment worker (GitHub Actions only).
+# Install torch from the CPU index first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+-r requirements.txt
+transformers>=4.44
+sentencepiece
+protobuf

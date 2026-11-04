@@ -1,0 +1,60 @@
+name: Sync & analyze
+
+on:
+  schedule:
+    - cron: "7 * * * *"   # every hour at :07 (UTC)
+  workflow_dispatch: {}    # adds a "Run workflow" button in the Actions tab
+
+# Never run two syncs at the same time.
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install packages
+        run: pip install -r requirements.txt
+
+      - name: Fetch channels, videos and comments from YouTube
+        env:
+          MAX_RUN_MINUTES: "10"
+        run: python -m ytanalytics sync
+
+      - name: Count comments waiting for analysis
+        id: pending
+        run: echo "count=$(python -m ytanalytics pending)" >> "$GITHUB_OUTPUT"
+
+      - name: Install AI packages
+        if: steps.pending.outputs.count != '0'
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-ai.txt
+
+      - name: Cache the sentiment model
+        if: steps.pending.outputs.count != '0'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ env.SENTIMENT_MODEL }}
+
+      - name: Analyze sentiment and language
+        if: steps.pending.outputs.count != '0'
+        env:
+          MAX_RUN_MINUTES: "12"
+        run: python -m ytanalytics analyze
