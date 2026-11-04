@@ -221,6 +221,7 @@ def analyze_pending(
                     "sentiment_value": round(value, 4),
                     "analyzed_at": now,
                     "analyzer": classifier.name,
+                    "sentiment_source": "model",
                 })
             # Bulk update by primary key: batched into few round trips on Postgres.
             session.execute(update(Comment), updates)

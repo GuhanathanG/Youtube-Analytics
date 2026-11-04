@@ -106,6 +106,21 @@ def load_comments(limit, order, **filters):
     return q.comments(engine, limit=limit, order=order, **filters)
 
 
+@st.cache_data(ttl=300)
+def load_emotions(**filters):
+    return q.emotion_counts(engine, **filters)
+
+
+@st.cache_data(ttl=300)
+def load_aspects(**filters):
+    return q.aspect_counts(engine, **filters)
+
+
+@st.cache_data(ttl=300)
+def load_insight(scope, target_id):
+    return q.latest_insight(engine, scope, target_id)
+
+
 # ---------------------------------------------------------------------------- helpers
 def fmt(n) -> str:
     if n is None or (isinstance(n, float) and pd.isna(n)):
@@ -198,8 +213,12 @@ def comment_table(df: pd.DataFrame, show_video: bool = True):
     view = df.copy()
     view["sentiment"] = view["sentiment"].fillna("pending")
     view["score"] = (view["sentiment_value"] * 100).round(0)
-    cols = ["published_at", "author_name", "text", "sentiment", "score", "language", "like_count",
-            "reply_count"]
+    view["translation"] = view["translation"].fillna("")
+    view["emotion"] = view["emotion"].map(lambda e: f"{EMOTION_ICONS.get(e, '')} {e}" if e else "")
+    view["sentiment"] = view.apply(
+        lambda r: f"{r.sentiment} 🤖" if r.get("sentiment_source") == "ai" else r.sentiment, axis=1)
+    cols = ["published_at", "author_name", "text", "translation", "sentiment", "score", "emotion", "language",
+            "like_count", "reply_count"]
     if show_video:
         cols.append("video_title")
     st.dataframe(
@@ -210,7 +229,9 @@ def comment_table(df: pd.DataFrame, show_video: bool = True):
             "published_at": st.column_config.DatetimeColumn("Posted", format="YYYY-MM-DD HH:mm"),
             "author_name": "Author",
             "text": st.column_config.TextColumn("Comment", width="large"),
-            "sentiment": "Sentiment",
+            "translation": st.column_config.TextColumn("English (AI)", width="medium"),
+            "sentiment": st.column_config.TextColumn("Sentiment", help="🤖 = checked by the AI"),
+            "emotion": "Emotion",
             "score": st.column_config.NumberColumn("Score", help="-100 very negative … +100 very positive"),
             "language": "Language",
             "like_count": st.column_config.NumberColumn("Likes", format="%d"),
@@ -218,6 +239,96 @@ def comment_table(df: pd.DataFrame, show_video: bool = True):
             "video_title": "Video",
         },
     )
+
+
+EMOTION_ICONS = {
+    "joy": "😄", "love": "❤️", "gratitude": "🙏", "admiration": "🤩", "excitement": "🔥", "humor": "😂",
+    "surprise": "😮", "curiosity": "🤔", "neutral": "😐", "confusion": "😕", "disappointment": "😞",
+    "sadness": "😢", "anger": "😠", "disgust": "🤢", "fear": "😨", "sarcasm": "🙃",
+}
+
+
+def _bullets(items) -> str:
+    items = [i for i in (items or []) if i]
+    return "\n".join(f"- {i}" for i in items) if items else "_Nothing notable yet._"
+
+
+def insight_panel(scope: str, target_id: str):
+    ins = load_insight(scope, target_id)
+    with st.container(border=True):
+        st.markdown("#### 🤖 AI insights")
+        if ins is None:
+            st.caption("Not written yet. Insights appear once there are enough comments and an AI key "
+                       "(GEMINI_API_KEY or GROQ_API_KEY) is set up — see the README.")
+            return
+        d = ins["data"]
+        when = pd.to_datetime(ins["created_at"])
+        st.caption(f"Written {when:%Y-%m-%d %H:%M} UTC from {ins['comment_count']:,} comments · {ins['model']}")
+        if d.get("summary"):
+            st.markdown(d["summary"])
+        extra = [x for x in (d.get("mood"), d.get("trend")) if x]
+        if extra:
+            st.markdown(" · ".join(f"**{x}**" if i == 0 else x for i, x in enumerate(extra)))
+        if d.get("audience_profile"):
+            st.markdown(f"**Audience:** {d['audience_profile']}")
+        c1, c2, c3 = st.columns(3)
+        c1.markdown("**👍 What viewers liked**\n\n" + _bullets(d.get("liked")))
+        c2.markdown("**👎 Complaints**\n\n" + _bullets(d.get("complaints")))
+        c3.markdown("**💡 Requests**\n\n" + _bullets(d.get("requests")))
+        if scope == "channel":
+            c1, c2, c3 = st.columns(3)
+            c1.markdown("**🏆 Best received videos**\n\n" + _bullets(d.get("best_videos")))
+            c2.markdown("**⚠️ Weakest videos**\n\n" + _bullets(d.get("worst_videos")))
+            c3.markdown("**🎯 Content ideas from the audience**\n\n" + _bullets(d.get("content_ideas")))
+        elif d.get("questions"):
+            st.markdown("**❓ Viewer questions**\n\n" + _bullets(d.get("questions")))
+        topics = d.get("topics") or []
+        if topics:
+            tdf = pd.DataFrame(topics)
+            cols = [c for c in ("name", "share_pct", "sentiment", "example") if c in tdf.columns]
+            st.markdown("**🗂️ What people talk about**")
+            st.dataframe(tdf[cols], hide_index=True, use_container_width=True, column_config={
+                "name": "Topic",
+                "share_pct": st.column_config.NumberColumn("Share %", format="%.0f%%"),
+                "sentiment": "Sentiment",
+                "example": st.column_config.TextColumn("Example", width="large"),
+            })
+        if d.get("language_notes"):
+            st.caption(f"🌐 {d['language_notes']}")
+
+
+def aspect_chart(df: pd.DataFrame):
+    """Diverging bars: criticism to the left, praise to the right, per aspect."""
+    if df.empty:
+        st.caption("Appears after the AI has read comments.")
+        return
+    df = df.sort_values("mentions").tail(10)
+    fig = go.Figure()
+    fig.add_bar(y=df["aspect"], x=-df["negative"], orientation="h", name="Criticised",
+                marker_color=SENTIMENT_COLORS["negative"], customdata=df["negative"],
+                hovertemplate="%{y}: %{customdata:,} critical comments<extra></extra>")
+    fig.add_bar(y=df["aspect"], x=df["positive"], orientation="h", name="Praised",
+                marker_color=SENTIMENT_COLORS["positive"],
+                hovertemplate="%{y}: %{x:,} positive comments<extra></extra>")
+    fig.update_layout(barmode="relative", bargap=0.35, height=80 + 32 * len(df),
+                      margin=dict(t=10, b=10), legend=dict(orientation="h", y=1.08, x=0),
+                      xaxis=dict(title="← criticised · praised →", zeroline=True, zerolinewidth=1))
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def emotion_chart(df: pd.DataFrame):
+    if df.empty:
+        st.caption("Appears after the AI has read comments.")
+        return
+    df = df[df["emotion"] != "neutral"].head(8).iloc[::-1].copy()
+    if df.empty:
+        st.caption("Mostly neutral comments.")
+        return
+    df["label"] = df["emotion"].map(lambda e: f"{EMOTION_ICONS.get(e, '')} {e}")
+    fig = px.bar(df, x="comments", y="label", orientation="h", labels={"comments": "Comments", "label": ""})
+    fig.update_traces(marker_color=CATEGORICAL[6], hovertemplate="%{y}: %{x:,}<extra></extra>")
+    fig.update_layout(height=60 + 32 * len(df), margin=dict(t=10, b=10), bargap=0.35)
+    st.plotly_chart(fig, use_container_width=True)
 
 
 def pick_channel(channels: pd.DataFrame, key: str) -> pd.Series | None:
@@ -238,7 +349,8 @@ def page_overview():
     c2.metric("Videos", fmt(k["videos"]))
     c3.metric("Comments stored", fmt(k["comments"]))
     pct = (k["analyzed"] / k["comments"] * 100) if k["comments"] else 0
-    c4.metric("Analyzed", f"{pct:.0f}%")
+    ai_pct = (k["ai_read"] / k["comments"] * 100) if k["comments"] else 0
+    c4.metric("Analyzed", f"{pct:.0f}%", help=f"AI deep-read: {ai_pct:.0f}% of comments")
     c5.metric("YouTube quota today", f"{k['quota_used_today']:,} / 10,000")
     if k["videos_backfilling"]:
         st.caption(f"⏳ Still downloading past comments for {k['videos_backfilling']:,} videos. "
@@ -312,6 +424,8 @@ def page_channel():
     c5.metric("Sentiment score", sentiment_score_label(ch["avg_sentiment"]),
               help="−100 (all negative) … +100 (all positive)")
 
+    insight_panel("channel", cid)
+
     since = period_picker("ch_period")
     sentiment_mix_bar(load_sentiment_counts(channel_id=cid, since=since))
     left, right = st.columns([2, 1])
@@ -320,6 +434,14 @@ def page_channel():
     with right:
         st.markdown("**Comment languages**")
         language_chart(load_languages(channel_id=cid, since=since))
+
+    a1, a2 = st.columns([3, 2])
+    with a1:
+        st.markdown("**What viewers praise and criticise**")
+        aspect_chart(load_aspects(channel_id=cid, since=since))
+    with a2:
+        st.markdown("**Emotions**")
+        emotion_chart(load_emotions(channel_id=cid, since=since))
 
     snaps = q.channel_snapshots(engine, cid)
     if len(snaps) > 1:
@@ -390,12 +512,22 @@ def page_video():
         c4.metric("Sentiment score", sentiment_score_label(v["avg_sentiment"]))
         sentiment_mix_bar(load_sentiment_counts(video_id=vid))
 
+    insight_panel("video", vid)
+
     a, b = st.columns([2, 1])
     with a:
         sentiment_trend_chart(load_daily(video_id=vid), "When people commented")
     with b:
         st.markdown("**Comment languages**")
         language_chart(load_languages(video_id=vid))
+
+    a1, a2 = st.columns([3, 2])
+    with a1:
+        st.markdown("**What viewers praise and criticise**")
+        aspect_chart(load_aspects(video_id=vid))
+    with a2:
+        st.markdown("**Emotions**")
+        emotion_chart(load_emotions(video_id=vid))
 
     snaps = q.video_snapshots(engine, vid)
     if len(snaps) > 1:
@@ -404,14 +536,20 @@ def page_video():
         fig.update_traces(line=dict(width=2, color=CATEGORICAL[0]))
         st.plotly_chart(fig, use_container_width=True)
 
-    t1, t2, t3, t4 = st.tabs(["👍 Most liked", "😊 Most positive", "😠 Most negative", "🕒 Newest"])
+    t1, t2, t3, t4, t5, t6 = st.tabs(["👍 Most liked", "😊 Most positive", "😠 Most negative",
+                                      "❓ Questions", "💡 Requests", "🕒 Newest"])
     with t1:
-        comment_table(load_comments(50, "most_liked", video_id=vid, top_level_only=True), show_video=False)
+        comment_table(load_comments(50, "most_liked", video_id=vid, top_level_only=True, hide_spam=True),
+                      show_video=False)
     with t2:
-        comment_table(load_comments(50, "most_positive", video_id=vid), show_video=False)
+        comment_table(load_comments(50, "most_positive", video_id=vid, hide_spam=True), show_video=False)
     with t3:
-        comment_table(load_comments(50, "most_negative", video_id=vid), show_video=False)
+        comment_table(load_comments(50, "most_negative", video_id=vid, hide_spam=True), show_video=False)
     with t4:
+        comment_table(load_comments(100, "most_liked", video_id=vid, flag="question"), show_video=False)
+    with t5:
+        comment_table(load_comments(100, "most_liked", video_id=vid, flag="suggestion"), show_video=False)
+    with t6:
         comment_table(load_comments(100, "newest", video_id=vid), show_video=False)
 
 
@@ -435,6 +573,15 @@ def page_explorer():
     lang_opts = {"": "Any language", **dict(zip(langs["language"], langs["language_name"]))}
     language = f4.selectbox("Language", list(lang_opts), format_func=lambda c: lang_opts.get(c, c))
 
+    h1, h2, h3 = st.columns([1, 1, 1])
+    emotion = h1.selectbox("Emotion", [""] + list(EMOTION_ICONS),
+                           format_func=lambda e: f"{EMOTION_ICONS[e]} {e}" if e else "Any")
+    flag = h2.selectbox("Type", ["", "question", "suggestion", "spam", "toxic"],
+                        format_func=lambda f: {"": "Any", "question": "❓ Questions",
+                                               "suggestion": "💡 Requests / suggestions",
+                                               "spam": "🚫 Spam", "toxic": "☠️ Toxic"}[f])
+    hide_spam = h3.checkbox("Hide spam", value=True)
+
     g1, g2, g3 = st.columns([3, 1, 1])
     search = g1.text_input("Search text", placeholder="e.g. audio, thumbnail, part 2")
     order = g2.selectbox("Sort", ["newest", "most_liked", "most_negative", "most_positive", "oldest"],
@@ -442,7 +589,8 @@ def page_explorer():
     limit = g3.selectbox("Show", [100, 500, 2000, 10000], index=1)
 
     filters = dict(channel_id=cid or None, video_id=vid or None, sentiment=sentiment or None,
-                   language=language or None, search=search.strip() or None)
+                   language=language or None, search=search.strip() or None, emotion=emotion or None,
+                   flag=flag or None, hide_spam=hide_spam and flag != "spam")
     df = load_comments(limit, order, **filters)
     st.caption(f"{len(df):,} comments shown")
     comment_table(df)
@@ -455,7 +603,7 @@ def page_manage():
     st.title("⚙️ Manage channels")
     st.markdown(
         "Paste a channel **@handle**, a **channel URL**, or **any video URL** from the channel. "
-        "It will be picked up on the next automatic run (every hour), or right away if you "
+        "It will be picked up on the next automatic run (every 2 hours), or right away if you "
         "start the workflow manually in GitHub → **Actions** → **Sync & analyze** → **Run workflow**."
     )
     with st.form("add", clear_on_submit=True):
@@ -488,6 +636,22 @@ def page_manage():
                 st.cache_data.clear()
                 st.rerun()
 
+    st.subheader("Free-tier usage")
+    m1, m2 = st.columns(2)
+    used = q.actions_minutes_this_month(engine)
+    m1.metric("GitHub Actions minutes this month", f"{used:,} / 2,000",
+              help="Private repos get 2,000 free minutes a month. Runs adapt automatically.")
+    m2.metric("YouTube quota today", f"{load_kpis()['quota_used_today']:,} / 10,000")
+    usage = q.llm_usage_today(engine)
+    if usage.empty:
+        st.caption("No AI requests today yet.")
+    else:
+        st.markdown("**Free AI models today** (resets at midnight US Pacific time)")
+        st.dataframe(usage, hide_index=True, use_container_width=True, column_config={
+            "exhausted": st.column_config.CheckboxColumn("Used up"),
+            "last_error": st.column_config.TextColumn("Last problem", width="large"),
+        })
+
     st.subheader("Recent background runs")
     runs = q.recent_runs(engine)
     if runs.empty:
@@ -510,6 +674,6 @@ with st.sidebar:
     if st.button("🔄 Refresh data"):
         st.cache_data.clear()
         st.rerun()
-    st.caption("Data refreshes automatically every hour.")
+    st.caption("New data arrives automatically every 2 hours.")
 
 PAGES[choice]()

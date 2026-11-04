@@ -20,6 +20,8 @@ The whole platform must run on free tiers.
 | Dashboard | Streamlit on Streamlit Community Cloud | Free hosting, Python-only, password-protected through secrets |
 | Sentiment (phase 1) | `cardiffnlp/twitter-xlm-roberta-base-sentiment` on CPU | Free, multilingual (XLM-R covers 100 languages), runs inside Actions |
 | Language detection | Unicode-script rules, then Tanglish/Hinglish marker words, then `langdetect` | Works for short comments and romanized Indian languages |
+| AI layer (phase 2) | Google Gemini free tier first, then Groq free tier, via their OpenAI-compatible APIs | Best free multilingual quality; when one model's daily limit is used up, the next takes over |
+| Minutes budget | `budget.py` plans each run from the minutes left this month | Keeps a private repo within 2,000 free GitHub minutes |
 
 ### How the sync stays within the free YouTube quota
 
@@ -41,15 +43,33 @@ The whole platform must run on free tiers.
 - [x] Dashboard: overview, channel, video, comment explorer, CSV export, manage channels
 - [x] Tests on SQLite and PostgreSQL
 
-### Phase 2: The AI layer
-- An LLM second pass for comments the local model is unsure about, and for all romanized (`*-Latn`) comments. Tanglish and Hinglish are where the local model is weakest.
-  - Free option: Google Gemini API free tier (rate-limited).
-  - Paid option: Claude Haiku, which costs cents per thousand comments.
-- Emotion labels (joy, anger, sarcasm and others), plus detection of questions, requests and spam.
-- **Topics:** cluster comments with multilingual embeddings stored in pgvector, then have the LLM name each cluster (for example "audio complaints" or "asking for part 2").
-- **Aspect sentiment:** how viewers feel about the editing, the host, the pacing, the thumbnail and similar.
-- An auto-written summary per video and a weekly summary per channel.
-- Alerts when a video's negative share jumps compared with the channel's normal level.
+### Phase 2: The AI layer (this commit)
+- [x] Free AI with automatic fallback (Gemini models first, then Groq) and per-model daily usage tracking
+- [x] AI reads every comment, in this priority order:
+  - romanized (Tanglish/Hinglish) comments
+  - comments the local model was unsure about
+  - the newest comments
+
+  For each comment it gives:
+  - sentiment, understanding sarcasm and slang
+  - one of 16 emotions
+  - flags for question, request, spam and toxic
+  - aspects with polarity (audio, editing, host, ads, …)
+  - corrected language
+  - an English translation
+- [x] AI insights per video (refreshed when comments grow by 25% and at least 20): summary, mood, liked, complaints, requests, questions, topics with share, and language notes
+- [x] AI insights per channel (daily): summary, trend, audience profile, best and weakest videos, and content ideas
+- [x] Dashboard additions:
+  - insight panels
+  - praise-vs-criticism chart by aspect
+  - emotions chart
+  - question and request tabs
+  - emotion, type and spam filters
+  - translations
+  - free-tier usage panel
+- [x] GitHub minutes planner for the private repo
+- [ ] Topic clustering with multilingual embeddings (pgvector), for very large comment sets
+- [ ] Alerts when a video's negative share jumps compared with the channel's normal level
 
 ### Phase 3: Ask your comments
 - A chat box: "What do people dislike about this creator's last 5 videos?"

@@ -25,7 +25,7 @@ class Settings:
     # We stop a little below that so a manual run never gets blocked.
     daily_quota: int
     # Max minutes a single sync / analyze run may take (keeps GitHub Actions usage low).
-    max_run_minutes: int
+    max_run_minutes: float
     # Videos published in the last N days are checked for new comments on every run.
     live_window_days: int
     # Fetch every reply of a thread (costs extra quota) instead of only the first 5.
@@ -39,7 +39,7 @@ class Settings:
             database_url=normalize_db_url(os.environ.get("DATABASE_URL", "sqlite:///ytanalytics.db")),
             youtube_api_key=os.environ.get("YOUTUBE_API_KEY", "").strip(),
             daily_quota=_int("DAILY_QUOTA", 9500),
-            max_run_minutes=_int("MAX_RUN_MINUTES", 20),
+            max_run_minutes=float(os.environ.get("MAX_RUN_MINUTES", "").strip() or 20),
             live_window_days=_int("LIVE_WINDOW_DAYS", 14),
             fetch_all_replies=_bool("FETCH_ALL_REPLIES", True),
             sentiment_model=os.environ.get(

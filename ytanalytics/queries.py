@@ -21,6 +21,15 @@ LANGUAGE_NAMES = {
 }
 
 
+FLAGS = {"question": "is_question", "suggestion": "is_suggestion", "spam": "is_spam", "toxic": "is_toxic"}
+ASPECT_LABELS = {
+    "content": "Content / topic", "host": "Host / creator", "editing": "Editing", "audio": "Audio",
+    "video_quality": "Video quality", "thumbnail_title": "Thumbnail & title", "length_pacing": "Length & pacing",
+    "music": "Music", "ads_sponsor": "Ads & sponsors", "information": "Information / accuracy",
+    "humor": "Humour", "guest": "Guests", "other": "Other",
+}
+
+
 def language_name(code: str | None) -> str:
     if not code:
         return "Not analyzed yet"
@@ -36,6 +45,7 @@ def _filters(channel_id: str | None = None, video_id: str | None = None,
              since: datetime | None = None, until: datetime | None = None,
              sentiment: str | None = None, language: str | None = None,
              search: str | None = None, top_level_only: bool = False,
+             emotion: str | None = None, flag: str | None = None, hide_spam: bool = False,
              alias: str = "c") -> tuple[str, dict]:
     where, params = ["1=1"], {}
     if channel_id:
@@ -61,6 +71,15 @@ def _filters(channel_id: str | None = None, video_id: str | None = None,
         params["search"] = f"%{search.lower()}%"
     if top_level_only:
         where.append(f"{alias}.parent_id IS NULL")
+    if emotion:
+        where.append(f"{alias}.emotion = :emotion")
+        params["emotion"] = emotion
+    if flag in FLAGS:
+        where.append(f"{alias}.{FLAGS[flag]} = :flag_true")
+        params["flag_true"] = True
+    if hide_spam:
+        where.append(f"({alias}.is_spam IS NULL OR {alias}.is_spam = :flag_false)")
+        params["flag_false"] = False
     return " AND ".join(where), params
 
 
@@ -71,6 +90,7 @@ def kpis(engine: Engine) -> dict:
           (SELECT count(*) FROM videos) AS videos,
           (SELECT count(*) FROM comments) AS comments,
           (SELECT count(*) FROM comments WHERE analyzed_at IS NOT NULL) AS analyzed,
+          (SELECT count(*) FROM comments WHERE ai_at IS NOT NULL) AS ai_read,
           (SELECT count(*) FROM videos WHERE comments_backfilled = :f AND comments_disabled = :f)
               AS videos_backfilling,
           (SELECT max(fetched_at) FROM comments) AS last_comment_fetch
@@ -183,8 +203,9 @@ def comments(engine: Engine, limit: int = 500, order: str = "newest", **filters)
     if order in ("most_negative", "most_positive"):
         where += " AND c.sentiment_value IS NOT NULL"
     df = _df(engine, f"""
-        SELECT c.published_at, c.author_name, c.text, c.like_count, c.reply_count,
-               c.sentiment, c.sentiment_value, c.language, c.parent_id IS NOT NULL AS is_reply,
+        SELECT c.published_at, c.author_name, c.text, c.translation, c.like_count, c.reply_count,
+               c.sentiment, c.sentiment_value, c.sentiment_source, c.emotion, c.language,
+               c.is_question, c.is_suggestion, c.is_spam, c.parent_id IS NOT NULL AS is_reply,
                v.title AS video_title, c.video_id, c.id
         FROM comments c JOIN videos v ON v.id = c.video_id
         WHERE {where}
@@ -227,3 +248,72 @@ def channel_requests(engine: Engine) -> pd.DataFrame:
         SELECT query, status, error, created_at FROM channel_requests
         ORDER BY created_at DESC LIMIT 50
     """)
+
+
+def emotion_counts(engine: Engine, **filters) -> pd.DataFrame:
+    where, params = _filters(**filters)
+    return _df(engine, f"""
+        SELECT c.emotion, count(*) AS comments FROM comments c
+        WHERE {where} AND c.emotion IS NOT NULL
+        GROUP BY c.emotion ORDER BY count(*) DESC
+    """, **params)
+
+
+def aspect_counts(engine: Engine, **filters) -> pd.DataFrame:
+    """How often each aspect is praised / criticised. One row per aspect."""
+    where, params = _filters(**filters)
+    sums = []
+    for name in ASPECT_LABELS:
+        for pol in ("pos", "neg", "neu"):
+            sums.append(f"sum(CASE WHEN c.aspects LIKE '%{name}:{pol}%' THEN 1 ELSE 0 END) AS {name}__{pol}")
+    df = _df(engine, f"SELECT {', '.join(sums)} FROM comments c WHERE {where} AND c.aspects IS NOT NULL",
+             **params)
+    rows = []
+    if len(df):
+        r = df.iloc[0].fillna(0)
+        for name, label in ASPECT_LABELS.items():
+            pos, neg, neu = (int(r[f"{name}__{p}"]) for p in ("pos", "neg", "neu"))
+            if pos + neg + neu:
+                rows.append({"aspect": label, "positive": pos, "negative": neg, "neutral": neu,
+                             "mentions": pos + neg + neu})
+    return pd.DataFrame(rows, columns=["aspect", "positive", "negative", "neutral", "mentions"])
+
+
+def latest_insight(engine: Engine, scope: str, target_id: str) -> dict | None:
+    df = _df(engine, """
+        SELECT created_at, comment_count, model, data FROM insights
+        WHERE scope = :scope AND target_id = :tid ORDER BY created_at DESC LIMIT 1
+    """, scope=scope, tid=target_id)
+    if df.empty:
+        return None
+    import json
+
+    row = df.iloc[0]
+    try:
+        data = json.loads(row["data"])
+    except ValueError:
+        return None
+    return {"data": data, "created_at": row["created_at"], "comment_count": int(row["comment_count"]),
+            "model": row["model"]}
+
+
+def llm_usage_today(engine: Engine) -> pd.DataFrame:
+    return _df(engine, """
+        SELECT model_key AS model, requests, tokens, exhausted, last_error
+        FROM llm_usage WHERE day = :d ORDER BY model_key
+    """, d=quota_day())
+
+
+def actions_minutes_this_month(engine: Engine) -> int:
+    from datetime import datetime as _dt
+    import math
+
+    start = _dt.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    df = _df(engine, """
+        SELECT started_at, finished_at FROM run_log
+        WHERE kind = 'job' AND started_at >= :start AND finished_at IS NOT NULL
+    """, start=start)
+    if df.empty:
+        return 0
+    secs = (pd.to_datetime(df["finished_at"]) - pd.to_datetime(df["started_at"])).dt.total_seconds()
+    return int(sum(max(1, math.ceil(x / 60)) for x in secs))
