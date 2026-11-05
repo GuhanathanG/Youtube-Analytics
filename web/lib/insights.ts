@@ -118,8 +118,14 @@ export async function writeDueInsights(deadline: number, max = 2): Promise<numbe
     if (Date.now() > deadline - 12000 || written >= max) break;
     const where = db`c.video_id = ${v.id as string}`;
     const rows = await sample(where);
+    const [va] = await db`select data from video_analysis where video_id = ${v.id as string} and status = 'done'`.catch(() => []);
+    let content = "";
+    try {
+      const d = va?.data ? JSON.parse(va.data as string) : null;
+      if (d) content = `\nWhat happens in the video (from watching it): ${d.summary ?? ""}\nChapters: ${(d.chapters ?? []).map((c: { start: string; title: string }) => `${c.start} ${c.title}`).join("; ")}\nRelate viewer reactions to these parts of the video where you can.`;
+    } catch { /* no analysis */ }
     const prompt = [`Video: ${v.title}`, v.published_at ? `Published: ${String(v.published_at).slice(0, 10)}` : "",
-      `Views: ${v.view_count}, likes: ${v.like_count}, comments stored: ${v.n}`, await statsBlock(where),
+      `Views: ${v.view_count}, likes: ${v.like_count}, comments stored: ${v.n}`, content, await statsBlock(where),
       `\nSample of ${rows.length} comments (most liked, newest, most negative, questions):`, formatComments(rows)].join("\n");
     const out = await chatJson(VIDEO_SYSTEM, prompt, 4000, deadline);
     if (!out) return written;

@@ -70,9 +70,11 @@ export type ChannelItem = {
 };
 export type VideoItem = {
   id: string;
-  snippet?: Thumbs & { title?: string; description?: string; publishedAt?: string; channelId?: string };
+  snippet?: Thumbs & { title?: string; description?: string; publishedAt?: string; channelId?: string;
+    tags?: string[]; categoryId?: string; defaultAudioLanguage?: string; defaultLanguage?: string };
   statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
-  contentDetails?: { duration?: string };
+  contentDetails?: { duration?: string; definition?: string; caption?: string };
+  topicDetails?: { topicCategories?: string[] };
 };
 export type CommentItem = {
   id: string;
@@ -99,7 +101,7 @@ export async function getChannels(opts: { ids?: string[]; handle?: string; usern
 export async function getVideos(ids: string[]): Promise<VideoItem[]> {
   const out: VideoItem[] = [];
   for (let i = 0; i < ids.length; i += 50) {
-    const data = await get<{ items?: VideoItem[] }>("videos", { part: "snippet,statistics,contentDetails", id: ids.slice(i, i + 50).join(","), maxResults: 50 });
+    const data = await get<{ items?: VideoItem[] }>("videos", { part: "snippet,statistics,contentDetails,topicDetails", id: ids.slice(i, i + 50).join(","), maxResults: 50 });
     out.push(...(data.items ?? []));
   }
   return out;

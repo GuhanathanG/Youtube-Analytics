@@ -38,7 +38,8 @@ await db`insert into channel_requests (query, status, created_at) values ('@live
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
-    CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1" },
+    CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
+    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100" },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true, // own process group, so the whole server tree can be stopped
 });
@@ -58,8 +59,8 @@ try {
   const [{ n: vids }] = await db`select count(*)::int n from videos where channel_id like '%live'`;
   check("all 4 videos were stored", vids === 4, `${vids}`);
   const [{ n: recent, ai }] = await db`select count(*)::int n, count(ai_at)::int ai from comments where channel_id like '%live' and text not like 'old comment%'`;
-  check("newest comments of the 3 latest videos were loaded", recent === 15, `${recent}`);
-  check("the AI read those comments", ai === 15, `${ai}`);
+  check("newest comments of the 3 latest videos were loaded", recent === 18, `${recent}`);
+  check("the AI read those comments", ai === 18, `${ai}`);
   const [tl] = await db`select language, sentiment from comments where text = 'semma video bro' limit 1`;
   check("Tanglish comment labelled as positive Tanglish", tl?.language === "ta-Latn" && tl?.sentiment === "positive", JSON.stringify(tl));
 
@@ -144,6 +145,24 @@ try {
   check("overview shows alerts", overview.includes("New video from Live Creator"));
   const [{ n: snaps }] = await db`select count(*)::int n from video_snapshots v join videos x on x.id = v.video_id where x.channel_id like '%live'`;
   check("view snapshots recorded for predictions", snaps >= 1, `${snaps}`);
+
+  // Advanced video analysis: AI watches the video, performance, dislike estimate, moments, details
+  check("video analysis refuses requests without a session", (await fetch(`${BASE}/api/video-analysis`, { method: "POST", body: "{}" })).status === 401);
+  check("video analysis timer refuses a wrong key", (await fetch(`${BASE}/api/video-analysis?key=nope`)).status === 401);
+  const va = await (await fetch(`${BASE}/api/video-analysis`, { method: "POST", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ videoId: "livevid0001" }) })).json();
+  check("AI watched a video on request", va.ok === true, JSON.stringify(va));
+  const vaTimer = await (await fetch(`${BASE}/api/video-analysis?key=e2e-cron-secret-0123456789`)).json();
+  check("timer analyses the next new video", vaTimer.analysed === 1, JSON.stringify(vaTimer));
+  const [{ n: secs }] = await db`select coalesce(sum(tokens),0)::int n from llm_usage where model_key like 'video/%'`;
+  check("video seconds counted against the free daily allowance", secs >= 242, `${secs} s`);
+  const vp = await (await get("/videos/livevid0001")).text();
+  check("video page shows the AI's summary and chapters", vp.includes("hands-on review of a budget phone") && vp.includes("Camera test"));
+  check("video page shows like rate and performance", vp.includes("Like rate") && vp.includes("Comment rate"));
+  check("video page shows the dislike estimate", vp.includes("Dislikes (estimate)") && vp.includes(">42<"));
+  check("video page shows most-discussed moments from comment timestamps", vp.includes("Most-discussed moments") && vp.includes("1:00"));
+  check("video page shows YouTube details (category, tags, topics)", vp.includes("Science &amp; Technology") && vp.includes("phones") && vp.includes("Technology"));
+  check("video page explains that shares/watch time are owner-only", vp.includes("only visible to the channel"));
 
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma",
