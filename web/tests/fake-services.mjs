@@ -39,6 +39,8 @@ function page(list, token, size) {
   return { items: list.slice(start, start + size), nextPageToken: start + size < list.length ? String(start + size) : undefined };
 }
 
+export const sent = { telegram: [] };
+
 export function startFake(port = 4100) {
   const server = http.createServer((req, res) => {
     const u = new URL(req.url, "http://x");
@@ -50,6 +52,14 @@ export function startFake(port = 4100) {
     if (p.endsWith("/commentThreads")) return send(page(state.threads[u.searchParams.get("videoId")] || [], u.searchParams.get("pageToken"), 100));
     if (p === "/_add") { const v = state.videos[0].id; ["vera level bro 🔥", "worst editing ever", "when is part 3?"].forEach((t) => addComment(v, t)); return send({ ok: true }); }
     if (p === "/_upload") { const v = addVideo(99, 0); addComment(v, "first!"); return send({ ok: true }); }
+    if (p.startsWith("/bot") && p.endsWith("/sendMessage")) {
+      let body = ""; req.on("data", (c) => (body += c));
+      req.on("end", () => { sent.telegram.push(JSON.parse(body)); send({ ok: true }); });
+      return;
+    }
+    if (p.includes("/actions/workflows/sync.yml/runs")) {
+      return send({ workflow_runs: [{ status: "completed", conclusion: "success", created_at: new Date().toISOString(), html_url: "https://github.com/x/runs/1", event: "schedule" }] });
+    }
     if (p.startsWith("/votes")) return send({ id: u.searchParams.get("videoId"), likes: 50, dislikes: 42, viewCount: 1000 });
     if (p.includes(":generateContent")) {
       let body = "";

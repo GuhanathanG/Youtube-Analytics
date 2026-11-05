@@ -37,13 +37,13 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
               <div className="grid gap-4 md:grid-cols-3">
                 <div>
                   <div className="mb-1 flex justify-between text-[12.5px]"><span className="label">Videos found</span>
-                    <span className="tabular text-ink-2">{fmt(p.videos_known)}{p.videos_total ? ` / ${fmt(p.videos_total)}` : ""}</span></div>
+                    <span className="tabular text-ink-2">{fmt(p.videos_known)}{p.videos_total ? ` / ${fmt(Math.max(p.videos_total, p.videos_known))}` : ""}</span></div>
                   <Bar value={p.videos_known} total={p.videos_total ?? p.videos_known} color="#8b7cf6" />
                   <div className="mt-1 text-[12px] text-ink-3">{videosLeft ? `${fmt(videosLeft)} older videos still to list` : "all videos listed"}</div>
                 </div>
                 <div>
                   <div className="mb-1 flex justify-between text-[12.5px]"><span className="label">Comments saved</span>
-                    <span className="tabular text-ink-2">{fmt(p.comments_stored)} / {fmt(p.comments_on_youtube)}{videosLeft ? "+" : ""}</span></div>
+                    <span className="tabular text-ink-2">{fmt(p.comments_stored)} / {fmt(Math.max(p.comments_on_youtube, p.comments_stored))}{videosLeft ? "+" : ""}</span></div>
                   <Bar value={p.comments_stored} total={p.comments_on_youtube} color="#22d3ee" />
                   <div className="mt-1 text-[12px] text-ink-3">
                     {commentsLeft || videosLeft ? `${fmt(p.saved_last_hour)}/hour · ${eta(commentsLeft, p.saved_last_hour)} left${videosLeft ? " (more as older videos are listed)" : ""}` : "complete"}

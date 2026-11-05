@@ -9,7 +9,7 @@ export function AddChannelForm() {
   return (
     <form action={action}>
       <div className="flex flex-col gap-3 sm:flex-row">
-        <input name="query" required placeholder="@creator, channel link, or any video link"
+        <input name="query" required aria-label="Channel to watch" placeholder="@creator, channel link, or any video link"
           className="h-12 flex-1 rounded-xl border border-line-2 bg-white/[0.03] px-4 text-[15px] text-ink outline-none transition placeholder:text-ink-3 focus:border-accent/60" />
         <button disabled={pending}
           className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-accent to-accent-2 px-5 text-[14.5px] font-semibold text-[#05070d] shadow-[0_8px_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110 disabled:opacity-60">

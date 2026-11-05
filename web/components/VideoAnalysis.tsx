@@ -26,7 +26,7 @@ export function PerformancePanel({ perf }: { perf: Performance }) {
     <Panel title="Performance" subtitle="Compared with this channel's other videos (older than 3 days)">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Tile label="Views" value={compact(perf.views)} sub={rank(perf.percentile.views)}
-          note={perf.views_per_day ? `${compact(perf.views_per_day)} per day since upload` : undefined} />
+          note={perf.views_per_day ? `${compact(perf.views_per_day)} per day since upload` : `in the first ${Math.max(1, Math.round(perf.age_days * 24))} h`} />
         <Tile label="Like rate" value={pct(perf.like_rate, 2)} sub={`${compact(perf.likes)} likes · channel usual ${pct(perf.channel.like_rate, 2)}`}
           note={rank(perf.percentile.like_rate)} />
         <Tile label="Comment rate" value={pct(perf.comment_rate, 2)} sub={`${compact(perf.comments)} comments · usual ${pct(perf.channel.comment_rate, 2)}`}

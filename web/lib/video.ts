@@ -85,7 +85,14 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
   const models = (process.env.GEMINI_VIDEO_MODELS ?? "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3.5-flash-lite").split(",").map((m) => m.trim());
   const base = process.env.GEMINI_NATIVE_BASE ?? GEMINI; // overridable only for tests
   let lastError = "";
-  for (const model of models) {
+  const errors: string[] = [];
+  const attempts = models.flatMap((m) => [m, m]); // each model gets one retry after a short wait (Google often answers 503 "high demand")
+  for (let i = 0; i < attempts.length; i++) {
+    const model = attempts[i];
+    if (i % 2 === 1) {
+      if (!/: (429|500|502|503|504) |no answer/.test(lastError)) continue; // only retry busy/temporary errors
+      await new Promise((r) => setTimeout(r, Number(process.env.VIDEO_AI_RETRY_MS ?? 4000)));
+    }
     const body = {
       contents: [{ parts: [{ file_data: { file_uri: `https://www.youtube.com/watch?v=${videoId}` } }, { text: VIDEO_PROMPT }] }],
       generationConfig: {
@@ -102,11 +109,15 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
       });
     } catch {
       lastError = `${model}: no answer in time`;
+      errors.push(lastError);
       continue;
     }
     const text = await res.text();
     if (!res.ok) {
-      lastError = `${model}: ${res.status} ${text.slice(0, 200)}`;
+      let msg = text.slice(0, 160);
+      try { msg = JSON.parse(text).error?.message?.slice(0, 160) ?? msg; } catch { /* keep text */ }
+      lastError = `${model}: ${res.status} ${msg}`;
+      errors.push(lastError);
       if (res.status === 400 && /video|duration|too long|token/i.test(text)) break; // the video itself is the problem
       continue;
     }
@@ -123,8 +134,10 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
       return { ok: true, message: "Video analysed." };
     } catch {
       lastError = `${model}: unreadable answer`;
+      errors.push(lastError);
     }
   }
+  if (errors.length) lastError = [...new Set(errors)].join(" | ");
   console.log(`[video-analysis] ${videoId} failed: ${lastError.slice(0, 300)}`);
   await db`insert into video_analysis (video_id, status, error) values (${videoId}, 'error', ${lastError.slice(0, 500)})
     on conflict (video_id) do update set status = 'error', error = excluded.error, created_at = (now() at time zone 'utc')`;
@@ -139,8 +152,11 @@ export async function analyseDueVideos(max = 1): Promise<{ analysed: number; wai
   const due = await db`
     select v.id, v.title from videos v join channels c on c.id = v.channel_id
     left join video_analysis a on a.video_id = v.id
-    where c.active and a.video_id is null and v.published_at >= (now() at time zone 'utc') - interval '30 days'
-    order by v.published_at desc`;
+    where c.active and v.published_at >= (now() at time zone 'utc') - interval '30 days'
+      and (a.video_id is null -- never tried, or a temporary failure (Google busy) at least 3 hours ago
+        or (a.status = 'error' and a.created_at < (now() at time zone 'utc') - interval '3 hours'
+            and a.error ~ '(429|500|502|503|504|no answer|unreadable)'))
+    order by (a.video_id is not null), v.published_at desc`;
   const tried = [];
   for (const v of due.slice(0, max)) {
     const r = await analyseVideo(v.id as string);
@@ -262,7 +278,7 @@ export async function performance(videoId: string): Promise<Performance | null> 
   const age = Math.max(Number(v.age_days ?? 0), 0.01);
   return {
     views, likes, comments, age_days: age,
-    like_rate: views ? likes / views : null, comment_rate: views ? comments / views : null, views_per_day: views / age,
+    like_rate: views ? likes / views : null, comment_rate: views ? comments / views : null, views_per_day: age >= 1 ? views / age : null, // under a day old, a per-day rate is a wild extrapolation
     channel: { like_rate: (ch?.lr as number) ?? null, comment_rate: (ch?.cr as number) ?? null, views: (ch?.views as number) ?? null },
     percentile: { views: pct(ch?.v_below), like_rate: pct(ch?.lr_below), comment_rate: pct(ch?.cr_below) },
     dislikes_estimate: dislikes, dislike_ratio: dislikes != null && likes + dislikes > 0 ? dislikes / (likes + dislikes) : null,

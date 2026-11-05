@@ -55,7 +55,7 @@ export function AskBox({ channels }: { channels: { id: string; title: string }[]
         <div className="flex items-end gap-2">
           <textarea value={question} onChange={(e) => setQuestion(e.target.value)} rows={2} maxLength={500}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(question); } }}
-            placeholder="Ask anything about the comments… e.g. What do people say about the audio?"
+            aria-label="Your question about the comments" placeholder="Ask anything about the comments… e.g. What do people say about the audio?"
             className="min-h-[52px] flex-1 resize-none bg-transparent px-2 py-2 text-[15px] text-ink outline-none placeholder:text-ink-3" />
           <button disabled={pending || !question.trim()} aria-label="Ask"
             className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-r from-accent to-accent-2 text-[#05070d] transition hover:brightness-110 disabled:opacity-40">
@@ -63,7 +63,7 @@ export function AskBox({ channels }: { channels: { id: string; title: string }[]
           </button>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-line px-2 pt-2.5">
-          <select value={channel} onChange={(e) => setChannel(e.target.value)}
+          <select aria-label="Which channel" value={channel} onChange={(e) => setChannel(e.target.value)}
             className="h-8 rounded-lg border border-line bg-[#0a0e1a] px-2 text-[12.5px] text-ink-2 outline-none">
             <option value="">All channels</option>
             {channels.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}

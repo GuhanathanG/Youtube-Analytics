@@ -11,7 +11,7 @@ const WORKFLOW = "sync.yml";
 export const githubConfigured = () => !!process.env.GITHUB_TOKEN;
 
 async function gh(path: string, init?: RequestInit) {
-  return fetch(`https://api.github.com/repos/${REPO}${path}`, {
+  return fetch(`${process.env.GITHUB_API_BASE ?? "https://api.github.com"}/repos/${REPO}${path}`, {
     ...init,
     headers: {
       Accept: "application/vnd.github+json",

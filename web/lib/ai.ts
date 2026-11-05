@@ -220,8 +220,12 @@ async function labelChunk(chunkIds: string[], deadline: number | undefined, star
  *  comments the local model was unsure about go first, then the newest. */
 export async function labelBacklog(deadline: number, maxComments = 100): Promise<number> {
   if (!aiSlots().length) return 0;
+  // Look at the newest 2,000 unread comments (index ix_comments_ai_pending), then put Tanglish/Hinglish,
+  // unknown-language and uncertain ones first. Avoids sorting the whole backlog every run.
   const rows = await sql()`
-    select id from comments where ai_at is null and length(text) > 0
+    select id from (
+      select id, language, sentiment_score, published_at from comments
+      where ai_at is null order by published_at desc nulls last limit 2000) recent
     order by (case when language like '%-Latn' or language = 'und' or sentiment_score is null or sentiment_score < 0.6 then 0 else 1 end),
              published_at desc nulls last
     limit ${maxComments}`;
