@@ -15,7 +15,7 @@ import streamlit as st
 from sqlalchemy import update
 
 from ytanalytics import queries as q
-from ytanalytics.config import normalize_db_url
+from ytanalytics.config import diagnose_database_url, normalize_db_url
 from ytanalytics.db import Channel, ChannelRequest, init_db, make_engine, make_session_factory
 
 st.set_page_config(page_title="Creator Analytics", page_icon="📊", layout="wide")
@@ -47,7 +47,26 @@ def get_engine():
     return engine
 
 
-engine = get_engine()
+def show_database_problem(url: str, error: Exception | None) -> None:
+    st.title("📊 Creator Analytics")
+    st.error("The dashboard can't connect to the database yet.")
+    for line in diagnose_database_url(url, error):
+        st.markdown(f"- {line}")
+    st.info("Fix it in **Manage app → ⋮ → Settings → Secrets**, then click **Save**. "
+            "The app restarts by itself. Use the same corrected value for the "
+            "`DATABASE_URL` secret in GitHub.")
+    st.stop()
+
+
+_db_url = secret("DATABASE_URL", "")
+_problems = diagnose_database_url(_db_url, None)
+if _problems:
+    show_database_problem(_db_url, None)
+try:
+    engine = get_engine()
+except Exception as exc:  # noqa: BLE001 - show the reason in plain words
+    get_engine.clear()
+    show_database_problem(_db_url, exc)
 SessionLocal = make_session_factory(engine)
 
 
