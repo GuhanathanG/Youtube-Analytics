@@ -1,0 +1,77 @@
+name: Sync & analyze
+
+on:
+  schedule:
+    # Every 2 hours at :07 (UTC). Private repos get 2,000 free minutes a month;
+    # the "plan" step below spreads them across the month automatically.
+    # Once the repo is public: use "7 * * * *", RUNS_PER_DAY "24", MONTHLY_MINUTES_BUDGET "0".
+    - cron: "7 */2 * * *"
+  workflow_dispatch: {}    # adds a "Run workflow" button in the Actions tab
+
+# Never run two syncs at the same time.
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
+      RUNS_PER_DAY: "12"
+      MONTHLY_MINUTES_BUDGET: "1700"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Start timer
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install packages
+        run: pip install -r requirements.txt
+
+      - name: Plan this run's minutes
+        id: plan
+        run: python -m ytanalytics plan | tee -a "$GITHUB_OUTPUT"
+
+      - name: Fetch channels, videos and comments from YouTube
+        run: python -m ytanalytics sync --until ${{ steps.plan.outputs.sync_until }}
+
+      - name: Count comments waiting for analysis
+        id: pending
+        run: echo "count=$(python -m ytanalytics pending)" >> "$GITHUB_OUTPUT"
+
+      - name: Install sentiment model packages
+        if: steps.pending.outputs.count != '0'
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-ai.txt
+
+      - name: Cache the sentiment model
+        if: steps.pending.outputs.count != '0'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ env.SENTIMENT_MODEL }}
+
+      - name: Sentiment and language for every new comment
+        if: steps.pending.outputs.count != '0'
+        run: python -m ytanalytics analyze --until ${{ steps.plan.outputs.analyze_until }}
+
+      - name: AI deep analysis and insights (free Gemini / Groq)
+        run: python -m ytanalytics ai --until ${{ steps.plan.outputs.ai_until }}
+
+      - name: Record minutes used
+        if: always()
+        run: python -m ytanalytics record-job --started "$JOB_START" --status "${{ job.status }}" || true

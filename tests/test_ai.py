@@ -1,0 +1,258 @@
+import json
+import os
+from datetime import datetime, timedelta
+
+import pytest
+from sqlalchemy import func, select
+
+from ytanalytics.ai import AIRunner, latest_insight
+from ytanalytics.budget import plan_minutes, record_job
+from ytanalytics.db import (
+    Base, Channel, Comment, Insight, LlmUsage, RunLog, Video, init_db, make_engine, make_session_factory,
+)
+from ytanalytics.llm import LLMRouter, ModelSlot, NoModelAvailable, parse_json, slots_from_env
+from ytanalytics.sentiment import analyze_pending
+from ytanalytics.config import Settings, normalize_db_url
+
+
+@pytest.fixture
+def session():
+    engine = make_engine(normalize_db_url(os.environ.get("TEST_DATABASE_URL", "sqlite://")))
+    Base.metadata.drop_all(engine)
+    init_db(engine)
+    with make_session_factory(engine)() as s:
+        yield s
+    engine.dispose()
+
+
+# ------------------------------------------------------------------ fake HTTP for the router
+class Resp:
+    def __init__(self, status, body=None, headers=None):
+        self.status_code = status
+        self._body = body if body is not None else {}
+        self.text = body if isinstance(body, str) else json.dumps(self._body)
+        self.headers = headers or {}
+
+    def json(self):
+        if isinstance(self._body, str):
+            raise ValueError("not json")
+        return self._body
+
+
+def ok(content: str):
+    return Resp(200, {"choices": [{"message": {"content": content}}], "usage": {"total_tokens": 100}})
+
+
+class FakeHTTP:
+    """Returns queued responses per model name."""
+
+    def __init__(self, script):
+        self.script = {k: list(v) for k, v in script.items()}
+        self.calls = []
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        self.calls.append((json["model"], json))
+        return self.script[json["model"]].pop(0)
+
+
+def slot(model, provider="gemini", daily=100):
+    return ModelSlot(provider=provider, base_url="https://x/", api_key="k", model=model,
+                     daily_requests=daily, seconds_between=0)
+
+
+def test_parse_json_tolerates_fences_and_chatter():
+    assert parse_json('```json\n{"a": 1}\n```') == {"a": 1}
+    assert parse_json('Sure! {"a": [1, 2]} hope that helps') == {"a": [1, 2]}
+    with pytest.raises(ValueError):
+        parse_json("no json here")
+
+
+def test_router_falls_back_when_daily_limit_hit(session):
+    http = FakeHTTP({
+        "m1": [Resp(429, "Quota exceeded for metric: GenerateRequestsPerDayPerProjectPerModel-FreeTier")],
+        "m2": [ok('{"x": 1}'), ok('{"x": 2}')],
+    })
+    router = LLMRouter(session, [slot("m1"), slot("m2")], http=http, sleep=lambda s: None)
+    assert router.chat_json("sys", "user") == ({"x": 1}, "gemini/m2")
+    # m1 is remembered as exhausted for today: not called again
+    assert router.chat_json("sys", "user") == ({"x": 2}, "gemini/m2")
+    assert [c[0] for c in http.calls] == ["m1", "m2", "m2"]
+    assert session.scalars(select(LlmUsage).where(LlmUsage.model_key == "gemini/m1")).one().exhausted
+
+
+def test_router_waits_on_per_minute_limit(session):
+    waits = []
+    http = FakeHTTP({"m1": [
+        Resp(429, "Quota exceeded for metric: GenerateRequestsPerMinutePerProjectPerModel-FreeTier",
+             headers={"retry-after": "12"}),
+        ok('{"ok": true}'),
+    ]})
+    router = LLMRouter(session, [slot("m1")], http=http, sleep=waits.append)
+    assert router.chat_json("s", "u")[0] == {"ok": True}
+    assert 12.0 in waits
+
+
+def test_router_skips_unknown_model_and_drops_json_mode(session):
+    http = FakeHTTP({
+        "gone": [Resp(404, "models/gone is not found")],
+        "nojson": [Resp(400, "response_format json_object is not supported"), ok('{"y": 3}')],
+    })
+    router = LLMRouter(session, [slot("gone"), slot("nojson")], http=http, sleep=lambda s: None)
+    assert router.chat_json("s", "u") == ({"y": 3}, "gemini/nojson")
+    assert "response_format" in http.calls[1][1] and "response_format" not in http.calls[2][1]
+
+
+def test_router_respects_daily_request_budget(session):
+    http = FakeHTTP({"m1": [ok("{}")] * 5})
+    router = LLMRouter(session, [slot("m1", daily=2)], http=http, sleep=lambda s: None)
+    router.chat_json("s", "u")
+    router.chat_json("s", "u")
+    with pytest.raises(NoModelAvailable):
+        router.chat_json("s", "u")
+
+
+def test_slots_from_env_order_and_keys():
+    slots = slots_from_env({"GEMINI_API_KEY": "g", "GEMINI_MODELS": "a,b", "GROQ_API_KEY": "q",
+                            "GROQ_MODELS": "c"})
+    assert [s.key for s in slots] == ["gemini/a", "gemini/b", "groq/c"]
+    assert slots_from_env({"GROQ_API_KEY": "q", "GROQ_MODELS": "c"})[0].key == "groq/c"
+    assert slots_from_env({}) == []
+
+
+# ------------------------------------------------------------------ AI runner with a fake router
+class FakeRouter:
+    """Labels comments from simple keywords, like a (very small) LLM would."""
+
+    def __init__(self, fail_after=None):
+        self.prompts = []
+        self.fail_after = fail_after
+
+    def chat_json(self, system, user, max_tokens=0, deadline=None):
+        if self.fail_after is not None and len(self.prompts) >= self.fail_after:
+            raise NoModelAvailable("used up")
+        self.prompts.append((system, user))
+        if '"results"' in system:
+            results = []
+            for line in user.splitlines():
+                head, _, text = line.partition(". [V")
+                if not head.isdigit():
+                    continue
+                i = int(head)
+                if "skipme" in text:
+                    continue
+                neg = "mokka" in text or "bad" in text
+                results.append({
+                    "i": i, "sentiment": "negative" if neg else "positive", "score": -0.8 if neg else 0.9,
+                    "emotion": "disappointment" if neg else "joy", "question": "?" in text,
+                    "suggestion": "part 2" in text, "spam": "free money" in text, "toxic": False,
+                    "aspects": [{"a": "audio", "s": "neg"}] if "audio" in text else [{"a": "nonsense", "s": "pos"}],
+                    "lang": "ta-Latn" if ("mokka" in text or "semma" in text) else "en",
+                    "en": "boring film" if "mokka" in text else "",
+                })
+            return {"results": results}, "gemini/fake"
+        return {"summary": "People liked it.", "liked": ["editing"], "complaints": ["audio"]}, "gemini/fake"
+
+
+def seed(session, n=30):
+    session.add(Channel(id="UC1", title="Chan", active=True))
+    session.add(Video(id="v1", channel_id="UC1", title="Phone review", published_at=datetime(2026, 1, 1)))
+    session.commit()  # parents first: PostgreSQL enforces foreign keys
+    texts = ["semma video bro", "mokka padam", "audio is bad", "make part 2?", "free money click", "great",
+             "skipme"]
+    for i in range(n):
+        session.add(Comment(id=f"c{i}", video_id="v1", channel_id="UC1", text=texts[i % len(texts)],
+                            like_count=i, published_at=datetime(2026, 1, 1) + timedelta(hours=i)))
+    session.commit()
+
+
+def test_enrich_comments_labels_and_flags(session):
+    seed(session)
+    runner = AIRunner(session, FakeRouter(), batch_size=8)
+    assert runner.enrich_comments() > 0
+    rows = {c.text: c for c in session.scalars(select(Comment))}
+    assert rows["semma video bro"].sentiment == "positive"
+    assert rows["semma video bro"].language == "ta-Latn"
+    assert rows["semma video bro"].sentiment_source == "ai"
+    assert rows["mokka padam"].sentiment == "negative" and rows["mokka padam"].translation == "boring film"
+    assert rows["audio is bad"].aspects == "audio:neg"
+    assert rows["make part 2?"].is_question and rows["make part 2?"].is_suggestion
+    assert rows["free money click"].is_spam
+    assert rows["great"].aspects is None  # unknown aspect names are dropped
+    assert rows["skipme"].ai_model == "skipped" and rows["skipme"].sentiment is None
+    assert session.scalar(select(func.count()).select_from(Comment).where(Comment.ai_at.is_(None))) == 0
+
+    # Local model must not overwrite AI labels afterwards.
+    class Clf:
+        name = "local"
+
+        def __call__(self, texts):
+            return [{"negative": 1.0, "neutral": 0, "positive": 0}] * len(texts)
+
+    analyze_pending(session, Settings.from_env(), classifier=Clf())
+    session.expire_all()
+    assert session.get(Comment, "c0").sentiment == "positive"
+
+
+def test_enrich_prioritises_uncertain_and_romanized(session):
+    seed(session, n=14)
+    for c in session.scalars(select(Comment)):
+        c.sentiment_score = 0.95
+        c.language = "en"
+    session.get(Comment, "c0").language = "ta-Latn"
+    session.get(Comment, "c5").sentiment_score = 0.4
+    session.commit()
+    router = FakeRouter()
+    AIRunner(session, router, batch_size=2).enrich_comments(max_batches=1)
+    first_batch = router.prompts[0][1]
+    assert "semma video bro" in first_batch and "great" in first_batch
+
+
+def test_enrich_stops_cleanly_when_models_used_up(session):
+    seed(session)
+    runner = AIRunner(session, FakeRouter(fail_after=1), batch_size=5)
+    runner.enrich_comments()
+    assert session.scalar(select(func.count()).select_from(Comment).where(Comment.ai_at.is_not(None))) == 5
+
+
+def test_insights_written_once_until_enough_new_comments(session):
+    seed(session)
+    runner = AIRunner(session, FakeRouter(), insight_min_comments=20)
+    assert runner.write_insights() == 2  # video + channel
+    data, ins = latest_insight(session, "video", "v1")
+    assert data["summary"] == "People liked it." and ins.comment_count == 30
+    assert runner.write_insights() == 0  # nothing new
+    for i in range(30, 52):  # 22 new comments (>= 20 and >= 25% growth)
+        session.add(Comment(id=f"c{i}", video_id="v1", channel_id="UC1", text="new one",
+                            published_at=datetime(2026, 2, 1)))
+    session.commit()
+    assert AIRunner(session, FakeRouter(), insight_min_comments=20).write_insights() == 1  # video only
+    assert session.scalar(select(func.count()).select_from(Insight)) == 3
+
+
+# ------------------------------------------------------------------ minutes budget
+def test_plan_minutes_spreads_monthly_budget(session):
+    now = datetime(2026, 11, 16, 0, 0)  # 15 days left -> 180 runs at 12/day
+    plan = plan_minutes(session, {"MONTHLY_MINUTES_BUDGET": "1700", "RUNS_PER_DAY": "12"}, now=now)
+    assert plan.used_this_month == 0
+    work = plan.sync + plan.analyze + plan.ai
+    assert 6 < work < 8  # 1700/180 - 2.5 overhead ~= 6.9
+
+    # A month that is nearly used up still leaves a minimal run.
+    session.add(RunLog(kind="job", started_at=datetime(2026, 11, 2),
+                       finished_at=datetime(2026, 11, 2) + timedelta(minutes=1699)))
+    session.commit()
+    tight = plan_minutes(session, {"MONTHLY_MINUTES_BUDGET": "1700"}, now=now)
+    assert tight.used_this_month == 1699
+    assert tight.sync >= 1.0
+
+    unlimited = plan_minutes(session, {"MONTHLY_MINUTES_BUDGET": "0"}, now=now)
+    assert unlimited.sync + unlimited.analyze + unlimited.ai == pytest.approx(25, abs=0.2)
+
+
+def test_record_job_rounds_up(session):
+    import time
+
+    record_job(session, time.time() - 61)
+    from ytanalytics.budget import minutes_used_this_month
+
+    assert minutes_used_this_month(session) == 2
