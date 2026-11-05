@@ -111,6 +111,7 @@ try {
   check("engine records that the 24/7 timer is active", !!st?.last_cron_at);
   const manage = await (await get("/manage")).text();
   check("Manage page shows the engine running 24/7", manage.includes("Running 24/7"));
+  check("Manage page shows history progress with an estimate", manage.includes("History progress") && manage.includes("Read by AI"));
 
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma"]) {

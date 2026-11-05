@@ -7,7 +7,8 @@ import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Stat } from "@/components/ui";
 import { ago, compact, score } from "@/lib/format";
 import { LiveFeed } from "@/components/LiveFeed";
-import { channels as getChannels, comments, dailySentiment, kpis, recentInsights } from "@/lib/queries";
+import { channels as getChannels, comments, dailySentiment, kpis, progress, recentInsights } from "@/lib/queries";
+import { ProgressPanel } from "@/components/ProgressPanel";
 
 export const metadata = { title: "Overview" };
 
@@ -17,6 +18,9 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const [k, chs, daily, briefs, latest] = await Promise.all([
     kpis(), getChannels(), dailySentiment({ since }), recentInsights(4), comments({ hideSpam: true }, "newest", 8),
   ]);
+  const prog = await progress().catch(() => []);
+  const historyBusy = prog.some((p) => p.comments_stored < p.comments_on_youtube * 0.98 || p.ai_read < p.comments_stored * 0.98
+    || (p.videos_total ?? 0) > p.videos_known);
   const analysed = chs.reduce((s, c) => s + c.positive + c.neutral + c.negative, 0);
   const weighted = analysed ? chs.reduce((s, c) => s + (c.avg_sentiment ?? 0) * (c.positive + c.neutral + c.negative), 0) / analysed : 0;
 
@@ -35,6 +39,8 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         <Reveal delay={0.1}><Stat label="Read by AI" value={k.comments ? Math.round((k.ai_read / k.comments) * 100) : 0} suffix="%" hint={`${compact(k.ai_read)} deep-read comments`} /></Reveal>
         <Reveal delay={0.15}><Stat label="Videos tracked" value={k.videos} hint={k.videos_backfilling ? `${k.videos_backfilling} still downloading history` : "history complete"} /></Reveal>
       </div>
+
+      {historyBusy && <Reveal delay={0.1} className="mt-6"><ProgressPanel rows={prog} /></Reveal>}
 
       {chs.length === 0 ? (
         <div className="mt-8"><Empty>No channels yet. Add creators on the <Link href="/manage" className="text-accent">Manage</Link> page.</Empty></div>

@@ -6,7 +6,8 @@ import { utc } from "@/lib/db-time";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Tag } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
-import { actionsMinutesThisMonth, channelRequests, channels as getChannels, kpis, lastRuns, llmUsageToday } from "@/lib/queries";
+import { actionsMinutesThisMonth, channelRequests, channels as getChannels, kpis, lastRuns, llmUsageToday, progress } from "@/lib/queries";
+import { ProgressPanel } from "@/components/ProgressPanel";
 
 export const metadata = { title: "Manage" };
 
@@ -34,6 +35,7 @@ export default async function ManagePage() {
   ]);
   const ghRuns = await recentRuns(5).catch(() => null);
   const engine = await engineStatus().catch(() => null);
+  const prog = await progress().catch(() => []);
   const cronAt = utc(engine?.lastCronAt);
   const alwaysOn = !!cronAt && Date.now() - cronAt.getTime() < 10 * 60000;
   const e = engine?.last;
@@ -68,6 +70,8 @@ export default async function ManagePage() {
           {e?.message && <p className={`mt-3 text-[12.5px] ${e.status === "ok" ? "text-ink-3" : "text-warn"}`}>{e.message}</p>}
         </Panel>
       </Reveal>
+
+      <Reveal className="mt-4"><ProgressPanel rows={prog} /></Reveal>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <Reveal className="xl:col-span-2"><Panel title="Watch a new channel"><AddChannelForm /></Panel></Reveal>
