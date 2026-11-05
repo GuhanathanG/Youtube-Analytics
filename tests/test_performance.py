@@ -73,3 +73,43 @@ def test_comments_are_reached_in_the_same_run_as_video_discovery(engine):
         assert s.scalar(select(func.count()).select_from(Video).where(Video.comments_backfilled.is_(False))) == 0
         # 6 comment pages + 150 empty videos: should stay well under one query per video
         assert counter.n < 600, f"{counter.n} queries"
+
+
+def test_big_channel_gets_comments_in_the_first_run(engine):
+    """A channel with 1,200 videos: the first run must not spend itself on the video list."""
+    settings = Settings.from_env()
+    settings.max_run_minutes = 5
+    with make_session_factory(engine)() as s:
+        yt = FakeYouTube(QuotaTracker(s, 10_000))
+        yt.add_channel(CID, "@perf", n_videos=1200, comments_per_video=0)
+        newest = yt.uploads["UU" + CID[2:]][:2]
+        for vid in newest:
+            for j in range(50):
+                yt.post_comment(vid, BASE + timedelta(minutes=j))
+        s.add(ChannelRequest(query="@perf"))
+        s.commit()
+        stats = run_sync(s, settings, yt=yt)
+        assert stats.videos_discovered == 200          # 4 pages of history this run
+        assert stats.comments_saved == 100             # and the newest videos' comments
+        # Later runs continue the video list where they stopped, and pick up new uploads.
+        for _ in range(6):
+            run_sync(s, settings, yt=yt)
+        assert s.scalar(select(func.count()).select_from(Video)) == 1200
+
+
+def test_new_upload_seen_while_history_is_still_being_walked(engine):
+    settings = Settings.from_env()
+    settings.max_run_minutes = 5
+    with make_session_factory(engine)() as s:
+        yt = FakeYouTube(QuotaTracker(s, 10_000))
+        yt.add_channel(CID, "@perf", n_videos=600)
+        s.add(ChannelRequest(query="@perf"))
+        s.commit()
+        run_sync(s, settings, yt=yt)
+        playlist = "UU" + CID[2:]
+        yt.videos["brandnew001"] = {"id": "brandnew001", "snippet": {"title": "New!", "publishedAt": "2026-06-01T00:00:00Z", "thumbnails": {}},
+                                    "statistics": {"viewCount": "1", "likeCount": "0", "commentCount": "0"}, "contentDetails": {}}
+        yt.threads["brandnew001"] = []
+        yt.uploads[playlist].insert(0, "brandnew001")
+        run_sync(s, settings, yt=yt)
+        assert s.get(Video, "brandnew001") is not None

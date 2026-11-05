@@ -12,9 +12,17 @@ Date: 5 November 2026.
 | 4 | **The scheduled job stopped running.** GitHub only runs schedules from the *default branch*, and the default branch was the development branch `claude/optimistic-euler-itxngj`, not `main`. | GitHub API: `default_branch = claude/optimistic-euler-itxngj`. No scheduled run since 02:18. | **You need to change this** (see below). |
 | 5 | **The website's live mode only read comments on videos from the last 30 days.** Older videos depended on the stuck background job (#1). | Code review. | Live mode also downloads comment history, 5 pages (about 500 comments) a minute while the site is open, keeping 2,000 quota units in reserve for live checks. |
 | 6 | **The website ran in Washington D.C.** while the database is in Sydney, so every page made several slow trips across the Pacific. | Vercel build log: `iad1`. | `web/vercel.json` now pins the website to Sydney (`syd1`). The free Hobby plan allows choosing any single region. |
+| 8 | **Big channels still got 0 comments after fix #1.** The job read a channel's *entire* video list before any comments. Your channel has more than 1,000 videos, so run #5 saved 999 videos in 90 s and then hit the time limit. | Run #5 log: `"videos_discovered": 999`, `"comments_saved": 0`. | Each run reads at most 4 pages (200 videos) of history, after checking the newest page for fresh uploads, then moves on to comments. With 0.2 s per query, a 1,200-video channel gets 3,000 comments in its first run (32 s). Tests: `test_big_channel_gets_comments_in_the_first_run`, `test_new_upload_seen_while_history_is_still_being_walked`. |
+| 9 | **Live mode was off on the website you use.** There are two Vercel projects. The working one (`youtube-analytics-web`) only has `DATABASE_URL` and `APP_PASSWORD`. The keys (`YOUTUBE_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `GITHUB_TOKEN`) were added to `creator-pulse`, whose deployments all fail. | Vercel project settings. | **You need to change this** (see below). |
 | 7 | The first 3 scheduled runs failed. | Run #1–#3 logs: `Could not parse SQLAlchemy URL`. | Already fixed by you: the `DATABASE_URL` secret now holds a valid address. |
 
-## Settings you need to change (2 minutes)
+## Settings you need to change (5 minutes)
+
+0. **Vercel: put the keys on the working project.**
+   - Open **youtube-analytics-web** → **Settings → Environment Variables**.
+   - Add `YOUTUBE_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY` and `GITHUB_TOKEN`, with the same values as in `creator-pulse`.
+   - Then **Deployments → ⋯ → Redeploy**.
+   - Optionally delete the broken `creator-pulse` project (**Settings → General → Delete Project**).
 
 1. **GitHub default branch → `main`**
    Go to <https://github.com/GuhanathanG/Youtube-Analytics/settings>. Under **Default branch**, click the ⇄ switch icon, choose **main**, then **Update** and **I understand, update the default branch**.
@@ -23,7 +31,7 @@ Date: 5 November 2026.
 
 ## Use cases and their tests
 
-Automated tests run on every change: **Python:** 28 tests, on SQLite and PostgreSQL (`Tests` workflow). **Website:** type check, production build and a 24-check end-to-end test against a real PostgreSQL with stand-in YouTube and AI services (`Website` workflow).
+Automated tests run on every change: **Python:** 30 tests, on SQLite and PostgreSQL (`Tests` workflow). **Website:** type check, production build and a 24-check end-to-end test against a real PostgreSQL with stand-in YouTube and AI services (`Website` workflow).
 
 | Use case | Test(s) | Status |
 |---|---|---|

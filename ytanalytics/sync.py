@@ -150,44 +150,55 @@ class Syncer:
             self.s.commit()
 
     def sync_uploads(self, channel: Channel) -> None:
+        """New uploads first, then a limited slice of the upload history.
+
+        Big channels have thousands of videos; walking the whole list before reading any
+        comments meant no comments at all for days. Each run now takes at most
+        `upload_pages_per_run` pages (50 videos each) of history, then moves on.
+        """
         if not channel.uploads_playlist_id:
             return
-        if channel.videos_backfilled:
-            # Only look at the newest page(s) until we hit a video we already know.
+        has_videos = self.s.scalar(select(Video.id).where(Video.channel_id == channel.id).limit(1)) is not None
+        if has_videos:
+            # Newest page(s) until we reach a video we already know.
             token = None
-            while True:
+            for _ in range(5):
                 self._check_time()
                 data = self.yt.list_uploads(channel.uploads_playlist_id, token)
                 ids = [it["contentDetails"]["videoId"] for it in data.get("items", [])]
                 known = set(self.s.scalars(select(Video.id).where(Video.id.in_(ids))).all()) if ids else set()
-                new_ids = [v for v in ids if v not in known]
-                self._save_videos(channel, new_ids)
+                self._save_videos(channel, [v for v in ids if v not in known])
                 token = data.get("nextPageToken")
                 if known or not token:
                     break
-        else:
-            # First time: walk the whole upload history (resumable across runs).
-            token = channel.videos_page_token
-            while True:
-                self._check_time()
-                try:
-                    data = self.yt.list_uploads(channel.uploads_playlist_id, token)
-                except YouTubeError as e:
-                    if e.status == 404:  # channel has no uploads playlist yet
-                        channel.videos_backfilled = True
-                        self.s.commit()
-                        return
-                    raise
-                ids = [it["contentDetails"]["videoId"] for it in data.get("items", [])]
-                known = set(self.s.scalars(select(Video.id).where(Video.id.in_(ids))).all()) if ids else set()
-                self._save_videos(channel, [v for v in ids if v not in known])
-                token = data.get("nextPageToken")
-                channel.videos_page_token = token
-                if not token:
+        if channel.videos_backfilled:
+            return
+        # A slice of the upload history (resumable across runs).
+        token = channel.videos_page_token
+        for _ in range(max(1, self.settings.upload_pages_per_run)):
+            self._check_time()
+            try:
+                data = self.yt.list_uploads(channel.uploads_playlist_id, token)
+            except YouTubeError as e:
+                if e.status == 404:  # channel has no uploads playlist yet
                     channel.videos_backfilled = True
-                self.s.commit()
-                if not token:
-                    break
+                    self.s.commit()
+                    return
+                if e.status == 400 and token:  # expired page token: restart the walk
+                    channel.videos_page_token = None
+                    self.s.commit()
+                    return
+                raise
+            ids = [it["contentDetails"]["videoId"] for it in data.get("items", [])]
+            known = set(self.s.scalars(select(Video.id).where(Video.id.in_(ids))).all()) if ids else set()
+            self._save_videos(channel, [v for v in ids if v not in known])
+            token = data.get("nextPageToken")
+            channel.videos_page_token = token
+            if not token:
+                channel.videos_backfilled = True
+            self.s.commit()
+            if not token:
+                break
 
     def _save_videos(self, channel: Channel, ids: list[str]) -> None:
         """Insert new videos in bulk (a handful of queries, not one per video).

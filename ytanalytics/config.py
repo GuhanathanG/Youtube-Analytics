@@ -32,6 +32,9 @@ class Settings:
     fetch_all_replies: bool
     sentiment_model: str
     analyze_batch_size: int
+    # Pages (50 videos each) of a channel's upload history to read per run before
+    # moving on to comments; the rest follows on later runs.
+    upload_pages_per_run: int = 4
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -46,6 +49,7 @@ class Settings:
                 "SENTIMENT_MODEL", "cardiffnlp/twitter-xlm-roberta-base-sentiment"
             ),
             analyze_batch_size=_int("ANALYZE_BATCH_SIZE", 64),
+            upload_pages_per_run=_int("UPLOAD_PAGES_PER_RUN", 4),
         )
 
 
