@@ -298,7 +298,9 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
   if (!claimed.length) return (await lastTick()) ?? { status: "skipped", ...empty };
 
   const started = Date.now();
-  const BUDGET_MS = 45000; // the function may run 60 s; keep a margin
+  // Vercel's free plan includes 360 GB-hours of function memory a month. A run every 2 minutes
+  // (720 a day) at 2 GB must average under ~25 s to fit with room for normal page views.
+  const BUDGET_MS = Number(process.env.ENGINE_BUDGET_SECONDS ?? 22) * 1000;
   const deadline = started + BUDGET_MS;
   const timeLeft = () => Date.now() < deadline - 5000;
   const result: TickResult = { status: "ok", ...empty, source };
@@ -391,11 +393,12 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 6. Let the AI read the new comments right away.
     if (fresh.length && timeLeft()) result.labelled = await labelComments(fresh.slice(0, 100), deadline).catch(() => 0);
 
-    // 7. AI works through the backlog of comments it hasn't read yet.
+    // 7. AI briefings get their own turn about every 10 minutes (a briefing takes ~10-15 s);
+    // 8. otherwise the AI works through the backlog of comments it hasn't read yet.
+    const everyMin = Math.max(1, Number(process.env.INSIGHTS_EVERY_MINUTES ?? 10));
+    const insightsTurn = Math.floor(Date.now() / 60000) % everyMin < 2;
+    if (insightsTurn && timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
     if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, Number(process.env.AI_BACKLOG_PER_RUN ?? 150)).catch(() => 0);
-
-    // 8. AI briefings for videos/channels with enough new comments.
-    if (timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
   } catch (e) {
     if (e instanceof QuotaExhausted) { result.status = "quota"; result.message = e.message; }
     else { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }

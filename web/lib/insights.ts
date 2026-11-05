@@ -78,7 +78,7 @@ export async function writeDueInsights(deadline: number, max = 2): Promise<numbe
     where ch.active and (l.target_id is null or (c.n >= l.comment_count * 1.25 and c.n - l.comment_count >= 20))
     order by v.published_at desc nulls last limit ${max}`;
   for (const v of dueVideos) {
-    if (Date.now() > deadline - 20000 || written >= max) break;
+    if (Date.now() > deadline - 12000 || written >= max) break;
     const where = db`c.video_id = ${v.id as string}`;
     const rows = await sample(where);
     const prompt = [`Video: ${v.title}`, v.published_at ? `Published: ${String(v.published_at).slice(0, 10)}` : "",
@@ -98,7 +98,7 @@ export async function writeDueInsights(deadline: number, max = 2): Promise<numbe
     where ch.active and (l.target_id is null or (l.created_at < (now() at time zone 'utc') - interval '24 hours' and t.n <> l.comment_count))
     limit 1`;
   for (const ch of dueChannels) {
-    if (Date.now() > deadline - 20000 || written >= max) break;
+    if (Date.now() > deadline - 12000 || written >= max) break;
     const recentWhere = db`c.channel_id = ${ch.id as string} and c.published_at >= (now() at time zone 'utc') - interval '30 days'`;
     const [{ n: nRecent }] = await db`select count(*)::int n from comments c where ${recentWhere}`;
     const useRecent = (nRecent as number) >= MIN_COMMENTS;

@@ -12,11 +12,14 @@ const PROVIDERS: Record<string, { base: string; prefix: string; models: string; 
   gemini: { base: "https://generativelanguage.googleapis.com/v1beta/openai/", prefix: "GEMINI",
     models: "gemini-2.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash-lite,gemini-3.8-flash", daily: 200 },
   groq: { base: "https://api.groq.com/openai/v1/", prefix: "GROQ", models: "openai/gpt-oss-20b,openai/gpt-oss-120b", daily: 900 },
+  // OpenRouter ":free" models: 50 requests/day per account, shared across its free models.
+  openrouter: { base: "https://openrouter.ai/api/v1/", prefix: "OPENROUTER",
+    models: "google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free,nvidia/nemotron-3.5-lightning:free", daily: 50 },
 };
 
 export function aiSlots(): Slot[] {
   const env = process.env;
-  const order = (env.AI_PROVIDER_ORDER ?? "gemini,groq").split(",").map((s) => s.trim());
+  const order = (env.AI_PROVIDER_ORDER ?? "gemini,groq,openrouter").split(",").map((s) => s.trim());
   const slots: Slot[] = [];
   for (const name of order) {
     const p = PROVIDERS[name];
@@ -57,8 +60,9 @@ export function parseJson(content: string): Record<string, unknown> {
 }
 
 /** Least "thinking" each model allows: thinking makes answers slow and labelling doesn't need it. */
-function reasoningFor(s: Slot): string {
+function reasoningFor(s: Slot): string | null {
   if (s.provider === "gemini") return s.model.startsWith("gemini-2.5") ? "none" : "minimal";
+  if (s.provider === "openrouter") return null; // not part of OpenRouter's API
   return "low";
 }
 
@@ -76,7 +80,7 @@ export async function chatJson(system: string, user: string, maxTokens = 4000, d
     if (deadline && Date.now() > deadline - 5000) return null;
     if (!(await usable(s))) continue;
     let jsonMode = true;
-    let reasoning: string | null = reasoningFor(s);
+    let reasoning = reasoningFor(s);
     for (let attempt = 0; attempt < 3; attempt++) {
       const body: Record<string, unknown> = {
         model: s.model, temperature: 0.2, max_tokens: maxTokens,

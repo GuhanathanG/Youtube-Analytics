@@ -65,6 +65,11 @@ The tables are created automatically on the first run. You can browse the raw da
 2. Click **Get API key → Create API key**, and pick the `creator-analytics` project from step 1 (or let it create one).
 3. Copy the key.
 
+**OpenRouter (third free AI, optional):**
+1. Go to <https://openrouter.ai/>, sign up, and open **Keys → Create Key**. No credit card needed.
+2. Copy the key (it starts with `sk-or-`). Add it as `OPENROUTER_API_KEY` in GitHub Secrets **and** in Vercel.
+   Free accounts get 50 requests a day across OpenRouter's `:free` models, which is about 1,250 extra comments a day.
+
 **Groq (backup AI, used when Gemini's free daily limit runs out):**
 1. Go to <https://console.groq.com/>, sign up, and open **API Keys → Create API Key**.
 2. Copy the key.
@@ -161,6 +166,12 @@ Vercel's free plan only allows its own scheduler once a day. So a free outside s
    - Under **Advanced**, set **Timeout** to the longest allowed (30 s is fine; the engine keeps working after the timer disconnects).
    - Click **Create**.
 3. Within a few minutes, the website's **Manage → Engine** panel turns cyan and says **Running 24/7**.
+
+**Keep it every 2 minutes, not every minute.** Vercel's free plan includes 360 GB-hours of function memory a month,
+and the project stops serving until next month if any free limit is passed (there's no pay-as-you-go on Hobby).
+A run every 2 minutes, capped at about 22 s (`ENGINE_BUDGET_SECONDS`), uses roughly 250–300 GB-hours a month.
+Every minute would need about twice that. Check **Vercel → your project → Usage** after a few days. If
+"Provisioned Memory" is heading past 300 GB-hours for the month, change the cron-job.org schedule to every 3 minutes.
 
 Each engine run picks up new uploads and comments, downloads comment history, has the AI read new comments
 and work through the backlog, and writes AI briefings. Vercel also calls the engine once a day as a backup.

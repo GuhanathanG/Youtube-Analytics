@@ -50,6 +50,9 @@ PROVIDERS = {
                "gemini-2.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash-lite,gemini-3.8-flash", 200, 7.0),
     "groq": ("https://api.groq.com/openai/v1/", "GROQ",
              "openai/gpt-oss-20b,openai/gpt-oss-120b", 900, 30.0),
+    # OpenRouter's ":free" models: 50 requests/day per account (shared by all its free models).
+    "openrouter": ("https://openrouter.ai/api/v1/", "OPENROUTER",
+                   "google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free,nvidia/nemotron-3.5-lightning:free", 50, 4.0),
 }
 
 
@@ -58,6 +61,8 @@ def reasoning_for(provider: str, model: str) -> str:
     comments doesn't need it. Gemini 2.5 can switch it off; Gemini 3 only down to minimal."""
     if provider == "gemini":
         return "none" if model.startswith("gemini-2.5") else "minimal"
+    if provider == "openrouter":
+        return ""  # set per model upstream; don't send the parameter
     return "low"
 
 
@@ -74,7 +79,7 @@ def slots_from_env(env: dict | None = None) -> list[ModelSlot]:
     AI_PROVIDER_ORDER                       - default "gemini,groq"
     """
     env = env if env is not None else os.environ
-    order = [p.strip() for p in env.get("AI_PROVIDER_ORDER", "gemini,groq").split(",") if p.strip()]
+    order = [p.strip() for p in env.get("AI_PROVIDER_ORDER", "gemini,groq,openrouter").split(",") if p.strip()]
     slots: list[ModelSlot] = []
     for name in order:
         if name not in PROVIDERS:
@@ -84,7 +89,8 @@ def slots_from_env(env: dict | None = None) -> list[ModelSlot]:
         if not key:
             continue
         for model in [m.strip() for m in env.get(f"{prefix}_MODELS", models).split(",") if m.strip()]:
-            extra = {"reasoning_effort": reasoning_for(name, model)}
+            effort = reasoning_for(name, model)
+            extra = {"reasoning_effort": effort} if effort else {}
             slots.append(ModelSlot(
                 provider=name,
                 base_url=base_url,

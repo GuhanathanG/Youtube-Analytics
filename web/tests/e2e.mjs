@@ -38,7 +38,7 @@ await db`insert into channel_requests (query, status, created_at) values ('@live
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
-    CRON_SECRET: "e2e-cron-secret-0123456789" },
+    CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1" },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true, // own process group, so the whole server tree can be stopped
 });
