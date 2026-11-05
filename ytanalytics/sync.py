@@ -20,7 +20,7 @@ import time
 from dataclasses import asdict, dataclass
 from datetime import timedelta
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from .config import Settings
@@ -190,63 +190,70 @@ class Syncer:
                     break
 
     def _save_videos(self, channel: Channel, ids: list[str]) -> None:
+        """Insert new videos in bulk (a handful of queries, not one per video).
+
+        The database may be on another continent (e.g. Supabase in Sydney, GitHub in the US),
+        where every query costs ~0.2 s, so per-row ORM writes would eat the whole run.
+        """
         if not ids:
             return
-        for item in self.yt.get_videos(ids):
-            video = self.s.get(Video, item["id"])
-            if video is None:
-                video = Video(id=item["id"], channel_id=channel.id)
-                self.s.add(video)
-                self.stats.videos_discovered += 1
-            self._apply_video(video, item)
-        self.s.commit()
+        items = self.yt.get_videos(ids)
+        self._write_videos(channel.id, items)
+        self.stats.videos_discovered += len(items)
 
-    def _apply_video(self, video: Video, item: dict) -> None:
-        sn = item.get("snippet", {})
-        st = item.get("statistics", {})
-        video.title = sn.get("title", video.title or "")
-        video.description = sn.get("description")
-        video.published_at = parse_ts(sn.get("publishedAt")) or video.published_at
-        video.thumbnail_url = _thumb(sn)
-        video.duration = item.get("contentDetails", {}).get("duration")
-        video.view_count = _int(st.get("viewCount"))
-        video.like_count = _int(st.get("likeCount"))
-        video.comment_count = _int(st.get("commentCount"))
-        if "commentCount" not in st:
-            video.comments_disabled = True
-        video.stats_updated_at = utcnow()
-        self.s.add(VideoSnapshot(
-            video_id=video.id,
-            view_count=video.view_count,
-            like_count=video.like_count,
-            comment_count=video.comment_count,
-        ))
+    def _write_videos(self, channel_id: str, items: list[dict]) -> None:
+        if not items:
+            return
+        now = utcnow()
+        rows, snaps = [], []
+        for item in items:
+            sn = item.get("snippet", {})
+            st = item.get("statistics", {})
+            row = {
+                "id": item["id"], "channel_id": channel_id, "title": sn.get("title", ""),
+                "description": sn.get("description"), "published_at": parse_ts(sn.get("publishedAt")),
+                "thumbnail_url": _thumb(sn), "duration": item.get("contentDetails", {}).get("duration"),
+                "view_count": _int(st.get("viewCount")), "like_count": _int(st.get("likeCount")),
+                "comment_count": _int(st.get("commentCount")), "stats_updated_at": now,
+                "comments_disabled": "commentCount" not in st, "comments_backfilled": False,
+            }
+            rows.append(row)
+            snaps.append({"video_id": row["id"], "taken_at": now, "view_count": row["view_count"],
+                          "like_count": row["like_count"], "comment_count": row["comment_count"]})
+        upsert(self.s, Video, rows, ["id"], [
+            "title", "description", "published_at", "thumbnail_url", "duration", "view_count", "like_count",
+            "comment_count", "stats_updated_at", "comments_disabled",
+        ])
+        self.s.execute(insert(VideoSnapshot), snaps)
+        self.s.commit()
+        self.s.expire_all()  # ORM objects loaded earlier must see the new numbers
 
     # -- 3. video stats ------------------------------------------------------------
     def refresh_video_stats(self, channel: Channel) -> None:
         now = utcnow()
         recent_cutoff = now - timedelta(days=self.settings.live_window_days)
-        videos = self.s.scalars(select(Video).where(Video.channel_id == channel.id)).all()
+        rows = self.s.execute(
+            select(Video.id, Video.published_at, Video.stats_updated_at).where(Video.channel_id == channel.id)
+        ).all()
         due = []
-        for v in videos:
-            if v.stats_updated_at is None:
-                due.append(v)
+        for vid, published, updated in rows:
+            if updated is None:
+                due.append(vid)
                 continue
-            age = now - v.stats_updated_at
-            is_recent = v.published_at is not None and v.published_at >= recent_cutoff
+            age = now - updated
+            is_recent = published is not None and published >= recent_cutoff
             if (is_recent and age > timedelta(minutes=25)) or age > timedelta(hours=23):
-                due.append(v)
+                due.append(vid)
         for i in range(0, len(due), 50):
             self._check_time()
             chunk = due[i:i + 50]
-            items = {it["id"]: it for it in self.yt.get_videos([v.id for v in chunk])}
-            for v in chunk:
-                if v.id in items:
-                    self._apply_video(v, items[v.id])
-                    self.stats.videos_stats_refreshed += 1
-                else:  # deleted or made private
-                    v.stats_updated_at = now
-            self.s.commit()
+            items = self.yt.get_videos(chunk)
+            self._write_videos(channel.id, items)
+            self.stats.videos_stats_refreshed += len(items)
+            gone = set(chunk) - {it["id"] for it in items}
+            if gone:  # deleted or made private: don't ask again until tomorrow
+                self.s.execute(update(Video).where(Video.id.in_(gone)).values(stats_updated_at=now))
+                self.s.commit()
 
     # -- comments ------------------------------------------------------------------
     def _active_channel_ids(self) -> list[str]:
@@ -303,6 +310,17 @@ class Syncer:
         channel_ids = self._active_channel_ids()
         if not channel_ids:
             return
+        # Videos with no comments yet are "done" right away: one statement for all of them.
+        now = utcnow()
+        self.s.execute(
+            update(Video)
+            .where(Video.channel_id.in_(channel_ids), Video.comments_backfilled.is_(False),
+                   Video.comments_disabled.is_(False), Video.comment_count == 0)
+            .values(comments_backfilled=True, comment_count_checked=0,
+                    latest_comment_at=func.coalesce(Video.latest_comment_at, Video.published_at, now))
+        )
+        self.s.commit()
+        self.s.expire_all()
         while True:
             self._check_time()
             video = self.s.scalars(

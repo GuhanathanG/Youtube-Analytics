@@ -5,7 +5,7 @@ import { Radio } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-type Tick = { status: string; message?: string; newComments: number; newVideos: number; labelled: number; at: string };
+type Tick = { status: string; message?: string; newComments: number; newVideos: number; labelled: number; backfilled?: number; at: string };
 type Toast = { id: number; text: string; tone: "info" | "warn" };
 type Ctx = { enabled: boolean; setEnabled: (v: boolean) => void; last: Tick | null; busy: boolean; checkNow: () => void; notify: (t: string, tone?: Toast["tone"]) => void };
 
@@ -51,6 +51,8 @@ export function LiveProvider({ children, initial }: { children: ReactNode; initi
         if (tick.newVideos) parts.push(`${tick.newVideos} new video${tick.newVideos === 1 ? "" : "s"}`);
         notify(`✦ ${parts.join(" · ")}${tick.labelled ? ` — ${tick.labelled} read by AI` : ""}`);
         router.refresh();
+      } else if (tick.backfilled) {
+        router.refresh(); // history arrived quietly; no pop-up
       } else if (tick.status === "quota") {
         notify("YouTube's daily quota is used up — live mode resumes after midnight Pacific.", "warn");
       }
