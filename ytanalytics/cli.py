@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
             router = LLMRouter(session, slots)
             stats = run_ai(
                 session, router, settings.max_run_minutes,
-                batch_size=int(os.environ.get("AI_BATCH_SIZE", "40")),
+                batch_size=int(os.environ.get("AI_BATCH_SIZE", "25")),
                 insights_per_run=int(os.environ.get("AI_INSIGHTS_PER_RUN", "5")),
                 channel_insight_hours=int(os.environ.get("AI_CHANNEL_INSIGHT_HOURS", "24")),
             )

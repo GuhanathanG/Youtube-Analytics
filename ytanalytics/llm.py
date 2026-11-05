@@ -47,10 +47,21 @@ class ModelSlot:
 PROVIDERS = {
     # name: (base url, env prefix, default models, default daily requests per model, seconds between calls)
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/", "GEMINI",
-               "gemini-3.8-flash,gemini-3.5-flash-lite,gemini-2.5-flash,gemini-2.5-flash-lite", 200, 7.0),
+               "gemini-2.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash-lite,gemini-3.8-flash", 200, 7.0),
     "groq": ("https://api.groq.com/openai/v1/", "GROQ",
-             "openai/gpt-oss-120b,openai/gpt-oss-20b", 900, 30.0),
+             "openai/gpt-oss-20b,openai/gpt-oss-120b", 900, 30.0),
 }
+
+
+def reasoning_for(provider: str, model: str) -> str:
+    """Least 'thinking' each model allows: thinking makes answers slow, and labelling
+    comments doesn't need it. Gemini 2.5 can switch it off; Gemini 3 only down to minimal."""
+    if provider == "gemini":
+        return "none" if model.startswith("gemini-2.5") else "minimal"
+    return "low"
+
+
+REQUEST_TIMEOUT = float(os.environ.get("AI_REQUEST_TIMEOUT", "45"))
 
 
 def slots_from_env(env: dict | None = None) -> list[ModelSlot]:
@@ -73,7 +84,7 @@ def slots_from_env(env: dict | None = None) -> list[ModelSlot]:
         if not key:
             continue
         for model in [m.strip() for m in env.get(f"{prefix}_MODELS", models).split(",") if m.strip()]:
-            extra = {"reasoning_effort": "low"}
+            extra = {"reasoning_effort": reasoning_for(name, model)}
             slots.append(ModelSlot(
                 provider=name,
                 base_url=base_url,
@@ -127,11 +138,18 @@ class LLMRouter:
         if not self.slots:
             raise NoModelAvailable("No AI key configured (set GEMINI_API_KEY and/or GROQ_API_KEY)")
         for slot in self.slots:
+            if deadline is not None and time.monotonic() > deadline:
+                raise NoModelAvailable("Out of time for this run; the next run continues")
             if not self.available(slot):
                 continue
             result = self._try_slot(slot, system, user, max_tokens, deadline)
             if result is not None:
                 return result, slot.key
+        if deadline is not None and time.monotonic() > deadline:
+            raise NoModelAvailable("Out of time for this run; the next run continues")
+        if any(s.key in self.errors for s in self.slots):
+            raise NoModelAvailable("No AI model answered in time this run: " + "; ".join(
+                f"{k}: {v}" for k, v in self.errors.items()))
         raise NoModelAvailable("All AI models are used up for today; they reset at midnight Pacific time")
 
     def _try_slot(self, slot: ModelSlot, system: str, user: str, max_tokens: int,
@@ -158,8 +176,15 @@ class LLMRouter:
                     slot.base_url + "chat/completions",
                     headers={"Authorization": f"Bearer {slot.api_key}"},
                     json=body,
-                    timeout=180,
+                    timeout=min(REQUEST_TIMEOUT, max(5.0, deadline - time.monotonic())) if deadline else REQUEST_TIMEOUT,
                 )
+            except requests.Timeout:
+                # Too slow: skip this model for the rest of the run and try the next one.
+                self.errors[slot.key] = f"no answer within {REQUEST_TIMEOUT:.0f}s"
+                log.warning("AI model %s too slow, trying the next model", slot.key)
+                self._usage(slot).requests += 1
+                self.s.commit()
+                return None
             except requests.RequestException as e:
                 log.warning("AI request to %s failed: %s", slot.key, e)
                 self.sleep(5)

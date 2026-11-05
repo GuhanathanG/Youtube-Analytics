@@ -10,8 +10,8 @@ type Slot = { provider: string; baseUrl: string; key: string; model: string; dai
 
 const PROVIDERS: Record<string, { base: string; prefix: string; models: string; daily: number }> = {
   gemini: { base: "https://generativelanguage.googleapis.com/v1beta/openai/", prefix: "GEMINI",
-    models: "gemini-3.8-flash,gemini-3.5-flash-lite,gemini-2.5-flash,gemini-2.5-flash-lite", daily: 200 },
-  groq: { base: "https://api.groq.com/openai/v1/", prefix: "GROQ", models: "openai/gpt-oss-120b,openai/gpt-oss-20b", daily: 900 },
+    models: "gemini-2.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash-lite,gemini-3.8-flash", daily: 200 },
+  groq: { base: "https://api.groq.com/openai/v1/", prefix: "GROQ", models: "openai/gpt-oss-20b,openai/gpt-oss-120b", daily: 900 },
 };
 
 export function aiSlots(): Slot[] {
@@ -56,24 +56,43 @@ export function parseJson(content: string): Record<string, unknown> {
   return JSON.parse(text.slice(a, b + 1));
 }
 
+/** Least "thinking" each model allows: thinking makes answers slow and labelling doesn't need it. */
+function reasoningFor(s: Slot): string {
+  if (s.provider === "gemini") return s.model.startsWith("gemini-2.5") ? "none" : "minimal";
+  return "low";
+}
+
+const REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT ?? 30) * 1000;
+// Models that timed out recently are skipped for a while (per server instance).
+const slowUntil = new Map<string, number>();
+
 /** Ask the first available free model for JSON. Returns null when none can answer right now. */
-export async function chatJson(system: string, user: string, maxTokens = 6000): Promise<{ data: Record<string, unknown>; model: string } | null> {
+export async function chatJson(system: string, user: string, maxTokens = 4000, deadline?: number): Promise<{ data: Record<string, unknown>; model: string } | null> {
   for (const s of aiSlots()) {
+    if ((slowUntil.get(keyOf(s)) ?? 0) > Date.now()) continue;
+    if (deadline && Date.now() > deadline - 5000) return null;
     if (!(await usable(s))) continue;
     let jsonMode = true;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    let reasoning: string | null = reasoningFor(s);
+    for (let attempt = 0; attempt < 3; attempt++) {
       const body: Record<string, unknown> = {
-        model: s.model, temperature: 0.2, max_tokens: maxTokens, reasoning_effort: "low",
+        model: s.model, temperature: 0.2, max_tokens: maxTokens,
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
       };
+      if (reasoning) body.reasoning_effort = reasoning;
       if (jsonMode) body.response_format = { type: "json_object" };
+      const timeout = deadline ? Math.max(5000, Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now())) : REQUEST_TIMEOUT_MS;
       let res: Response;
       try {
         res = await fetch(s.baseUrl + "chat/completions", {
           method: "POST", headers: { Authorization: `Bearer ${s.key}`, "Content-Type": "application/json" },
-          body: JSON.stringify(body), signal: AbortSignal.timeout(40000),
+          body: JSON.stringify(body), signal: AbortSignal.timeout(timeout),
         });
-      } catch { break; }
+      } catch {
+        slowUntil.set(keyOf(s), Date.now() + 10 * 60000); // too slow: skip it for 10 minutes
+        await record(s, 0, false, "no answer in time");
+        break;
+      }
       const text = await res.text();
       const low = text.toLowerCase();
       if (res.ok) {
@@ -84,6 +103,7 @@ export async function chatJson(system: string, user: string, maxTokens = 6000): 
         } catch { await record(s, 0); break; }
       }
       if (res.status === 400 && jsonMode && low.includes("response_format")) { jsonMode = false; continue; }
+      if (res.status === 400 && reasoning && low.includes("reasoning")) { reasoning = null; continue; }
       const compact = low.replace(/[\s_]/g, "");
       if (res.status === 429 && /perday|daily|\(rpd\)|\(tpd\)/.test(compact)) { await record(s, 0, true, "free daily limit reached"); break; }
       if (res.status === 404 || (res.status === 400 && low.includes("model"))) { await record(s, 0, true, "model not available"); break; }
@@ -121,19 +141,20 @@ For EVERY comment return one object:
 Reply with JSON only: {"results": [ ... ]}`;
 
 /** AI-label the given comments (newest first). Returns how many were labelled. */
-export async function labelComments(ids: string[]): Promise<number> {
+export async function labelComments(ids: string[], deadline?: number): Promise<number> {
   if (!ids.length || !aiSlots().length) return 0;
   const db = sql();
   let done = 0;
-  for (let i = 0; i < ids.length; i += 40) {
+  for (let i = 0; i < ids.length; i += 25) {
+    if (deadline && Date.now() > deadline - 8000) break;
     const rows = await db`
       select c.id, c.text, v.title from comments c join videos v on v.id = c.video_id
-      where c.id in ${db(ids.slice(i, i + 40))} and c.ai_at is null`;
+      where c.id in ${db(ids.slice(i, i + 25))} and c.ai_at is null`;
     if (!rows.length) continue;
     const titles = [...new Set(rows.map((r) => r.title as string))];
     const prompt = ["Videos:", ...titles.map((t, n) => `V${n + 1}: ${t}`), "", "Comments:",
       ...rows.map((r, n) => `${n + 1}. [V${titles.indexOf(r.title as string) + 1}] ${String(r.text ?? "").split(/\s+/).join(" ").slice(0, 500)}`)].join("\n");
-    const out = await chatJson(SYSTEM, prompt);
+    const out = await chatJson(SYSTEM, prompt, 4000, deadline);
     if (!out) break; // no model available right now; the background job will catch up
     const results = new Map<number, Record<string, unknown>>();
     for (const item of (out.data.results as Record<string, unknown>[] | undefined) ?? []) {
@@ -168,4 +189,17 @@ export async function labelComments(ids: string[]): Promise<number> {
     }
   }
   return done;
+}
+
+
+/** The backlog: comments the AI hasn't read yet. Tanglish/Hinglish, unknown language and
+ *  comments the local model was unsure about go first, then the newest. */
+export async function labelBacklog(deadline: number, maxComments = 100): Promise<number> {
+  if (!aiSlots().length) return 0;
+  const rows = await sql()`
+    select id from comments where ai_at is null and length(text) > 0
+    order by (case when language like '%-Latn' or language = 'und' or sentiment_score is null or sentiment_score < 0.6 then 0 else 1 end),
+             published_at desc nulls last
+    limit ${maxComments}`;
+  return labelComments(rows.map((r) => r.id as string), deadline);
 }

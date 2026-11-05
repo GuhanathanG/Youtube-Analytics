@@ -1,6 +1,8 @@
 import { ExternalLink } from "lucide-react";
 import { AddChannelForm, FullSyncButton, ToggleChannel } from "@/components/ChannelControls";
 import { githubConfigured, recentRuns } from "@/lib/github";
+import { engineStatus } from "@/lib/live";
+import { utc } from "@/lib/db-time";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Tag } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
@@ -31,6 +33,10 @@ export default async function ManagePage() {
     getChannels(), channelRequests(), kpis(), actionsMinutesThisMonth(), llmUsageToday(), lastRuns(12),
   ]);
   const ghRuns = await recentRuns(5).catch(() => null);
+  const engine = await engineStatus().catch(() => null);
+  const cronAt = utc(engine?.lastCronAt);
+  const alwaysOn = !!cronAt && Date.now() - cronAt.getTime() < 10 * 60000;
+  const e = engine?.last;
   return (
     <>
       <PageHeader eyebrow="Control room" title={<>Manage <span className="glow-text">watchlist</span></>}>
@@ -40,7 +46,30 @@ export default async function ManagePage() {
         </p>
       </PageHeader>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <Reveal>
+        <Panel title={<span className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${alwaysOn ? "bg-accent animate-[pulse-dot_2s_ease-out_infinite]" : "bg-warn"}`} />Engine</span>}
+          subtitle={alwaysOn ? "Running 24/7: new comments, history and AI analysis keep flowing even when this site is closed"
+            : "Only runs while this site is open. Set up the free timer in the README (step 7) to run it 24/7."}>
+          <div className="grid gap-3 text-[13px] sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              ["Last run", e ? ago(e.at) : "never"],
+              ["Timer (24/7)", cronAt ? ago(engine?.lastCronAt) : "not set up"],
+              ["New comments", String(e?.newComments ?? 0)],
+              ["History saved", String(e?.backfilled ?? 0)],
+              ["Read by AI", String((e?.labelled ?? 0) + (e?.aiBacklog ?? 0))],
+              ["Briefings", String(e?.insights ?? 0)],
+            ].map(([k, v]) => (
+              <div key={k} className="rounded-xl border border-line bg-white/[0.02] px-3 py-2.5">
+                <div className="label">{k}</div>
+                <div className="mt-1 tabular text-[15px] text-ink">{v}</div>
+              </div>
+            ))}
+          </div>
+          {e?.message && <p className={`mt-3 text-[12.5px] ${e.status === "ok" ? "text-ink-3" : "text-warn"}`}>{e.message}</p>}
+        </Panel>
+      </Reveal>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <Reveal className="xl:col-span-2"><Panel title="Watch a new channel"><AddChannelForm /></Panel></Reveal>
         <Reveal delay={0.05}>
           <Panel title="Full sync" subtitle="History download + bulk analysis (runs every 2 hours on its own)">
