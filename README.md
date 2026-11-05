@@ -1,4 +1,4 @@
-# Creator Analytics
+# Creator Analytics · Creator Pulse
 
 A personal dashboard for **watching YouTube channels and creators closely**. It:
 
@@ -100,6 +100,28 @@ Both are free and need no credit card.
 
 `APP_PASSWORD` keeps other people out of your dashboard even though the link is public.
 
+### Step 5b: Put the Creator Pulse website online (Vercel) — recommended
+
+The `web/` folder is a full website with the futuristic dark interface: ⌘K search, AI briefings,
+animated charts, comment explorer and watchlist management. It works on phones too. It reads the
+same database, so the Streamlit dashboard from Step 5 can stay as a backup or be deleted.
+
+1. Go to <https://vercel.com/signup> and choose **Continue with GitHub** (free **Hobby** plan).
+2. Click **Add New… → Project** and find **Youtube-Analytics**.
+   - If it isn't listed, click **Adjust GitHub App Permissions**, give Vercel access to this repository, and come back.
+   - Click **Import**.
+3. On the configure screen:
+   - **Root Directory:** click **Edit**, choose **`web`**, and click **Continue**. This is the most important setting.
+   - **Framework Preset:** Next.js (picked automatically).
+   - Open **Environment Variables** and add two:
+     - `DATABASE_URL`: your Supabase address, with one change: use port **`6543`** instead of `5432` (the
+       **Transaction pooler**, which suits websites better). For example:
+       `postgresql://postgres.xxxx:YOUR-PASSWORD@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres`
+     - `APP_PASSWORD`: the password for opening the website (it can be the same as the Streamlit one).
+4. Click **Deploy**. After about a minute you get a link like `https://youtube-analytics-xxxx.vercel.app`. Open it and sign in.
+
+Every change merged into `main` redeploys the site automatically.
+
 ### Step 6: Add channels and start
 
 1. Open your dashboard and go to **Manage channels**.
@@ -191,4 +213,6 @@ Code layout:
 - `ytanalytics/budget.py`: keeps GitHub Actions within the free monthly minutes
 - `ytanalytics/db.py`: database tables
 - `ytanalytics/queries.py`: dashboard queries
-- `streamlit_app.py`: the dashboard
+- `streamlit_app.py`: the original Streamlit dashboard
+- `web/`: the Creator Pulse website (Next.js, deployed on Vercel). Run locally with
+  `cd web && npm install && DATABASE_URL=... APP_PASSWORD=... npm run dev`

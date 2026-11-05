@@ -222,6 +222,20 @@ def make_engine(url: str) -> Engine:
 def init_db(engine: Engine) -> None:
     Base.metadata.create_all(engine)
     _add_missing_columns(engine)
+    _lock_public_api(engine)
+
+
+def _lock_public_api(engine: Engine) -> None:
+    """Supabase exposes tables in the `public` schema through its REST API (the
+    "publishable"/anon key). Row Level Security with no policies blocks that route
+    entirely. The app itself connects as the table owner, which RLS does not restrict."""
+    if engine.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            conn.execute(text(f'ALTER TABLE "{table.name}" ENABLE ROW LEVEL SECURITY'))
 
 
 def _add_missing_columns(engine: Engine) -> None:
