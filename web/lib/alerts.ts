@@ -27,7 +27,8 @@ export const telegramConfigured = () => !!(process.env.TELEGRAM_BOT_TOKEN && pro
 async function sendTelegram(text: string): Promise<boolean> {
   if (!telegramConfigured()) return false;
   try {
-    const res = await fetch(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const base = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org"; // overridable only for tests
+    const res = await fetch(`${base}/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: process.env.TELEGRAM_CHAT_ID, text, disable_web_page_preview: true }),
       signal: AbortSignal.timeout(8000),
@@ -68,7 +69,8 @@ export async function checkAlerts(): Promise<number> {
   const spikes = await db`
     with base as (
       select channel_id, avg(case when sentiment = 'negative' then 1.0 else 0 end) as neg
-      from comments where sentiment is not null group by channel_id),
+      from comments where sentiment is not null and published_at >= (now() at time zone 'utc') - interval '60 days'
+      group by channel_id),
     recent as (
       select c.video_id, c.channel_id, count(*) as n, avg(case when c.sentiment = 'negative' then 1.0 else 0 end) as neg
       from comments c join videos v on v.id = c.video_id

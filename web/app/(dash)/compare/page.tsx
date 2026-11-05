@@ -11,11 +11,16 @@ export const metadata = { title: "Compare" };
 export default async function ComparePage({ searchParams }: { searchParams: Promise<{ c?: string | string[] }> }) {
   const all = await getChannels();
   const raw = (await searchParams).c;
-  let ids = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((id) => all.some((c) => c.id === id)).slice(0, 4);
+  // Validate the shape only; compareChannels reads the database, so a channel added seconds ago (not yet in the 30 s cache) still counts.
+  let ids = [...new Set((Array.isArray(raw) ? raw : raw ? [raw] : []).filter((id) => /^UC[\w-]{22}$/.test(id)))].slice(0, 4);
   if (!ids.length) ids = all.slice(0, 4).map((c) => c.id);
-  const { rows, weekly, overlap } = await compareChannels(ids);
+  let { rows, weekly, overlap } = await compareChannels(ids);
+  if (rows.length < ids.length) { // drop ids that aren't tracked channels
+    ids = ids.filter((id) => rows.some((r) => r.id === id));
+    ({ rows, weekly, overlap } = await compareChannels(ids));
+  }
   const ordered = ids.map((id) => rows.find((r) => r.id === id)!).filter(Boolean);
-  const name = (id: string) => all.find((c) => c.id === id)?.title ?? id;
+  const name = (id: string) => rows.find((r) => r.id === id)?.title ?? all.find((c) => c.id === id)?.title ?? id;
   const toggle = (id: string) => {
     const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id].slice(-4);
     return "/compare?" + next.map((x) => `c=${encodeURIComponent(x)}`).join("&");
@@ -39,7 +44,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
       <PageHeader eyebrow="Compare" title={<>Creators <span className="glow-text">side by side</span></>}>
         <p className="max-w-2xl text-[15px] text-ink-2">Pick up to 4 channels. Sentiment, growth, what viewers ask for, and how many people comment on both.</p>
       </PageHeader>
-      {all.length < 2 ? <Empty>Add at least two channels on the Manage page to compare them.</Empty> : (
+      {all.length < 2 && ordered.length < 2 ? <Empty>Add at least two channels on the Manage page to compare them.</Empty> : (
         <>
           <div className="mb-5 flex flex-wrap gap-2">
             {all.map((c) => {

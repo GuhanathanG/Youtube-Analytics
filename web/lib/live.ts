@@ -44,6 +44,8 @@ async function ensureLiveTable() {
     id integer primary key, last_tick_at timestamp, last_uploads_at timestamp, last_result text)`;
   await db`alter table live_state add column if not exists last_cron_at timestamp`;
   await db`alter table live_state enable row level security`;
+  // Fast "what should the AI read next" without sorting the whole backlog.
+  await db`create index if not exists ix_comments_ai_pending on comments (published_at desc) where ai_at is null`;
   await db`insert into live_state (id) values (1) on conflict do nothing`;
   tableReady = true;
 }
@@ -323,7 +325,14 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     const pending = await db`select id, query from channel_requests where status = 'pending' order by id limit 3`;
     for (const p of pending) {
       await db`delete from channel_requests where id = ${p.id}`;
-      await addChannelNow(p.query as string);
+      try {
+        await addChannelNow(p.query as string);
+      } catch (e) {
+        // Keep the request (with the reason) instead of losing it.
+        await db`insert into channel_requests (query, status, error, created_at)
+          values (${p.query as string}, 'error', ${e instanceof Error ? e.message.slice(0, 300) : "failed"}, ${nowSql()})`;
+        if (e instanceof QuotaExhausted) throw e;
+      }
     }
 
     // 2. New uploads, every 10 minutes (1 quota unit per channel).
@@ -409,6 +418,14 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 5. Fill in comment history a few pages at a time (the background job does the same, faster).
     if (timeLeft()) result.backfilled = await backfillSome(Number(process.env.LIVE_BACKFILL_PAGES ?? 12), timeLeft);
 
+  } catch (e) {
+    // YouTube steps failed (e.g. today's quota is used up). The AI steps below don't use YouTube
+    // quota, so they still run.
+    if (e instanceof QuotaExhausted) { result.status = "quota"; result.message = e.message; }
+    else { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }
+  }
+
+  try {
     // 6. Let the AI read the new comments right away.
     if (fresh.length && timeLeft()) result.labelled = await labelComments(fresh.slice(0, 100), deadline).catch(() => 0);
 
@@ -419,13 +436,13 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     if (insightsTurn && timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
     if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await writeDueIdeas(deadline).catch(() => 0));
     if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, Number(process.env.AI_BACKLOG_PER_RUN ?? 150)).catch(() => 0);
-  } catch (e) {
-    if (e instanceof QuotaExhausted) { result.status = "quota"; result.message = e.message; }
-    else { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }
-  }
 
-  // 9. Alerts (new uploads, negative spikes, viral comments) — a few cheap queries.
-  result.alerts = await checkAlerts().catch(() => 0);
+    // 9. Alerts (new uploads, negative spikes, viral comments): checked on the same ~10-minute turn,
+    //    since the checks aggregate recent comments.
+    if (insightsTurn || result.newVideos) result.alerts = await checkAlerts().catch(() => 0);
+  } catch (e) {
+    if (result.status === "ok") { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }
+  }
   result.durationMs = Date.now() - started;
   await db`update live_state set last_result = ${JSON.stringify(result)} where id = 1`;
   return result;

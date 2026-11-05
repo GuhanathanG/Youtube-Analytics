@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "./db";
+import { cached } from "./cache";
 
 import { ASPECT_LABELS, EMOTIONS, languageName } from "./queries-shared";
 export { ASPECT_LABELS, EMOTIONS, LANGUAGE_NAMES, languageName } from "./queries-shared";
@@ -48,6 +49,10 @@ export type Kpis = {
 };
 
 export async function kpis(): Promise<Kpis> {
+  return cached("kpis", 30000, kpisUncached);
+}
+
+async function kpisUncached(): Promise<Kpis> {
   const db = sql();
   const [row] = await db`
     select
@@ -71,6 +76,10 @@ export type ChannelRow = {
 };
 
 export async function channels(): Promise<ChannelRow[]> {
+  return cached("channels", 30000, channelsUncached);
+}
+
+async function channelsUncached(): Promise<ChannelRow[]> {
   const db = sql();
   return (await db`
     select ch.id, ch.title, ch.handle, ch.thumbnail_url, ch.description,
@@ -93,7 +102,8 @@ export async function channels(): Promise<ChannelRow[]> {
 }
 
 export async function channel(id: string): Promise<ChannelRow | null> {
-  return (await channels()).find((c) => c.id === id) ?? null;
+  // Always fresh (not cached), so a channel added moments ago opens straight away.
+  return (await channelsUncached()).find((c) => c.id === id) ?? null;
 }
 
 export type VideoRow = {
@@ -338,6 +348,10 @@ export type Progress = {
 
 /** History download and AI progress per channel, with recent speed for an ETA. */
 export async function progress(): Promise<Progress[]> {
+  return cached("progress", 30000, progressUncached);
+}
+
+async function progressUncached(): Promise<Progress[]> {
   const db = sql();
   return (await db`
     select ch.id as channel_id, ch.title, ch.video_count::int as videos_total,

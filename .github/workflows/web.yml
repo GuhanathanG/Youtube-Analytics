@@ -43,7 +43,9 @@ jobs:
         run: npx tsc --noEmit
       - name: Unit checks
         working-directory: web
-        run: node tests/db-url.test.mjs
+        run: |
+          node tests/db-url.test.mjs
+          node --experimental-strip-types tests/security.test.ts
       - name: Production build
         working-directory: web
         run: npx next build

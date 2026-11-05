@@ -1,4 +1,5 @@
 import { LoginForm } from "./LoginForm";
+import { safeNext } from "@/lib/safe-next";
 import { Logo } from "@/components/Logo";
 
 export const metadata = { title: "Sign in" };
@@ -16,7 +17,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <div className="label">Restricted</div>
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight">Audience intelligence</h1>
           <p className="mt-1.5 text-[14px] text-ink-3">Every comment, every language, read by AI. Enter your password to continue.</p>
-          <LoginForm next={next ?? "/"} />
+          <LoginForm next={safeNext(next)} />
         </div>
       </div>
     </main>

@@ -7,13 +7,16 @@
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { startFake } from "./fake-services.mjs";
+import { sent, startFake } from "./fake-services.mjs";
 
 const DB = process.env.DATABASE_URL;
 const PORT = 3199;
 const BASE = `http://localhost:${PORT}`;
 const PASSWORD = "e2e-password";
-const cookie = `cp_session=${crypto.createHmac("sha256", PASSWORD).update("creator-pulse-session-v1").digest("hex")}`;
+const EXP = Math.floor(Date.now() / 1000) + 86400;
+const cookie = `cp_session=${EXP}.${crypto.createHmac("sha256", PASSWORD).update(`creator-pulse-session-v2.${EXP}`).digest("hex")}`;
+const expired = Math.floor(Date.now() / 1000) - 60;
+const expiredCookie = `cp_session=${expired}.${crypto.createHmac("sha256", PASSWORD).update(`creator-pulse-session-v2.${expired}`).digest("hex")}`;
 const db = postgres(DB, { max: 1 });
 let failures = 0;
 
@@ -39,7 +42,9 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
-    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100" },
+    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50",
+    TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
+    GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100" },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true, // own process group, so the whole server tree can be stopped
 });
@@ -164,6 +169,58 @@ try {
   check("video page shows most-discussed moments from comment timestamps", vp.includes("Most-discussed moments") && vp.includes("1:00"));
   check("video page shows YouTube details (category, tags, topics)", vp.includes("Science &amp; Technology") && vp.includes("phones") && vp.includes("Technology"));
   check("video page explains that shares/watch time are owner-only", vp.includes("only visible to the channel"));
+
+  // ---- Audit additions -------------------------------------------------------------------
+  // Security: headers and the sign-in "next" link
+  const loginRes = await fetch(`${BASE}/login?next=${encodeURIComponent("/\\evil.com")}`);
+  const loginHtml = await loginRes.text();
+  const nextField = (loginHtml.match(/<input[^>]*name="next"[^>]*>/) ?? [""])[0];
+  check("sign-in ignores an off-site 'next' link", nextField.includes('value="/"') && !nextField.includes("evil"), nextField);
+  check("security headers are sent (CSP, frame, nosniff)", (loginRes.headers.get("content-security-policy") ?? "").includes("frame-ancestors 'none'")
+    && loginRes.headers.get("x-frame-options") === "DENY" && loginRes.headers.get("x-content-type-options") === "nosniff");
+  check("an old-style (non-expiring) session cookie is refused", (await fetch(BASE + "/", {
+    headers: { cookie: `cp_session=${crypto.createHmac("sha256", PASSWORD).update("creator-pulse-session-v1").digest("hex")}` }, redirect: "manual" })).status === 307);
+  check("an expired session cookie is refused", (await fetch(BASE + "/", { headers: { cookie: expiredCookie }, redirect: "manual" })).status === 307);
+
+  // Alerts reach Telegram
+  check("upload alert was sent to Telegram", sent.telegram.some((m) => String(m.text).includes("New video from Live Creator") && m.chat_id === "42"),
+    JSON.stringify(sent.telegram.map((m) => m.text)));
+
+  // GitHub runs listed on Manage (uses GITHUB_TOKEN)
+  const manage2 = await (await get("/manage")).text();
+  check("Manage page lists recent GitHub runs", manage2.includes("success") && manage2.includes("scheduled"));
+
+  // CSV export is safe in spreadsheets
+  await db`insert into comments (id, video_id, channel_id, text, like_count, reply_count, fetched_at, published_at)
+    values ('csv-inject', 'livevid0001', ${ch.id}, '=HYPERLINK("http://evil")', 0, 0, now(), now())`;
+  const csv2 = await (await get("/api/export?q=HYPERLINK")).text();
+  check("CSV export neutralises spreadsheet formulas", csv2.includes(`"'=HYPERLINK(""http://evil"")"`), csv2.split("\n")[1]);
+
+  // Superfans (same viewer, 3+ warm comments) and Compare with two channels + shared audience
+  const second = "UC" + "y".repeat(18) + "twoo";
+  await db`insert into channels (id, title, active, videos_backfilled, added_at) values (${second}, 'Second Creator', true, true, now())`;
+  await db`insert into videos (id, channel_id, title, comments_disabled, comments_backfilled, published_at) values ('secondvid01', ${second}, 'S1', false, true, now())`;
+  for (let i = 0; i < 4; i++) {
+    await db`insert into comments (id, video_id, channel_id, text, like_count, reply_count, fetched_at, published_at, author_name, author_channel_id, sentiment, sentiment_value)
+      values (${"fan-a" + i}, 'livevid0001', ${ch.id}, 'love it', 3, 0, now(), now(), 'Super Fan', 'UCfan', 'positive', 0.9)`;
+    await db`insert into comments (id, video_id, channel_id, text, like_count, reply_count, fetched_at, published_at, author_name, author_channel_id, sentiment, sentiment_value)
+      values (${"fan-b" + i}, 'secondvid01', ${second}, 'also here', 1, 0, now(), now(), 'Super Fan', 'UCfan', 'positive', 0.8)`;
+  }
+  const ch2 = await (await get(`/channels/${ch.id}`)).text();
+  check("superfans list shows a repeat warm commenter", ch2.includes("Super Fan"));
+  const cmpRes = await get(`/compare?c=${ch.id}&c=${second}`);
+  const cmp = await cmpRes.text();
+  check("compare shows both channels and their shared audience", cmp.includes("Second Creator") && cmp.includes("Shared audience") && /\b1(<!-- -->)? people/.test(cmp),
+    `second channel shown: ${cmp.includes("Second Creator")}; panel: ${(cmp.match(/Shared audience.{0,600}/) ?? ["none"])[0].replace(/<[^>]+>/g, " ").slice(0, 200)}`);
+
+  // When YouTube's daily quota is used up, the AI still works through its backlog
+  await db`update comments set ai_at = null, ai_model = null where text like 'old comment%'`;
+  await db`insert into quota_usage (day, units) values (to_char((now() at time zone 'America/Los_Angeles'), 'YYYY-MM-DD'), 99999)
+    on conflict (day) do update set units = 99999`;
+  await db`update live_state set last_tick_at = null, last_uploads_at = null where id = 1`;
+  const q = await (await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`)).json();
+  check("with YouTube quota used up, the engine reports it and the AI keeps going", q.status === "quota" && (q.aiBacklog ?? 0) > 0, JSON.stringify(q));
+  await db`update quota_usage set units = 0`;
 
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma",

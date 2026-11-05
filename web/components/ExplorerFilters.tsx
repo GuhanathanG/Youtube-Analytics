@@ -45,7 +45,7 @@ export function ExplorerFilters({ channels, languages, emotions, count }:
     <div className="panel p-4 sm:p-5">
       <div className="relative">
         <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-accent" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search every comment… e.g. audio, thumbnail, part 2, semma"
+        <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search comments" placeholder="Search every comment… e.g. audio, thumbnail, part 2, semma"
           className="h-12 w-full rounded-xl border border-line-2 bg-white/[0.03] pl-10 pr-10 text-[15px] text-ink outline-none transition placeholder:text-ink-3 focus:border-accent/60" />
         {pending && <span className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-accent border-t-transparent" />}
       </div>

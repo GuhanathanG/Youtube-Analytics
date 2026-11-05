@@ -104,7 +104,7 @@ export default async function ManagePage() {
         </Panel>
       </Reveal>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="mt-4 grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
         <Reveal className="xl:col-span-2"><Panel title="Watch a new channel"><AddChannelForm /></Panel></Reveal>
         <Reveal delay={0.05}>
           <Panel title="Full sync" subtitle="History download + bulk analysis (runs every 2 hours on its own)">
@@ -128,7 +128,7 @@ export default async function ManagePage() {
         </Reveal>
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+      <div className="mt-4 grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
         <Reveal delay={0.05} className="xl:col-span-2">
           <Panel title="Watchlist" subtitle="Pausing stops new downloads; stored data stays">
             {chs.length === 0 ? <Empty>Nothing yet. Add your first creator above.</Empty> : (
@@ -160,7 +160,7 @@ export default async function ManagePage() {
                 {reqs.slice(0, 12).map((r) => (
                   <li key={r.id} className="rounded-xl border border-line bg-white/[0.02] px-3 py-2.5">
                     <div className="flex items-center gap-2">
-                      <span className="truncate text-[13.5px] text-ink">{r.query}</span>
+                      <span className="min-w-0 truncate text-[13.5px] text-ink">{r.query}</span>
                       <span className="ml-auto">{r.status === "done" ? <Tag tone="accent">added</Tag> : r.status === "error" ? <Tag tone="warn">not found</Tag> : <Tag>waiting for next run</Tag>}</span>
                     </div>
                     {r.error && <p className="mt-1 text-[12px] text-ink-3">{r.error}</p>}
