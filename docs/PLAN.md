@@ -87,6 +87,18 @@ The whole platform must run on free tiers.
 - [x] Password sign-in, using a signed cookie that never contains the password
 - [x] Supabase's public REST API is blocked by switching on Row Level Security for every table
 
+### Phase 2.6: Live mode and website controls (this commit)
+- [x] While the site is open, every 60 seconds it:
+  - picks up new uploads (checked every 10 minutes)
+  - refreshes stats for recent videos
+  - reads new comments wherever a video's count went up
+  - has the free AI (Gemini, then Groq) read them right away
+- [x] One check at a time across all tabs and devices (a shared lock row in `live_state`), with the YouTube
+  quota shared with the background job through `quota_usage`
+- [x] "✦ N new comments" notifications, a live feed on the overview, and a Live / pause pill
+- [x] Adding a channel looks it up straight away and loads its newest 50 videos and the newest comments of its 3 latest videos
+- [x] "Run full sync now" on the Manage page, which starts the GitHub workflow through the API with a fine-grained token, and shows recent runs
+
 ### Phase 3: Ask your comments
 - A chat box: "What do people dislike about this creator's last 5 videos?"
 - Answers use semantic search over the stored comments and cite real comments.

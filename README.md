@@ -122,6 +122,36 @@ same database, so the Streamlit dashboard from Step 5 can stay as a backup or be
 
 Every change merged into `main` redeploys the site automatically.
 
+#### Turn on live mode and the website controls
+
+Live mode checks YouTube for new comments **every minute while the website is open**. The AI reads
+new comments straight away, and the page updates itself with a "✦ 12 new comments" notice. Adding a
+channel loads its newest videos and comments within seconds. The background job still downloads
+the full history every 2 hours.
+
+In Vercel, open your project → **Settings → Environment Variables** and add these (the same values as your GitHub secrets):
+
+| Key | Value | What it turns on |
+|---|---|---|
+| `YOUTUBE_API_KEY` | your YouTube key | Live mode, and adding channels instantly |
+| `GEMINI_API_KEY` | your Gemini key | The AI reads new comments live |
+| `GROQ_API_KEY` | your Groq key | Backup AI |
+| `GITHUB_TOKEN` | see below (optional) | The **Run full sync now** button on the Manage page |
+
+To create `GITHUB_TOKEN`:
+1. Open <https://github.com/settings/personal-access-tokens/new> (a fine-grained token).
+2. **Name:** `creator-pulse`.
+   **Expiration:** 1 year (or your choice).
+3. **Repository access:** *Only select repositories* → **Youtube-Analytics**.
+4. **Permissions → Repository permissions → Actions:** *Read and write*. Leave everything else as it is.
+5. Click **Generate token** and copy it (it starts with `github_pat_`).
+
+After adding the variables, go to **Deployments → ⋯ → Redeploy** so the site picks them up.
+
+Live mode and the background job share YouTube's free 10,000 units a day. A minute of live mode costs
+about 1–3 units, so leaving the site open all day uses roughly 1,500–4,000 units. You can pause live mode
+from the **Live** pill at the top right.
+
 ### Step 6: Add channels and start
 
 1. Open your dashboard and go to **Manage channels**.
