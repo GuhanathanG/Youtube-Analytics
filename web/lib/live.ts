@@ -25,6 +25,7 @@ export type TickResult = {
   aiBacklog?: number;
   insights?: number;
   source?: "browser" | "cron";
+  durationMs?: number;
   at: string;
 };
 
@@ -204,51 +205,77 @@ export async function addChannelNow(query: string): Promise<{ ok: boolean; messa
 /* ------------------------------------------------------------------ history download */
 /** Download up to `maxPages` pages (100 comments each) of past comments, newest videos first.
  *  Keeps a reserve of the daily quota for live checks. Returns comments saved. */
-async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<number> {
+/** Supabase's free database holds 500 MB; stop downloading history before it fills up. */
+export async function storageStatus(): Promise<{ usedMb: number; limitMb: number; nearlyFull: boolean }> {
+  const [r] = await sql()`select pg_database_size(current_database())::float8 / 1048576 as mb`;
+  const limitMb = Number(process.env.STORAGE_LIMIT_MB ?? 500);
+  const usedMb = Math.round((r?.mb as number) ?? 0);
+  return { usedMb, limitMb, nearlyFull: usedMb > limitMb * 0.9 };
+}
+
+/** Download one video's history, up to `pages` pages. Returns comments saved. */
+async function backfillVideo(v: Record<string, unknown>, pages: number, timeLeft: () => boolean): Promise<number> {
   const db = sql();
-  const [q] = await db`select units from quota_usage where day = ${quotaDay()}`;
-  const reserve = Number(process.env.LIVE_QUOTA_RESERVE ?? 2000);
-  if (((q?.units as number) ?? 0) > (Number(process.env.DAILY_QUOTA ?? 9500) - reserve)) return 0;
-  // Videos without comments are done immediately.
-  await db`update videos set comments_backfilled = true, comment_count_checked = 0,
-      latest_comment_at = coalesce(latest_comment_at, published_at, (now() at time zone 'utc'))
-    where not comments_backfilled and not comments_disabled and comment_count = 0
-      and channel_id in (select id from channels where active)`;
+  let token = (v.comments_page_token as string | null) ?? undefined;
+  let newest = (v.latest_comment_at as string | null) ?? null;
   let saved = 0;
-  for (let page = 0; page < maxPages && timeLeft(); page++) {
-    const [v] = await db`
-      select v.id, v.channel_id, v.comments_page_token, v.comment_count, v.latest_comment_at, v.published_at
-      from videos v join channels c on c.id = v.channel_id
-      where c.active and not v.comments_backfilled and not v.comments_disabled
-      order by v.published_at desc nulls last limit 1`;
-    if (!v) break;
+  for (let page = 0; page < pages && timeLeft(); page++) {
     let data;
     try {
-      data = await listThreads(v.id as string, (v.comments_page_token as string) ?? undefined);
+      data = await listThreads(v.id as string, token);
     } catch (e) {
       if (e instanceof YouTubeError && (e.reason === "commentsDisabled" || e.status === 404 || e.status === 403)) {
-        await db`update videos set comments_disabled = true, comments_backfilled = true where id = ${v.id}`;
-        continue;
+        await db`update videos set comments_disabled = true, comments_backfilled = true where id = ${v.id as string}`;
+        return saved;
       }
-      if (e instanceof YouTubeError && e.status === 400 && v.comments_page_token) {
-        await db`update videos set comments_page_token = null where id = ${v.id}`; // expired token: restart video
-        continue;
+      if (e instanceof YouTubeError && e.status === 400 && token) {
+        await db`update videos set comments_page_token = null where id = ${v.id as string}`; // expired token: restart video
+        return saved;
       }
       throw e;
     }
     const res = await saveThreads(v.id as string, v.channel_id as string, data.items ?? []);
     saved += (data.items ?? []).length;
-    const newest = res.newest && (!v.latest_comment_at || res.newest > (v.latest_comment_at as string)) ? res.newest : v.latest_comment_at;
-    if (data.nextPageToken) {
-      await db`update videos set comments_page_token = ${data.nextPageToken}, latest_comment_at = ${newest} where id = ${v.id}`;
+    if (res.newest && (!newest || res.newest > newest)) newest = res.newest;
+    token = data.nextPageToken;
+    if (token) {
+      await db`update videos set comments_page_token = ${token}, latest_comment_at = ${newest} where id = ${v.id as string}`;
     } else {
       await db`update videos set comments_page_token = null, comments_backfilled = true,
-          comment_count_checked = ${v.comment_count}, comments_checked_at = ${nowSql()},
+          comment_count_checked = ${v.comment_count as number}, comments_checked_at = ${nowSql()},
           latest_comment_at = coalesce(${newest}, published_at, (now() at time zone 'utc'))
-        where id = ${v.id}`;
+        where id = ${v.id as string}`;
+      break;
     }
   }
   return saved;
+}
+
+/** Download past comments for several videos at the same time (newest videos first).
+ *  Keeps a reserve of the daily quota for live checks, and stops before the database fills. */
+async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<number> {
+  const db = sql();
+  const [q] = await db`select units from quota_usage where day = ${quotaDay()}`;
+  const reserve = Number(process.env.LIVE_QUOTA_RESERVE ?? 2000);
+  if (((q?.units as number) ?? 0) > (Number(process.env.DAILY_QUOTA ?? 9500) - reserve)) return 0;
+  if ((await storageStatus()).nearlyFull) return 0;
+  // Videos without comments are done immediately.
+  await db`update videos set comments_backfilled = true, comment_count_checked = 0,
+      latest_comment_at = coalesce(latest_comment_at, published_at, (now() at time zone 'utc'))
+    where not comments_backfilled and not comments_disabled and comment_count = 0
+      and channel_id in (select id from channels where active)`;
+  const parallel = Math.max(1, Number(process.env.LIVE_BACKFILL_PARALLEL ?? 4));
+  const perVideo = Math.max(1, Math.ceil(maxPages / parallel));
+  const videos = await db`
+    select v.id, v.channel_id, v.comments_page_token, v.comment_count, v.latest_comment_at, v.published_at
+    from videos v join channels c on c.id = v.channel_id
+    where c.active and not v.comments_backfilled and not v.comments_disabled
+    order by v.published_at desc nulls last limit ${parallel}`;
+  const results = await Promise.all(videos.map((v) => backfillVideo(v, perVideo, timeLeft).catch((e) => {
+    if (e instanceof QuotaExhausted) return 0;
+    throw e;
+  })));
+  return results.reduce((a, b) => a + b, 0);
 }
 
 /* ------------------------------------------------------------------ the live tick */
@@ -359,13 +386,13 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     result.newComments = fresh.length;
 
     // 5. Fill in comment history a few pages at a time (the background job does the same, faster).
-    if (timeLeft()) result.backfilled = await backfillSome(Number(process.env.LIVE_BACKFILL_PAGES ?? 5), timeLeft);
+    if (timeLeft()) result.backfilled = await backfillSome(Number(process.env.LIVE_BACKFILL_PAGES ?? 12), timeLeft);
 
     // 6. Let the AI read the new comments right away.
     if (fresh.length && timeLeft()) result.labelled = await labelComments(fresh.slice(0, 100), deadline).catch(() => 0);
 
     // 7. AI works through the backlog of comments it hasn't read yet.
-    if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, 75).catch(() => 0);
+    if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, Number(process.env.AI_BACKLOG_PER_RUN ?? 150)).catch(() => 0);
 
     // 8. AI briefings for videos/channels with enough new comments.
     if (timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
@@ -374,6 +401,7 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     else { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }
   }
 
+  result.durationMs = Date.now() - started;
   await db`update live_state set last_result = ${JSON.stringify(result)} where id = 1`;
   return result;
 }

@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import { AddChannelForm, FullSyncButton, ToggleChannel } from "@/components/ChannelControls";
 import { githubConfigured, recentRuns } from "@/lib/github";
-import { engineStatus } from "@/lib/live";
+import { engineStatus, storageStatus } from "@/lib/live";
 import { utc } from "@/lib/db-time";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Tag } from "@/components/ui";
@@ -36,6 +36,7 @@ export default async function ManagePage() {
   const ghRuns = await recentRuns(5).catch(() => null);
   const engine = await engineStatus().catch(() => null);
   const prog = await progress().catch(() => []);
+  const storage = await storageStatus().catch(() => null);
   const cronAt = utc(engine?.lastCronAt);
   const alwaysOn = !!cronAt && Date.now() - cronAt.getTime() < 10 * 60000;
   const e = engine?.last;
@@ -52,7 +53,7 @@ export default async function ManagePage() {
         <Panel title={<span className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${alwaysOn ? "bg-accent animate-[pulse-dot_2s_ease-out_infinite]" : "bg-warn"}`} />Engine</span>}
           subtitle={alwaysOn ? "Running 24/7: new comments, history and AI analysis keep flowing even when this site is closed"
             : "Only runs while this site is open. Set up the free timer in the README (step 7) to run it 24/7."}>
-          <div className="grid gap-3 text-[13px] sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid gap-3 text-[13px] sm:grid-cols-4 lg:grid-cols-7">
             {[
               ["Last run", e ? ago(e.at) : "never"],
               ["Timer (24/7)", cronAt ? ago(engine?.lastCronAt) : "not set up"],
@@ -60,6 +61,7 @@ export default async function ManagePage() {
               ["History saved", String(e?.backfilled ?? 0)],
               ["Read by AI", String((e?.labelled ?? 0) + (e?.aiBacklog ?? 0))],
               ["Briefings", String(e?.insights ?? 0)],
+              ["Run time", e?.durationMs ? `${(e.durationMs / 1000).toFixed(0)} s` : "–"],
             ].map(([k, v]) => (
               <div key={k} className="rounded-xl border border-line bg-white/[0.02] px-3 py-2.5">
                 <div className="label">{k}</div>
@@ -143,9 +145,15 @@ export default async function ManagePage() {
 
       <Reveal delay={0.15} className="mt-4">
         <Panel title="Free-tier fuel" subtitle="Everything here runs on free plans; the app paces itself to stay inside them">
-          <div className="grid gap-3 md:grid-cols-2">
+          {storage?.nearlyFull && (
+            <p className="mb-3 rounded-xl border border-warn/40 bg-warn/10 px-3 py-2 text-[13px] text-warn">
+              The database is over 90% full, so downloading past comments is paused. New comments still arrive. Pause channels you no longer need, or ask Claude to archive old data.
+            </p>
+          )}
+          <div className="grid gap-3 md:grid-cols-3">
             <Meter label="GitHub Actions · this month" used={minutes} total={2000} unit="min" />
             <Meter label="YouTube API · today" used={k.quota_used_today} total={10000} unit="units" />
+            {storage && <Meter label="Database storage (Supabase free)" used={storage.usedMb} total={storage.limitMb} unit="MB" />}
           </div>
           <div className="mt-4">
             <div className="label mb-2">Free AI models · today</div>

@@ -102,7 +102,7 @@ try {
   const cronRes = await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
   const c1 = await cronRes.json();
   check("timer endpoint runs the engine with the right key", cronRes.status === 200 && c1.status === "ok" && c1.source === "cron", JSON.stringify(c1));
-  check("AI read backlog comments with nobody on the site", (c1.aiBacklog ?? 0) >= 25, `${c1.aiBacklog}`);
+  check("AI read backlog comments with nobody on the site", (c1.aiBacklog ?? 0) >= 100, `${c1.aiBacklog} (parallel batches)`);
   const [{ n: briefings }] = await db`select count(*)::int n from insights where data like '%Tanglish banter%'`;
   check("AI briefing written by the engine", briefings >= 1, `${briefings}`);
   const [{ n: slowReq }] = await db`select coalesce(sum(requests),0)::int n from llm_usage where model_key = 'gemini/slow-model'`;
@@ -111,6 +111,7 @@ try {
   check("engine records that the 24/7 timer is active", !!st?.last_cron_at);
   const manage = await (await get("/manage")).text();
   check("Manage page shows the engine running 24/7", manage.includes("Running 24/7"));
+  check("Manage page shows database storage", manage.includes("Database storage"));
   check("Manage page shows history progress with an estimate", manage.includes("History progress") && manage.includes("Read by AI"));
 
   // Use case: every page renders with real data
