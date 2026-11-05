@@ -14,7 +14,7 @@ export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
   if (!cronAuthorised(req)) return NextResponse.json({ error: "Wrong or missing key" }, { status: 401 });
-  return NextResponse.json({ analysed: await analyseDueVideos(1) });
+  return NextResponse.json(await analyseDueVideos(1));
 }
 
 export async function POST(req: NextRequest) {

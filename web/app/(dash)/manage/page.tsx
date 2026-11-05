@@ -1,6 +1,8 @@
 import { ExternalLink } from "lucide-react";
 import { AddChannelForm, FullSyncButton, TestAlertButton, ToggleChannel } from "@/components/ChannelControls";
 import { telegramConfigured } from "@/lib/alerts";
+import { recentAnalyses } from "@/lib/video";
+import Link from "next/link";
 import { githubConfigured, recentRuns } from "@/lib/github";
 import { engineStatus, storageStatus } from "@/lib/live";
 import { utc } from "@/lib/db-time";
@@ -38,6 +40,7 @@ export default async function ManagePage() {
   const engine = await engineStatus().catch(() => null);
   const prog = await progress().catch(() => []);
   const storage = await storageStatus().catch(() => null);
+  const analyses = await recentAnalyses(8).catch(() => []);
   const cronAt = utc(engine?.lastCronAt);
   const alwaysOn = !!cronAt && Date.now() - cronAt.getTime() < 10 * 60000;
   const e = engine?.last;
@@ -75,6 +78,23 @@ export default async function ManagePage() {
       </Reveal>
 
       <Reveal className="mt-4"><ProgressPanel rows={prog} /></Reveal>
+
+      <Reveal className="mt-4">
+        <Panel title="AI video analysis" subtitle="Videos the AI has watched (new uploads every 2 hours via the second timer, or with the button on a video page)">
+          {!analyses.length ? <Empty>No videos analysed yet.</Empty> : (
+            <ul className="space-y-1.5">
+              {analyses.map((a) => (
+                <li key={a.video_id} className="flex items-center gap-3 rounded-lg px-2 py-2 text-[13px] hover:bg-white/[0.03]">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${a.status === "done" ? "bg-good" : a.status === "skipped" ? "bg-warn" : a.status === "error" ? "bg-neg" : "bg-accent"}`} />
+                  <Link href={`/videos/${a.video_id}`} className="min-w-0 flex-1 truncate text-ink hover:text-accent">{a.title}</Link>
+                  <span className="hidden max-w-[45%] truncate text-[12px] text-ink-3 sm:block" title={a.error ?? ""}>{a.status === "done" ? `${Math.round((a.duration_s ?? 0) / 60)} min video · ${a.model}` : a.error}</span>
+                  <span className="shrink-0 text-[12px] text-ink-3">{ago(a.created_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </Reveal>
 
       <Reveal className="mt-4">
         <Panel title="Alerts on Telegram" subtitle="New uploads, negative spikes and viral comments, sent to your phone (free)">

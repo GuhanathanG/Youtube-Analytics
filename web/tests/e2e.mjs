@@ -113,6 +113,7 @@ try {
   const manage = await (await get("/manage")).text();
   check("Manage page shows the engine running 24/7", manage.includes("Running 24/7"));
   check("Manage page shows database storage", manage.includes("Database storage"));
+  check("Manage page lists AI video analyses", (await (await get("/manage")).text()).includes("AI video analysis"));
   check("Manage page shows history progress with an estimate", manage.includes("History progress") && manage.includes("Read by AI"));
 
   // Feature 1: Ask AI answers from stored comments, with citations
@@ -153,7 +154,7 @@ try {
     body: JSON.stringify({ videoId: "livevid0001" }) })).json();
   check("AI watched a video on request", va.ok === true, JSON.stringify(va));
   const vaTimer = await (await fetch(`${BASE}/api/video-analysis?key=e2e-cron-secret-0123456789`)).json();
-  check("timer analyses the next new video", vaTimer.analysed === 1, JSON.stringify(vaTimer));
+  check("timer analyses the next new video and says which", vaTimer.analysed === 1 && vaTimer.tried?.[0]?.ok === true, JSON.stringify(vaTimer));
   const [{ n: secs }] = await db`select coalesce(sum(tokens),0)::int n from llm_usage where model_key like 'video/%'`;
   check("video seconds counted against the free daily allowance", secs >= 242, `${secs} s`);
   const vp = await (await get("/videos/livevid0001")).text();

@@ -125,23 +125,39 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
       lastError = `${model}: unreadable answer`;
     }
   }
+  console.log(`[video-analysis] ${videoId} failed: ${lastError.slice(0, 300)}`);
   await db`insert into video_analysis (video_id, status, error) values (${videoId}, 'error', ${lastError.slice(0, 500)})
     on conflict (video_id) do update set status = 'error', error = excluded.error, created_at = (now() at time zone 'utc')`;
   return { ok: false, message: `The AI couldn't analyse this video: ${lastError.slice(0, 160)}` };
 }
 
 /** Background: analyse the newest not-yet-analysed videos (from the last 30 days). */
-export async function analyseDueVideos(max = 1): Promise<number> {
-  if (!process.env.GEMINI_API_KEY) return 0;
+export async function analyseDueVideos(max = 1): Promise<{ analysed: number; waiting: number; tried: { videoId: string; title: string; ok: boolean; message: string }[]; note?: string }> {
+  if (!process.env.GEMINI_API_KEY) return { analysed: 0, waiting: 0, tried: [], note: "GEMINI_API_KEY is not set" };
   await ensureVideoTables();
-  const due = await sql()`
-    select v.id from videos v join channels c on c.id = v.channel_id
+  const db = sql();
+  const due = await db`
+    select v.id, v.title from videos v join channels c on c.id = v.channel_id
     left join video_analysis a on a.video_id = v.id
     where c.active and a.video_id is null and v.published_at >= (now() at time zone 'utc') - interval '30 days'
-    order by v.published_at desc limit ${max}`;
-  let done = 0;
-  for (const v of due) if ((await analyseVideo(v.id as string)).ok) done++;
-  return done;
+    order by v.published_at desc`;
+  const tried = [];
+  for (const v of due.slice(0, max)) {
+    const r = await analyseVideo(v.id as string);
+    console.log(`[video-analysis] ${v.id} "${String(v.title).slice(0, 60)}": ${r.ok ? "done" : r.message}`);
+    tried.push({ videoId: v.id as string, title: v.title as string, ...r });
+  }
+  const note = due.length ? undefined : "No new videos from the last 30 days are waiting; use the button on a video page for older ones.";
+  if (note) console.log(`[video-analysis] ${note}`);
+  return { analysed: tried.filter((t) => t.ok).length, waiting: Math.max(0, due.length - tried.length), tried, note };
+}
+
+export async function recentAnalyses(limit = 8) {
+  await ensureVideoTables();
+  return (await sql()`
+    select a.video_id, v.title, a.status, a.model, a.error, a.duration_s, a.created_at
+    from video_analysis a join videos v on v.id = a.video_id order by a.created_at desc limit ${limit}`) as unknown as
+    { video_id: string; title: string; status: string; model: string | null; error: string | null; duration_s: number | null; created_at: string }[];
 }
 
 export type VideoAnalysis = { status: string; model: string | null; data: Record<string, unknown> | null; error: string | null; created_at: string };
