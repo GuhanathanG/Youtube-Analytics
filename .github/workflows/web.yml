@@ -41,6 +41,9 @@ jobs:
       - name: Type check
         working-directory: web
         run: npx tsc --noEmit
+      - name: Unit checks
+        working-directory: web
+        run: node tests/db-url.test.mjs
       - name: Production build
         working-directory: web
         run: npx next build
