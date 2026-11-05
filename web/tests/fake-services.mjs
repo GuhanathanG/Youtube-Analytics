@@ -8,8 +8,10 @@ let n = 0;
 
 function addVideo(i, daysAgo) {
   const id = ("livevid" + String(i).padStart(4, "0")).slice(0, 11);
-  state.videos.unshift({ id, snippet: { title: `Live Creator video ${i}`, publishedAt: iso(new Date(Date.now() - daysAgo * 864e5)), channelId: CH, thumbnails: {} },
-    statistics: { viewCount: "1000", likeCount: "50", commentCount: "0" }, contentDetails: { duration: "PT4M2S" } });
+  state.videos.unshift({ id, snippet: { title: `Live Creator video ${i}`, publishedAt: iso(new Date(Date.now() - daysAgo * 864e5)), channelId: CH, thumbnails: {},
+      tags: ["phones", "review"], categoryId: "28", defaultAudioLanguage: "ta" },
+    statistics: { viewCount: "1000", likeCount: "50", commentCount: "0" }, contentDetails: { duration: "PT4M2S", definition: "hd", caption: "false" },
+    topicDetails: { topicCategories: ["https://en.wikipedia.org/wiki/Technology"] } });
   state.threads[id] = [];
   return id;
 }
@@ -27,6 +29,7 @@ for (let j = 0; j < 250; j++) addComment(old, j % 10 === 0 ? `old comment ${j}: 
 for (let i = 1; i <= 3; i++) {
   const v = addVideo(i, 4 - i);
   ["semma video bro", "audio is bad", "make part 2?", "super explanation", "mokka da"].forEach((t) => addComment(v, t));
+  if (i === 1) ["1:05 best part 😂", "1:12 thalaivar mass", "3:40 audio drops here"].forEach((t) => addComment(v, t));
 }
 const channel = { id: CH, snippet: { title: "Live Creator", customUrl: "@livecreator", thumbnails: {} },
   statistics: { subscriberCount: "12345", viewCount: "999999", videoCount: "4" }, contentDetails: { relatedPlaylists: { uploads: "UU" + CH.slice(2) } } };
@@ -47,6 +50,24 @@ export function startFake(port = 4100) {
     if (p.endsWith("/commentThreads")) return send(page(state.threads[u.searchParams.get("videoId")] || [], u.searchParams.get("pageToken"), 100));
     if (p === "/_add") { const v = state.videos[0].id; ["vera level bro 🔥", "worst editing ever", "when is part 3?"].forEach((t) => addComment(v, t)); return send({ ok: true }); }
     if (p === "/_upload") { const v = addVideo(99, 0); addComment(v, "first!"); return send({ ok: true }); }
+    if (p.startsWith("/votes")) return send({ id: u.searchParams.get("videoId"), likes: 50, dislikes: 42, viewCount: 1000 });
+    if (p.includes(":generateContent")) {
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        const uri = parsed.contents?.[0]?.parts?.[0]?.file_data?.file_uri ?? "";
+        if (!uri.includes("youtube.com/watch")) return send({ error: { message: "no video" } }, 400);
+        const analysis = { summary: "A hands-on review of a budget phone, comparing camera and battery.", format: "review", languages: ["Tamil", "English"],
+          tone: "energetic", hook: { first_30s: "Unboxing with a joke", strength: "strong", why: "Gets to the point fast" },
+          chapters: [{ start: "0:00", title: "Unboxing", summary: "Opens the box" }, { start: "1:00", title: "Camera test", summary: "Day and night photos" }],
+          key_moments: [{ time: "1:05", what: "Night photo reveal", why: "Big surprise" }], topics: ["budget phones"], people_brands_products: ["PhoneX"],
+          sponsor_segments: [], calls_to_action: ["subscribe at 0:45"], production: { editing: "fast cuts", audio: "dips at 3:40", visuals: "bright" },
+          title_thumbnail_promise: "Delivers", strengths: ["clear comparisons"], weaknesses: ["audio dip"], audience_fit: "budget buyers" };
+        send({ candidates: [{ content: { parts: [{ text: JSON.stringify(analysis) }] } }], usageMetadata: { totalTokenCount: 25000 } });
+      });
+      return;
+    }
     if (p.endsWith("/chat/completions")) {
       let body = "";
       req.on("data", (c) => (body += c));

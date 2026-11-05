@@ -10,6 +10,8 @@ import { CommentCard } from "@/components/CommentCard";
 import { InsightPanel } from "@/components/InsightPanel";
 import { PredictionBadge } from "@/components/FeaturePanels";
 import { predictions } from "@/lib/features";
+import { AIWatchPanel, DetailsPanel, MomentsPanel, PerformancePanel } from "@/components/VideoAnalysis";
+import { commentMoments, durationSeconds, getAnalysis, performance } from "@/lib/video";
 import { Reveal } from "@/components/Reveal";
 import { Empty, Panel, Stat } from "@/components/ui";
 import { date, duration } from "@/lib/format";
@@ -45,6 +47,11 @@ export default async function VideoPage({ params, searchParams }:
     aspectCounts(f), videoSnapshots(id), comments({ ...f, ...tab.extra }, tab.order, 60),
   ]);
   const prediction = (await predictions(v.channel_id).catch(() => [])).find((p) => p.video_id === id);
+  const durS = durationSeconds(v.duration);
+  const [perf, analysis, momentData] = await Promise.all([
+    performance(id).catch(() => null), getAnalysis(id).catch(() => null), commentMoments(id, durS).catch(() => ({ moments: [], histogram: [] })),
+  ]);
+  const chapters = ((analysis?.data?.chapters as { start: string; title: string }[] | undefined) ?? []);
 
   return (
     <>
@@ -74,7 +81,11 @@ export default async function VideoPage({ params, searchParams }:
         </div>
       </Reveal>
 
-      <Reveal delay={0.1} className="mt-6"><InsightPanel insight={insight} scope="video" /></Reveal>
+      {perf && <Reveal delay={0.05} className="mt-6"><PerformancePanel perf={perf} /></Reveal>}
+      <Reveal delay={0.1} className="mt-4"><AIWatchPanel videoId={id} analysis={analysis} hasKey={!!process.env.GEMINI_API_KEY} /></Reveal>
+      <Reveal delay={0.1} className="mt-4"><MomentsPanel videoId={id} durationS={durS} moments={momentData.moments} histogram={momentData.histogram} chapters={chapters} /></Reveal>
+      <Reveal delay={0.1} className="mt-4"><InsightPanel insight={insight} scope="video" /></Reveal>
+      {perf && <Reveal delay={0.1} className="mt-4"><DetailsPanel perf={perf} /></Reveal>}
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <Panel className="xl:col-span-2" title="When people commented">

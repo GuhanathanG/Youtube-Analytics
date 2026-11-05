@@ -177,6 +177,24 @@ Each engine run picks up new uploads and comments, downloads comment history, ha
 and work through the backlog, and writes AI briefings. Vercel also calls the engine once a day as a backup.
 The GitHub job (every 2 hours) still runs the local sentiment model on the history.
 
+#### Advanced video analysis (free)
+
+Each video page shows:
+- performance compared with the channel (views, like rate, comment rate, a community **dislike estimate**);
+- **what happens in the video**: Gemini watches public videos (pictures and sound) and gives a summary, chapters, key moments, how strong the hook is, production notes, sponsors, strengths and weaknesses;
+- the **most-discussed moments**, from timestamps viewers write in comments.
+
+Shares, watch time and retention are owner-only on YouTube, so they can't be shown.
+
+Gemini watches up to about 8 hours of YouTube video a day for free; the app keeps under 7 hours. To have **new uploads analysed
+automatically**, add a second cron-job.org job:
+- **URL:** `https://<your-site>.vercel.app/api/video-analysis?key=<your CRON_SECRET>`
+- **Schedule:** every **2 hours**
+- **Timeout:** the longest allowed
+
+Each run can take 1–3 minutes, and every 2 hours keeps it well inside Vercel's free memory allowance.
+Any video can also be analysed by hand with **Analyse this video with AI** on its page.
+
 #### Alerts on Telegram (free, optional)
 
 Alerts always show on the Overview page. To also get them on your phone:

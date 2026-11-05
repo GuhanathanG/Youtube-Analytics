@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { cronAuthorised } from "@/lib/cron-auth";
 import { liveTick } from "@/lib/live";
 
 /**
@@ -10,19 +11,9 @@ import { liveTick } from "@/lib/live";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function authorised(req: NextRequest): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || secret.length < 16) return false;
-  const given = req.nextUrl.searchParams.get("key") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  if (given.length !== secret.length) return false;
-  let diff = 0;
-  for (let i = 0; i < secret.length; i++) diff |= secret.charCodeAt(i) ^ given.charCodeAt(i);
-  return diff === 0;
-}
-
 async function run(req: NextRequest) {
   if (!process.env.CRON_SECRET) return NextResponse.json({ error: "CRON_SECRET is not set in Vercel" }, { status: 503 });
-  if (!authorised(req)) return NextResponse.json({ error: "Wrong or missing key" }, { status: 401 });
+  if (!cronAuthorised(req)) return NextResponse.json({ error: "Wrong or missing key" }, { status: 401 });
   try {
     return NextResponse.json(await liveTick("cron"));
   } catch (e) {

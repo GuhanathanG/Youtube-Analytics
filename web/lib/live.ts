@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "./db";
 import { labelBacklog, labelComments } from "./ai";
 import { writeDueIdeas, writeDueInsights } from "./insights";
+import { ensureVideoTables } from "./video";
 import { checkAlerts } from "./alerts";
 import { quotaDay } from "./queries";
 import {
@@ -92,10 +93,19 @@ async function saveVideos(channelId: string, items: VideoItem[]): Promise<string
     published_at: ts(v.snippet?.publishedAt), duration: v.contentDetails?.duration ?? null, thumbnail_url: thumb(v.snippet),
     view_count: int(v.statistics?.viewCount), like_count: int(v.statistics?.likeCount), comment_count: int(v.statistics?.commentCount),
     stats_updated_at: nowSql(), comments_disabled: v.statistics?.commentCount === undefined, comments_backfilled: false,
+    tags: v.snippet?.tags?.join("|").slice(0, 2000) ?? null, category_id: v.snippet?.categoryId ?? null,
+    definition: v.contentDetails?.definition ?? null, has_captions: v.contentDetails?.caption ? v.contentDetails.caption === "true" : null,
+    default_language: v.snippet?.defaultAudioLanguage ?? v.snippet?.defaultLanguage ?? null,
+    topic_categories: v.topicDetails?.topicCategories?.join("|") ?? null,
   }));
+  await ensureVideoTables();
   const res = await db`
     insert into videos ${db(rows)}
     on conflict (id) do update set title = excluded.title, view_count = excluded.view_count,
+      tags = coalesce(excluded.tags, videos.tags), category_id = coalesce(excluded.category_id, videos.category_id),
+      definition = coalesce(excluded.definition, videos.definition), has_captions = coalesce(excluded.has_captions, videos.has_captions),
+      default_language = coalesce(excluded.default_language, videos.default_language),
+      topic_categories = coalesce(excluded.topic_categories, videos.topic_categories),
       like_count = excluded.like_count, comment_count = excluded.comment_count, stats_updated_at = excluded.stats_updated_at,
       comments_disabled = excluded.comments_disabled
     returning id, (xmax = 0) as inserted`;
