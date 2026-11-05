@@ -67,8 +67,11 @@ const REQUEST_TIMEOUT_MS = Number(process.env.AI_REQUEST_TIMEOUT ?? 30) * 1000;
 const slowUntil = new Map<string, number>();
 
 /** Ask the first available free model for JSON. Returns null when none can answer right now. */
-export async function chatJson(system: string, user: string, maxTokens = 4000, deadline?: number): Promise<{ data: Record<string, unknown>; model: string } | null> {
-  for (const s of aiSlots()) {
+export async function chatJson(system: string, user: string, maxTokens = 4000, deadline?: number, startAt = 0): Promise<{ data: Record<string, unknown>; model: string } | null> {
+  const all = aiSlots();
+  // Parallel callers start at different models so they don't all queue on the first one.
+  const ordered = [...all.slice(startAt % Math.max(1, all.length)), ...all.slice(0, startAt % Math.max(1, all.length))];
+  for (const s of ordered) {
     if ((slowUntil.get(keyOf(s)) ?? 0) > Date.now()) continue;
     if (deadline && Date.now() > deadline - 5000) return null;
     if (!(await usable(s))) continue;
@@ -140,22 +143,40 @@ For EVERY comment return one object:
 
 Reply with JSON only: {"results": [ ... ]}`;
 
-/** AI-label the given comments (newest first). Returns how many were labelled. */
+/** AI-label the given comments. Batches of 25 go out in parallel (up to AI_PARALLEL at once),
+ *  each starting at a different model, so throughput isn't limited to one model's speed. */
 export async function labelComments(ids: string[], deadline?: number): Promise<number> {
   if (!ids.length || !aiSlots().length) return 0;
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 25) chunks.push(ids.slice(i, i + 25));
+  const parallel = Math.max(1, Number(process.env.AI_PARALLEL ?? 3));
+  let done = 0, next = 0, stop = false;
+  async function worker(w: number) {
+    while (!stop && next < chunks.length) {
+      if (deadline && Date.now() > deadline - 8000) return;
+      const chunk = chunks[next++];
+      const n = await labelChunk(chunk, deadline, w);
+      if (n < 0) { stop = true; return; } // no model available right now
+      done += n;
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(parallel, chunks.length) }, (_, w) => worker(w)));
+  return done;
+}
+
+async function labelChunk(chunkIds: string[], deadline: number | undefined, startAt: number): Promise<number> {
   const db = sql();
   let done = 0;
-  for (let i = 0; i < ids.length; i += 25) {
-    if (deadline && Date.now() > deadline - 8000) break;
+  {
     const rows = await db`
       select c.id, c.text, v.title from comments c join videos v on v.id = c.video_id
-      where c.id in ${db(ids.slice(i, i + 25))} and c.ai_at is null`;
-    if (!rows.length) continue;
+      where c.id in ${db(chunkIds)} and c.ai_at is null`;
+    if (!rows.length) return 0;
     const titles = [...new Set(rows.map((r) => r.title as string))];
     const prompt = ["Videos:", ...titles.map((t, n) => `V${n + 1}: ${t}`), "", "Comments:",
       ...rows.map((r, n) => `${n + 1}. [V${titles.indexOf(r.title as string) + 1}] ${String(r.text ?? "").split(/\s+/).join(" ").slice(0, 500)}`)].join("\n");
-    const out = await chatJson(SYSTEM, prompt, 4000, deadline);
-    if (!out) break; // no model available right now; the background job will catch up
+    const out = await chatJson(SYSTEM, prompt, 4000, deadline, startAt);
+    if (!out) return -1;
     const results = new Map<number, Record<string, unknown>>();
     for (const item of (out.data.results as Record<string, unknown>[] | undefined) ?? []) {
       const n = Number(item?.i);
@@ -190,7 +211,6 @@ export async function labelComments(ids: string[], deadline?: number): Promise<n
   }
   return done;
 }
-
 
 /** The backlog: comments the AI hasn't read yet. Tanglish/Hinglish, unknown language and
  *  comments the local model was unsure about go first, then the newest. */
