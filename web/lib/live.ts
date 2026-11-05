@@ -1,0 +1,272 @@
+import "server-only";
+import { sql } from "./db";
+import { labelComments } from "./ai";
+import {
+  QuotaExhausted, YouTubeError, getVideos, listThreads, listUploads, resolveChannel, thumb, youtubeConfigured,
+  type ChannelItem, type CommentItem, type ThreadItem, type VideoItem,
+} from "./youtube";
+
+/**
+ * Live mode: while the website is open it calls `liveTick()` about once a minute.
+ * A tick picks up new uploads and new comments for the channels you watch, stores
+ * them, and has the AI read the new comments straight away. The heavy work (full
+ * history, the bulk sentiment model) stays with the background job.
+ */
+
+export type TickResult = {
+  status: "ok" | "skipped" | "off" | "quota" | "error";
+  message?: string;
+  newComments: number;
+  newVideos: number;
+  labelled: number;
+  at: string;
+};
+
+const nowSql = () => new Date().toISOString().slice(0, 19).replace("T", " ");
+const ts = (iso?: string | null) => (iso ? iso.replace("T", " ").replace(/Z$|\.\d+Z?$/, "").slice(0, 19) : null);
+const int = (v: unknown) => (v === undefined || v === null || v === "" ? null : Number(v));
+
+let tableReady = false;
+async function ensureLiveTable() {
+  if (tableReady) return;
+  const db = sql();
+  await db`create table if not exists live_state (
+    id integer primary key, last_tick_at timestamp, last_uploads_at timestamp, last_result text)`;
+  await db`alter table live_state enable row level security`;
+  await db`insert into live_state (id) values (1) on conflict do nothing`;
+  tableReady = true;
+}
+
+export async function lastTick(): Promise<TickResult | null> {
+  await ensureLiveTable();
+  const [r] = await sql()`select last_result from live_state where id = 1`;
+  try { return r?.last_result ? JSON.parse(r.last_result as string) : null; } catch { return null; }
+}
+
+/* ------------------------------------------------------------------ writes */
+async function saveChannel(item: ChannelItem) {
+  const db = sql();
+  const s = item.snippet ?? {}, st = item.statistics ?? {};
+  const row = {
+    id: item.id, title: s.title ?? "", handle: s.customUrl ?? null, description: s.description ?? null,
+    thumbnail_url: thumb(s), country: s.country ?? null,
+    uploads_playlist_id: item.contentDetails?.relatedPlaylists?.uploads ?? null,
+    subscriber_count: int(st.subscriberCount), view_count: int(st.viewCount), video_count: int(st.videoCount),
+    active: true, videos_backfilled: false, added_at: nowSql(), last_synced_at: nowSql(),
+  };
+  await db`
+    insert into channels ${db(row)}
+    on conflict (id) do update set title = excluded.title, handle = coalesce(excluded.handle, channels.handle),
+      description = excluded.description, thumbnail_url = excluded.thumbnail_url, country = excluded.country,
+      uploads_playlist_id = coalesce(excluded.uploads_playlist_id, channels.uploads_playlist_id),
+      subscriber_count = excluded.subscriber_count, view_count = excluded.view_count, video_count = excluded.video_count,
+      active = true, last_synced_at = excluded.last_synced_at`;
+  await db`insert into channel_snapshots (channel_id, taken_at, subscriber_count, view_count, video_count)
+    values (${item.id}, ${nowSql()}, ${row.subscriber_count}, ${row.view_count}, ${row.video_count})`;
+}
+
+/** Insert or update videos; returns the ids that are new. */
+async function saveVideos(channelId: string, items: VideoItem[]): Promise<string[]> {
+  if (!items.length) return [];
+  const db = sql();
+  const rows = items.map((v) => ({
+    id: v.id, channel_id: channelId, title: v.snippet?.title ?? "", description: v.snippet?.description ?? null,
+    published_at: ts(v.snippet?.publishedAt), duration: v.contentDetails?.duration ?? null, thumbnail_url: thumb(v.snippet),
+    view_count: int(v.statistics?.viewCount), like_count: int(v.statistics?.likeCount), comment_count: int(v.statistics?.commentCount),
+    stats_updated_at: nowSql(), comments_disabled: v.statistics?.commentCount === undefined, comments_backfilled: false,
+  }));
+  const res = await db`
+    insert into videos ${db(rows)}
+    on conflict (id) do update set title = excluded.title, view_count = excluded.view_count,
+      like_count = excluded.like_count, comment_count = excluded.comment_count, stats_updated_at = excluded.stats_updated_at,
+      comments_disabled = excluded.comments_disabled
+    returning id, (xmax = 0) as inserted`;
+  return res.filter((r) => r.inserted).map((r) => r.id as string);
+}
+
+function commentRow(c: CommentItem, videoId: string, channelId: string, parentId: string | null, replies = 0) {
+  const s = c.snippet;
+  return {
+    id: c.id, video_id: videoId, channel_id: channelId, parent_id: parentId ?? s.parentId ?? null,
+    author_name: s.authorDisplayName ?? null, author_channel_id: s.authorChannelId?.value ?? null,
+    text: s.textOriginal ?? s.textDisplay ?? "", like_count: Number(s.likeCount ?? 0), reply_count: replies,
+    published_at: ts(s.publishedAt), updated_at: ts(s.updatedAt), fetched_at: nowSql(),
+  };
+}
+
+/** Store comment threads (plus included replies); returns ids of comments that are new. */
+async function saveThreads(videoId: string, channelId: string, threads: ThreadItem[]): Promise<{ ids: string[]; newest: string | null }> {
+  const rows = [];
+  let newest: string | null = null;
+  for (const t of threads) {
+    const top = commentRow(t.snippet.topLevelComment, videoId, channelId, null, t.snippet.totalReplyCount ?? 0);
+    rows.push(top);
+    if (top.published_at && (!newest || top.published_at > newest)) newest = top.published_at;
+    for (const r of t.replies?.comments ?? []) rows.push(commentRow(r, videoId, channelId, t.snippet.topLevelComment.id));
+  }
+  if (!rows.length) return { ids: [], newest };
+  const db = sql();
+  const unique = [...new Map(rows.map((r) => [r.id, r])).values()];
+  const res = await db`
+    insert into comments ${db(unique)}
+    on conflict (id) do update set text = excluded.text, like_count = excluded.like_count,
+      reply_count = excluded.reply_count, updated_at = excluded.updated_at, fetched_at = excluded.fetched_at,
+      author_name = excluded.author_name
+    returning id, (xmax = 0) as inserted`;
+  return { ids: res.filter((r) => r.inserted).map((r) => r.id as string), newest };
+}
+
+/** Read a video's newest comments down to the newest one already stored (max `maxPages` pages). */
+async function fetchNewComments(v: { id: string; channel_id: string; latest_comment_at: string | null }, maxPages = 3) {
+  const db = sql();
+  const stop = v.latest_comment_at;
+  let token: string | undefined, newest = stop;
+  const ids: string[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    let data;
+    try {
+      data = await listThreads(v.id, token);
+    } catch (e) {
+      if (e instanceof YouTubeError && (e.reason === "commentsDisabled" || e.status === 404 || e.status === 403)) {
+        await db`update videos set comments_disabled = true, comments_backfilled = true where id = ${v.id}`;
+        return ids;
+      }
+      throw e;
+    }
+    const items = data.items ?? [];
+    const saved = await saveThreads(v.id, v.channel_id, items);
+    ids.push(...saved.ids);
+    if (saved.newest && (!newest || saved.newest > newest)) newest = saved.newest;
+    const reachedKnown = !stop || items.some((t) => (ts(t.snippet.topLevelComment.snippet.publishedAt) ?? "") <= stop);
+    token = data.nextPageToken;
+    if (reachedKnown || !token) break;
+  }
+  await db`update videos set latest_comment_at = ${newest}, comment_count_checked = comment_count,
+    comments_checked_at = ${nowSql()} where id = ${v.id}`;
+  return ids;
+}
+
+/* ------------------------------------------------------------------ add a channel right away */
+export async function addChannelNow(query: string): Promise<{ ok: boolean; message: string; channelId?: string }> {
+  const db = sql();
+  if (!youtubeConfigured()) {
+    await db`insert into channel_requests (query, status, created_at) values (${query}, 'pending', ${nowSql()})`;
+    return { ok: true, message: `Queued ${query}. Add YOUTUBE_API_KEY in Vercel to add channels instantly.` };
+  }
+  try {
+    const item = await resolveChannel(query);
+    if (!item) {
+      await db`insert into channel_requests (query, status, error, created_at)
+        values (${query}, 'error', 'Channel not found. Try the @handle or channel link.', ${nowSql()})`;
+      return { ok: false, message: "Couldn't find that channel. Try its @handle or channel link." };
+    }
+    await saveChannel(item);
+    await db`insert into channel_requests (query, status, channel_id, created_at) values (${query}, 'done', ${item.id}, ${nowSql()})`;
+    // Bootstrap: newest 50 uploads and the newest comments of the latest 3 videos.
+    const playlist = item.contentDetails?.relatedPlaylists?.uploads;
+    let commentIds: string[] = [];
+    if (playlist) {
+      const page = await listUploads(playlist).catch(() => ({ items: [] as { contentDetails: { videoId: string } }[] }));
+      const ids = (page.items ?? []).map((i) => i.contentDetails.videoId);
+      await saveVideos(item.id, await getVideos(ids));
+      const latest = await db`select id, channel_id, latest_comment_at from videos
+        where channel_id = ${item.id} and not comments_disabled order by published_at desc nulls last limit 3`;
+      for (const v of latest) commentIds.push(...(await fetchNewComments(v as never, 1)));
+    }
+    commentIds = commentIds.slice(0, 120);
+    const labelled = await labelComments(commentIds).catch(() => 0);
+    return { ok: true, channelId: item.id,
+      message: `Now watching ${item.snippet?.title ?? query}: ${commentIds.length} newest comments loaded${labelled ? `, ${labelled} read by AI` : ""}. Full history keeps downloading in the background.` };
+  } catch (e) {
+    if (e instanceof QuotaExhausted) {
+      await db`insert into channel_requests (query, status, created_at) values (${query}, 'pending', ${nowSql()})`;
+      return { ok: true, message: `YouTube's daily quota is used up, so ${query} is queued for tomorrow.` };
+    }
+    throw e;
+  }
+}
+
+/* ------------------------------------------------------------------ the live tick */
+export async function liveTick(): Promise<TickResult> {
+  const at = new Date().toISOString();
+  const empty = { newComments: 0, newVideos: 0, labelled: 0, at };
+  if (!youtubeConfigured()) return { status: "off", message: "Add YOUTUBE_API_KEY in Vercel to turn on live mode.", ...empty };
+  await ensureLiveTable();
+  const db = sql();
+  const interval = Math.max(30, Number(process.env.LIVE_INTERVAL_SECONDS ?? 60) || 60);
+
+  // Only one tick at a time across all open tabs/devices.
+  const claimed = await db`
+    update live_state set last_tick_at = (now() at time zone 'utc')
+    where id = 1 and (last_tick_at is null or last_tick_at < (now() at time zone 'utc') - make_interval(secs => ${interval - 5}))
+    returning id`;
+  if (!claimed.length) return (await lastTick()) ?? { status: "skipped", ...empty };
+
+  const started = Date.now();
+  const timeLeft = () => Date.now() - started < 40000;
+  const result: TickResult = { status: "ok", ...empty };
+  const fresh: string[] = [];
+
+  try {
+    // 1. Channels added from other places (e.g. queued while quota was used up).
+    const pending = await db`select id, query from channel_requests where status = 'pending' order by id limit 3`;
+    for (const p of pending) {
+      await db`delete from channel_requests where id = ${p.id}`;
+      await addChannelNow(p.query as string);
+    }
+
+    // 2. New uploads, every 10 minutes (1 quota unit per channel).
+    const [st] = await db`select last_uploads_at from live_state where id = 1`;
+    const uploadsDue = !st?.last_uploads_at || Date.now() - new Date(String(st.last_uploads_at).replace(" ", "T") + "Z").getTime() > 10 * 60000;
+    if (uploadsDue) {
+      await db`update live_state set last_uploads_at = (now() at time zone 'utc') where id = 1`;
+      const chans = await db`select id, uploads_playlist_id from channels where active and uploads_playlist_id is not null`;
+      for (const c of chans) {
+        if (!timeLeft()) break;
+        const page = await listUploads(c.uploads_playlist_id as string).catch(() => null);
+        const ids = (page?.items ?? []).slice(0, 10).map((i) => i.contentDetails.videoId);
+        if (!ids.length) continue;
+        const known = new Set((await db`select id from videos where id in ${db(ids)}`).map((r) => r.id as string));
+        const newIds = ids.filter((id) => !known.has(id));
+        if (newIds.length) result.newVideos += (await saveVideos(c.id as string, await getVideos(newIds))).length;
+      }
+    }
+
+    // 3. Fresh stats for recent videos (1 unit per 50 videos) to see which got new comments.
+    const recent = await db`
+      select v.id, v.channel_id from videos v join channels c on c.id = v.channel_id
+      where c.active and not v.comments_disabled
+        and v.published_at >= (now() at time zone 'utc') - make_interval(days => ${Number(process.env.LIVE_WINDOW_DAYS ?? 14)})
+      order by v.published_at desc limit 100`;
+    const byChannel = new Map(recent.map((r) => [r.id as string, r.channel_id as string]));
+    if (recent.length) {
+      const groups = new Map<string, VideoItem[]>();
+      for (const v of await getVideos([...byChannel.keys()])) {
+        const ch = byChannel.get(v.id)!;
+        groups.set(ch, [...(groups.get(ch) ?? []), v]);
+      }
+      for (const [ch, items] of groups) await saveVideos(ch, items);
+    }
+
+    // 4. New comments wherever the count went up (newest videos first).
+    const changed = await db`
+      select v.id, v.channel_id, v.latest_comment_at from videos v join channels c on c.id = v.channel_id
+      where c.active and not v.comments_disabled and v.comment_count > coalesce(v.comment_count_checked, -1)
+        and (v.latest_comment_at is not null or v.published_at >= (now() at time zone 'utc') - interval '30 days')
+      order by v.published_at desc nulls last limit 15`;
+    for (const v of changed) {
+      if (!timeLeft()) break;
+      fresh.push(...(await fetchNewComments(v as never)));
+    }
+    result.newComments = fresh.length;
+
+    // 5. Let the AI read the new comments right away.
+    if (fresh.length && timeLeft()) result.labelled = await labelComments(fresh.slice(0, 120)).catch(() => 0);
+  } catch (e) {
+    if (e instanceof QuotaExhausted) { result.status = "quota"; result.message = e.message; }
+    else { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }
+  }
+
+  await db`update live_state set last_result = ${JSON.stringify(result)} where id = 1`;
+  return result;
+}

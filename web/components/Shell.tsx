@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { logout } from "@/app/actions";
 import { CommandPalette } from "./CommandPalette";
+import { LivePill } from "./LivePill";
 import { Logo } from "./Logo";
 
 type NavChannel = { id: string; title: string; thumb: string | null; active: boolean };
@@ -16,8 +17,7 @@ const NAV = [
   { href: "/manage", label: "Manage", icon: Settings2 },
 ];
 
-export function Shell({ children, channels, status }:
-  { children: ReactNode; channels: NavChannel[]; status: { lastSync: string; quota: number; healthy: boolean } }) {
+export function Shell({ children, channels }: { children: ReactNode; channels: NavChannel[] }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
@@ -66,11 +66,7 @@ export function Shell({ children, channels, status }:
           <Search size={16} /><span className="sm:hidden">Search</span><span className="hidden sm:inline">Search channels, videos…</span>
           <kbd className="ml-auto hidden rounded-md border border-line-2 px-1.5 py-0.5 font-mono text-[11px] sm:inline">⌘K</kbd>
         </button>
-        <div className="ml-auto hidden items-center gap-2 rounded-full border border-line bg-white/[0.03] px-3 py-1.5 text-[12.5px] text-ink-2 sm:flex"
-          title={`YouTube quota today: ${status.quota.toLocaleString("en")} / 10,000`}>
-          <span className={`h-2 w-2 rounded-full ${status.healthy ? "bg-accent animate-[pulse-dot_2s_ease-out_infinite]" : "bg-warn"}`} />
-          Synced {status.lastSync}
-        </div>
+        <LivePill />
       </header>
 
       <main className="mx-auto max-w-[1400px] px-4 pb-28 pt-6 sm:px-8 sm:pt-8 lg:pb-16">{children}</main>

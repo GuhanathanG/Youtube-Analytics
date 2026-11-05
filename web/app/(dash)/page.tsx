@@ -6,14 +6,17 @@ import { RangeTabs, rangeSince } from "@/components/RangeTabs";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Stat } from "@/components/ui";
 import { ago, compact, score } from "@/lib/format";
-import { channels as getChannels, dailySentiment, kpis, recentInsights } from "@/lib/queries";
+import { LiveFeed } from "@/components/LiveFeed";
+import { channels as getChannels, comments, dailySentiment, kpis, recentInsights } from "@/lib/queries";
 
 export const metadata = { title: "Overview" };
 
 export default async function Overview({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
   const { range } = await searchParams;
   const { key, since } = rangeSince(range);
-  const [k, chs, daily, briefs] = await Promise.all([kpis(), getChannels(), dailySentiment({ since }), recentInsights(4)]);
+  const [k, chs, daily, briefs, latest] = await Promise.all([
+    kpis(), getChannels(), dailySentiment({ since }), recentInsights(4), comments({ hideSpam: true }, "newest", 8),
+  ]);
   const analysed = chs.reduce((s, c) => s + c.positive + c.neutral + c.negative, 0);
   const weighted = analysed ? chs.reduce((s, c) => s + (c.avg_sentiment ?? 0) * (c.positive + c.neutral + c.negative), 0) / analysed : 0;
 
@@ -98,20 +101,29 @@ export default async function Overview({ searchParams }: { searchParams: Promise
             </Reveal>
           </div>
 
-          {chs.length > 1 && (
-            <Reveal delay={0.25} className="mt-4">
-              <Panel title="Sentiment mix by channel" subtitle="Share of analysed comments">
-                <div className="space-y-4">
-                  {chs.filter((c) => c.positive + c.neutral + c.negative > 0).map((c) => (
-                    <div key={c.id} className="grid items-center gap-2 sm:grid-cols-[200px_1fr]">
-                      <Link href={`/channels/${c.id}`} className="truncate text-[13.5px] text-ink-2 hover:text-accent">{c.title}</Link>
-                      <MixBar mix={c} />
-                    </div>
-                  ))}
-                </div>
+          <div className="mt-4 grid gap-4 xl:grid-cols-3">
+            <Reveal delay={0.25} className="xl:col-span-2">
+              <Panel title={<span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-accent animate-[pulse-dot_2s_ease-out_infinite]" />Live feed</span>}
+                subtitle="Newest comments across your channels; new ones slide in automatically"
+                action={<Link href="/comments" className="text-[13px] text-ink-3 hover:text-accent">All comments →</Link>}>
+                {latest.length ? <LiveFeed comments={latest} /> : <Empty>Comments appear here as they arrive.</Empty>}
               </Panel>
             </Reveal>
-          )}
+            {chs.length > 0 && (
+              <Reveal delay={0.3}>
+                <Panel title="Sentiment mix by channel" subtitle="Share of analysed comments">
+                  <div className="space-y-5">
+                    {chs.filter((c) => c.positive + c.neutral + c.negative > 0).map((c) => (
+                      <div key={c.id}>
+                        <Link href={`/channels/${c.id}`} className="mb-2 block truncate text-[13.5px] text-ink-2 hover:text-accent">{c.title}</Link>
+                        <MixBar mix={c} />
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+              </Reveal>
+            )}
+          </div>
         </>
       )}
     </>

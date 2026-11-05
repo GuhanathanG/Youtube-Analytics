@@ -1,5 +1,6 @@
 import { ExternalLink } from "lucide-react";
-import { AddChannelForm, ToggleChannel } from "@/components/ChannelControls";
+import { AddChannelForm, FullSyncButton, ToggleChannel } from "@/components/ChannelControls";
+import { githubConfigured, recentRuns } from "@/lib/github";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Tag } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
@@ -29,16 +30,39 @@ export default async function ManagePage() {
   const [chs, reqs, k, minutes, usage, runs] = await Promise.all([
     getChannels(), channelRequests(), kpis(), actionsMinutesThisMonth(), llmUsageToday(), lastRuns(12),
   ]);
+  const ghRuns = await recentRuns(5).catch(() => null);
   return (
     <>
       <PageHeader eyebrow="Control room" title={<>Manage <span className="glow-text">watchlist</span></>}>
         <p className="max-w-2xl text-[15px] text-ink-2">
-          Add a creator and the next background run (every 2 hours) downloads their videos and comments.
-          Need it sooner? <a href={REPO_ACTIONS} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">Run it now on GitHub<ExternalLink size={13} /></a>
+          Add a creator and their newest videos and comments load in seconds. Live mode then keeps them up to date
+          while this site is open, and the background job fills in the full comment history.
         </p>
       </PageHeader>
 
-      <Reveal><Panel title="Watch a new channel"><div className="relative pb-2"><AddChannelForm /></div></Panel></Reveal>
+      <div className="grid gap-4 xl:grid-cols-3">
+        <Reveal className="xl:col-span-2"><Panel title="Watch a new channel"><AddChannelForm /></Panel></Reveal>
+        <Reveal delay={0.05}>
+          <Panel title="Full sync" subtitle="History download + bulk analysis (runs every 2 hours on its own)">
+            <FullSyncButton enabled={githubConfigured()} />
+            {!githubConfigured() && (
+              <p className="mt-3 text-[12.5px] text-ink-3">To start it from here, add a <span className="font-mono">GITHUB_TOKEN</span> in Vercel (see the README). Until then: <a href={REPO_ACTIONS} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">run on GitHub<ExternalLink size={12} /></a></p>
+            )}
+            {ghRuns && ghRuns.length > 0 && (
+              <ul className="mt-4 space-y-1.5">
+                {ghRuns.map((r) => (
+                  <li key={r.html_url} className="flex items-center gap-2.5 text-[12.5px]">
+                    <span className={`h-2 w-2 rounded-full ${r.status !== "completed" ? "bg-accent animate-[pulse-dot_2s_ease-out_infinite]" : r.conclusion === "success" ? "bg-good" : "bg-neg"}`} />
+                    <span className="text-ink-2">{r.status !== "completed" ? "running" : r.conclusion}</span>
+                    <span className="text-ink-3">{r.event === "schedule" ? "scheduled" : "manual"}</span>
+                    <span className="ml-auto text-ink-3">{ago(r.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </Reveal>
+      </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <Reveal delay={0.05} className="xl:col-span-2">

@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { SESSION_COOKIE, isValidSession, sessionToken } from "@/lib/auth";
 import { sql } from "@/lib/db";
+import { startFullSync } from "@/lib/github";
+import { addChannelNow } from "@/lib/live";
 
 async function requireSession() {
   const store = await cookies();
@@ -37,9 +39,18 @@ export async function addChannel(_: { ok?: string; error?: string } | undefined,
   const query = String(form.get("query") ?? "").trim();
   if (!query) return { error: "Paste a @handle, channel link or video link." };
   if (query.length > 300) return { error: "That looks too long for a channel link." };
-  await sql()`insert into channel_requests (query, status, created_at) values (${query}, 'pending', now() at time zone 'utc')`;
-  revalidatePath("/manage");
-  return { ok: `Queued ${query}. It will appear after the next sync run.` };
+  try {
+    const res = await addChannelNow(query);
+    revalidatePath("/", "layout");
+    return res.ok ? { ok: res.message } : { error: res.message };
+  } catch (e) {
+    return { error: `Something went wrong: ${e instanceof Error ? e.message.slice(0, 200) : "unknown error"}` };
+  }
+}
+
+export async function runFullSync(): Promise<{ ok: boolean; message: string }> {
+  await requireSession();
+  return startFullSync();
 }
 
 export async function setChannelActive(id: string, active: boolean) {
