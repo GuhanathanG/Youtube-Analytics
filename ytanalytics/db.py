@@ -128,9 +128,11 @@ class Comment(Base):
     __tablename__ = "comments"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    video_id: Mapped[str] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"), index=True)
+    # video_id is covered by ix_comments_video_published; parent_id/language/sentiment/emotion
+    # indexes were dropped: each cost ~40 bytes per comment and filters on them are rare.
+    video_id: Mapped[str] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"))
     channel_id: Mapped[str] = mapped_column(String(64), index=True)
-    parent_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    parent_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     author_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
     author_channel_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     text: Mapped[str] = mapped_column(Text, default="")
@@ -140,8 +142,8 @@ class Comment(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     # Filled in by the analyze step.
-    language: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
-    sentiment: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    language: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    sentiment: Mapped[str | None] = mapped_column(String(16), nullable=True)
     sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)  # confidence 0..1
     sentiment_value: Mapped[float | None] = mapped_column(Float, nullable=True)  # -1 (neg) .. +1 (pos)
     analyzed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -149,7 +151,7 @@ class Comment(Base):
     # Filled in by the AI (LLM) pass. When present, `sentiment` above holds the AI's label
     # and `sentiment_source` is "ai"; otherwise it is "model" (the local classifier).
     sentiment_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    emotion: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    emotion: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_question: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     is_suggestion: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     is_spam: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
@@ -232,6 +234,7 @@ def schema_fingerprint() -> str:
     import hashlib
 
     parts = sorted(f"{t.name}.{c.name}:{c.type}" for t in Base.metadata.sorted_tables for c in t.columns)
+    parts += sorted(f"idx:{i.name}" for t in Base.metadata.sorted_tables for i in t.indexes)
     return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]
 
 
@@ -250,10 +253,24 @@ def init_db(engine: Engine) -> None:
         pass
     Base.metadata.create_all(engine)
     _add_missing_columns(engine)
+    _drop_retired_indexes(engine)
     _lock_public_api(engine)
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM schema_meta WHERE key = 'layout'"))
         conn.execute(text("INSERT INTO schema_meta (key, value) VALUES ('layout', :v)"), {"v": fingerprint})
+
+
+RETIRED_INDEXES = ["ix_comments_video_id", "ix_comments_parent_id", "ix_comments_language",
+                   "ix_comments_sentiment", "ix_comments_emotion"]
+
+
+def _drop_retired_indexes(engine: Engine) -> None:
+    """Indexes removed to save space (about 200 bytes per comment)."""
+    from sqlalchemy import text
+
+    with engine.begin() as conn:
+        for name in RETIRED_INDEXES:
+            conn.execute(text(f"DROP INDEX IF EXISTS {name}"))
 
 
 def _lock_public_api(engine: Engine) -> None:

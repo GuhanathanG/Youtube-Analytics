@@ -292,3 +292,12 @@ def test_fast_models_and_no_thinking_by_default():
     assert slots[0].key == "gemini/gemini-2.5-flash" and slots[0].extra["reasoning_effort"] == "none"
     assert [s for s in slots if s.model == "gemini-3.8-flash"][0].extra["reasoning_effort"] == "minimal"
     assert [s.key for s in slots if s.provider == "groq"][0] == "groq/openai/gpt-oss-20b"
+
+
+def test_openrouter_is_a_third_free_provider():
+    slots = slots_from_env({"GEMINI_API_KEY": "g", "OPENROUTER_API_KEY": "o"})
+    orr = [s for s in slots if s.provider == "openrouter"]
+    assert orr and all(s.model.endswith(":free") for s in orr)
+    assert orr[0].base_url == "https://openrouter.ai/api/v1/"
+    assert "reasoning_effort" not in orr[0].extra
+    assert slots[0].provider == "gemini"  # free Gemini first, OpenRouter last
