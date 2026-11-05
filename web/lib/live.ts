@@ -1,7 +1,8 @@
 import "server-only";
 import { sql } from "./db";
 import { labelBacklog, labelComments } from "./ai";
-import { writeDueInsights } from "./insights";
+import { writeDueIdeas, writeDueInsights } from "./insights";
+import { checkAlerts } from "./alerts";
 import { quotaDay } from "./queries";
 import {
   QuotaExhausted, YouTubeError, getVideos, listThreads, listUploads, resolveChannel, thumb, youtubeConfigured,
@@ -26,6 +27,7 @@ export type TickResult = {
   insights?: number;
   source?: "browser" | "cron";
   durationMs?: number;
+  alerts?: number;
   at: string;
 };
 
@@ -373,6 +375,13 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
         groups.set(ch, [...(groups.get(ch) ?? []), v]);
       }
       for (const [ch, items] of groups) await saveVideos(ch, items);
+      // Views over time for recent videos (every 30 min at most) — feeds the performance prediction.
+      await db`
+        insert into video_snapshots (video_id, taken_at, view_count, like_count, comment_count)
+        select v.id, (now() at time zone 'utc'), v.view_count, v.like_count, v.comment_count from videos v
+        where v.id in ${db([...byChannel.keys()])}
+          and not exists (select 1 from video_snapshots s where s.video_id = v.id
+                          and s.taken_at >= (now() at time zone 'utc') - interval '30 minutes')`;
     }
 
     // 4. New comments wherever the count went up (newest videos first).
@@ -398,12 +407,15 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     const everyMin = Math.max(1, Number(process.env.INSIGHTS_EVERY_MINUTES ?? 10));
     const insightsTurn = Math.floor(Date.now() / 60000) % everyMin < 2;
     if (insightsTurn && timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
+    if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await writeDueIdeas(deadline).catch(() => 0));
     if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, Number(process.env.AI_BACKLOG_PER_RUN ?? 150)).catch(() => 0);
   } catch (e) {
     if (e instanceof QuotaExhausted) { result.status = "quota"; result.message = e.message; }
     else { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }
   }
 
+  // 9. Alerts (new uploads, negative spikes, viral comments) — a few cheap queries.
+  result.alerts = await checkAlerts().catch(() => 0);
   result.durationMs = Date.now() - started;
   await db`update live_state set last_result = ${JSON.stringify(result)} where id = 1`;
   return result;

@@ -7,6 +7,9 @@ import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Stat } from "@/components/ui";
 import { ago, compact, score } from "@/lib/format";
 import { LiveFeed } from "@/components/LiveFeed";
+import { AlertsPanel, NewVideosPanel } from "@/components/FeaturePanels";
+import { recentAlerts } from "@/lib/alerts";
+import { predictions } from "@/lib/features";
 import { channels as getChannels, comments, dailySentiment, kpis, progress, recentInsights } from "@/lib/queries";
 import { ProgressPanel } from "@/components/ProgressPanel";
 
@@ -19,6 +22,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     kpis(), getChannels(), dailySentiment({ since }), recentInsights(4), comments({ hideSpam: true }, "newest", 8),
   ]);
   const prog = await progress().catch(() => []);
+  const [alertList, preds] = await Promise.all([recentAlerts(8).catch(() => []), predictions().catch(() => [])]);
   const historyBusy = prog.some((p) => p.comments_stored < p.comments_on_youtube * 0.98 || p.ai_read < p.comments_stored * 0.98
     || (p.videos_total ?? 0) > p.videos_known);
   const analysed = chs.reduce((s, c) => s + c.positive + c.neutral + c.negative, 0);
@@ -107,6 +111,8 @@ export default async function Overview({ searchParams }: { searchParams: Promise
             </Reveal>
           </div>
 
+          {preds.length > 0 && <Reveal delay={0.2} className="mt-4"><NewVideosPanel preds={preds} /></Reveal>}
+
           <div className="mt-4 grid gap-4 xl:grid-cols-3">
             <Reveal delay={0.25} className="xl:col-span-2">
               <Panel title={<span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-accent animate-[pulse-dot_2s_ease-out_infinite]" />Live feed</span>}
@@ -115,8 +121,11 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                 {latest.length ? <LiveFeed comments={latest} /> : <Empty>Comments appear here as they arrive.</Empty>}
               </Panel>
             </Reveal>
+            <Reveal delay={0.3}><AlertsPanel alerts={alertList} /></Reveal>
+          </div>
+          <div className="mt-4 grid gap-4 xl:grid-cols-3">
             {chs.length > 0 && (
-              <Reveal delay={0.3}>
+              <Reveal delay={0.3} className="xl:col-span-3">
                 <Panel title="Sentiment mix by channel" subtitle="Share of analysed comments">
                   <div className="space-y-5">
                     {chs.filter((c) => c.positive + c.neutral + c.negative > 0).map((c) => (

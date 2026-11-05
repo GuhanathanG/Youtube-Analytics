@@ -177,6 +177,17 @@ Each engine run picks up new uploads and comments, downloads comment history, ha
 and work through the backlog, and writes AI briefings. Vercel also calls the engine once a day as a backup.
 The GitHub job (every 2 hours) still runs the local sentiment model on the history.
 
+#### Alerts on Telegram (free, optional)
+
+Alerts always show on the Overview page. To also get them on your phone:
+1. In Telegram, open **@BotFather**, send `/newbot`, and pick a name. Copy the **token** it gives you.
+2. Send any message to your new bot. Then open `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser
+   and copy the number after `"chat":{"id":`. That's your **chat id**.
+3. In Vercel, add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, plus `SITE_URL` (your site's address, so alerts link back to it). Then **Redeploy**.
+4. On **Manage → Alerts on Telegram**, click **Send a test message**.
+
+You get alerts for new uploads, sudden jumps in negative comments on a recent video, and comments that go viral.
+
 Live mode and the background job share YouTube's free 10,000 units a day. A minute of live mode costs
 about 1–3 units, so leaving the site open all day uses roughly 1,500–4,000 units. You can pause live mode
 from the **Live** pill at the top right.

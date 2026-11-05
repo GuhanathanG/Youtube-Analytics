@@ -23,7 +23,7 @@ function addComment(vid, text, when = new Date()) {
 
 // An old video with 250 past comments (needs history download), then 3 recent videos with 5 each.
 const old = addVideo(0, 90);
-for (let j = 0; j < 250; j++) addComment(old, `old comment ${j}`, new Date(Date.now() - (90 - j / 10) * 864e5));
+for (let j = 0; j < 250; j++) addComment(old, j % 10 === 0 ? `old comment ${j}: please make part ${j} about budget phones` : `old comment ${j}`, new Date(Date.now() - (90 - j / 10) * 864e5));
 for (let i = 1; i <= 3; i++) {
   const v = addVideo(i, 4 - i);
   ["semma video bro", "audio is bad", "make part 2?", "super explanation", "mokka da"].forEach((t) => addComment(v, t));
@@ -54,6 +54,15 @@ export function startFake(port = 4100) {
         const parsed = JSON.parse(body);
         if (parsed.model === "slow-model") await new Promise((r) => setTimeout(r, 15000)); // never answers in time
         const system = parsed.messages[0].content;
+        if (system.includes("database search terms")) {
+          return send({ choices: [{ message: { content: JSON.stringify({ terms: ["audio", "sound"] }) } }], usage: { total_tokens: 50 } });
+        }
+        if (system.includes("Answer the user's question")) {
+          return send({ choices: [{ message: { content: JSON.stringify({ answer: "Viewers complain about the **audio** [1].", used: [1] }) } }], usage: { total_tokens: 200 } });
+        }
+        if (system.includes("Group them into distinct content ideas")) {
+          return send({ choices: [{ message: { content: JSON.stringify({ ideas: [{ title: "Budget phone buying guide", why: "Many ask for it", requests: 25, likes: 80, examples: ["please make part 2"] }] }) } }], usage: { total_tokens: 300 } });
+        }
         if (system.includes("audience-research analyst")) {
           return send({ choices: [{ message: { content: JSON.stringify({ summary: "Viewers love the Tanglish banter.", liked: ["host"], complaints: ["audio"], requests: ["part 3"], topics: [{ name: "praise", share_pct: 60, sentiment: "positive" }] }) } }], usage: { total_tokens: 900 } });
         }

@@ -1,5 +1,6 @@
 import { ExternalLink } from "lucide-react";
-import { AddChannelForm, FullSyncButton, ToggleChannel } from "@/components/ChannelControls";
+import { AddChannelForm, FullSyncButton, TestAlertButton, ToggleChannel } from "@/components/ChannelControls";
+import { telegramConfigured } from "@/lib/alerts";
 import { githubConfigured, recentRuns } from "@/lib/github";
 import { engineStatus, storageStatus } from "@/lib/live";
 import { utc } from "@/lib/db-time";
@@ -74,6 +75,14 @@ export default async function ManagePage() {
       </Reveal>
 
       <Reveal className="mt-4"><ProgressPanel rows={prog} /></Reveal>
+
+      <Reveal className="mt-4">
+        <Panel title="Alerts on Telegram" subtitle="New uploads, negative spikes and viral comments, sent to your phone (free)">
+          {telegramConfigured() ? <TestAlertButton /> : (
+            <p className="text-[13px] text-ink-2">Not connected. Add <span className="font-mono">TELEGRAM_BOT_TOKEN</span> and <span className="font-mono">TELEGRAM_CHAT_ID</span> in Vercel (README → “Alerts on Telegram”). Alerts still show on the Overview page.</p>
+          )}
+        </Panel>
+      </Reveal>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <Reveal className="xl:col-span-2"><Panel title="Watch a new channel"><AddChannelForm /></Panel></Reveal>
