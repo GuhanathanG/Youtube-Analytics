@@ -328,3 +328,30 @@ export async function searchEverything(q: string) {
     videos: vids.map((v) => ({ id: v.id as string, title: v.title as string, channel: v.channel_title as string, thumb: v.thumbnail_url as string | null })),
   };
 }
+
+
+export type Progress = {
+  channel_id: string; title: string; videos_total: number | null; videos_known: number; videos_complete: number;
+  comments_on_youtube: number; comments_stored: number; ai_read: number;
+  saved_last_hour: number; ai_last_hour: number;
+};
+
+/** History download and AI progress per channel, with recent speed for an ETA. */
+export async function progress(): Promise<Progress[]> {
+  const db = sql();
+  return (await db`
+    select ch.id as channel_id, ch.title, ch.video_count::int as videos_total,
+      coalesce(v.known, 0)::int as videos_known, coalesce(v.complete, 0)::int as videos_complete,
+      coalesce(v.on_yt, 0)::float8 as comments_on_youtube,
+      coalesce(c.stored, 0)::int as comments_stored, coalesce(c.ai, 0)::int as ai_read,
+      coalesce(c.saved_hour, 0)::int as saved_last_hour, coalesce(c.ai_hour, 0)::int as ai_last_hour
+    from channels ch
+    left join (select channel_id, count(*) known, sum(case when comments_backfilled or comments_disabled then 1 else 0 end) complete,
+                      sum(case when comments_disabled then 0 else coalesce(comment_count, 0) end) on_yt
+               from videos group by channel_id) v on v.channel_id = ch.id
+    left join (select channel_id, count(*) stored, count(ai_at) ai,
+                      sum(case when fetched_at >= (now() at time zone 'utc') - interval '1 hour' then 1 else 0 end) saved_hour,
+                      sum(case when ai_at >= (now() at time zone 'utc') - interval '1 hour' then 1 else 0 end) ai_hour
+               from comments group by channel_id) c on c.channel_id = ch.id
+    where ch.active order by ch.title`) as unknown as Progress[];
+}

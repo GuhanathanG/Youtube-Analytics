@@ -302,6 +302,34 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
       }
     }
 
+    // 2b. Older videos: walk each channel's upload history, 2 pages (100 videos) per run,
+    //     resuming where the last run (or the background job) stopped.
+    const walking = await db`select id, uploads_playlist_id, videos_page_token from channels
+      where active and not videos_backfilled and uploads_playlist_id is not null limit 2`;
+    for (const c of walking) {
+      let token = (c.videos_page_token as string | null) ?? undefined;
+      for (let page = 0; page < 2 && timeLeft(); page++) {
+        let data;
+        try {
+          data = await listUploads(c.uploads_playlist_id as string, token);
+        } catch (e) {
+          if (e instanceof YouTubeError && e.status === 400 && token) { // expired token: restart the walk
+            await db`update channels set videos_page_token = null where id = ${c.id}`;
+          }
+          break;
+        }
+        const ids = (data.items ?? []).map((i) => i.contentDetails.videoId);
+        if (ids.length) {
+          const known = new Set((await db`select id from videos where id in ${db(ids)}`).map((r) => r.id as string));
+          const newIds = ids.filter((id) => !known.has(id));
+          if (newIds.length) await saveVideos(c.id as string, await getVideos(newIds));
+        }
+        token = data.nextPageToken;
+        await db`update channels set videos_page_token = ${token ?? null}, videos_backfilled = ${!token} where id = ${c.id}`;
+        if (!token) break;
+      }
+    }
+
     // 3. Fresh stats for recent videos (1 unit per 50 videos) to see which got new comments.
     const recent = await db`
       select v.id, v.channel_id from videos v join channels c on c.id = v.channel_id
