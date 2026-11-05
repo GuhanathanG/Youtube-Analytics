@@ -256,3 +256,39 @@ def test_record_job_rounds_up(session):
     from ytanalytics.budget import minutes_used_this_month
 
     assert minutes_used_this_month(session) == 2
+
+
+def test_slow_model_is_skipped_for_the_rest_of_the_run(session):
+    import requests as rq
+
+    class SlowThenOk:
+        def __init__(self):
+            self.calls = []
+
+        def post(self, url, headers=None, json=None, timeout=None):
+            self.calls.append((json["model"], timeout))
+            if json["model"] == "slow":
+                raise rq.Timeout("read timed out")
+            return ok('{"fine": true}')
+
+    http = SlowThenOk()
+    router = LLMRouter(session, [slot("slow"), slot("fast")], http=http, sleep=lambda s: None)
+    assert router.chat_json("s", "u") == ({"fine": True}, "gemini/fast")
+    assert router.chat_json("s", "u") == ({"fine": True}, "gemini/fast")
+    assert [c[0] for c in http.calls] == ["slow", "fast", "fast"]  # slow model not retried
+    assert all(c[1] <= 45 for c in http.calls)                     # never waits minutes
+
+
+def test_out_of_time_is_reported_honestly(session):
+    import time as t
+
+    router = LLMRouter(session, [slot("m1")], http=FakeHTTP({"m1": []}), sleep=lambda s: None)
+    with pytest.raises(NoModelAvailable, match="Out of time"):
+        router.chat_json("s", "u", deadline=t.monotonic() - 1)
+
+
+def test_fast_models_and_no_thinking_by_default():
+    slots = slots_from_env({"GEMINI_API_KEY": "g", "GROQ_API_KEY": "q"})
+    assert slots[0].key == "gemini/gemini-2.5-flash" and slots[0].extra["reasoning_effort"] == "none"
+    assert [s for s in slots if s.model == "gemini-3.8-flash"][0].extra["reasoning_effort"] == "minimal"
+    assert [s.key for s in slots if s.provider == "groq"][0] == "groq/openai/gpt-oss-20b"

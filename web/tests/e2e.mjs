@@ -37,7 +37,8 @@ await db`insert into channel_requests (query, status, created_at) values ('@live
 
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
-    GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "fake-model", LIVE_BACKFILL_PAGES: "5" },
+    GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
+    CRON_SECRET: "e2e-cron-secret-0123456789" },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true, // own process group, so the whole server tree can be stopped
 });
@@ -90,6 +91,26 @@ try {
   const [{ units: after }] = await db`select units from quota_usage order by day desc limit 1`;
   check("a second check within the interval spends no quota", before === after, `${before} -> ${after}`);
   check("quota usage is recorded", before > 0, `${before} units`);
+
+  // Use case: the 24/7 engine (external timer) — security
+  check("timer endpoint refuses a missing key", (await fetch(`${BASE}/api/cron`)).status === 401);
+  check("timer endpoint refuses a wrong key", (await fetch(`${BASE}/api/cron?key=wrong-key-wrong-key-xx`)).status === 401);
+
+  // Use case: the engine runs without anyone signed in, and the AI works through the backlog
+  await db`update comments set ai_at = null, ai_model = null where text like 'old comment%'`;
+  await db`update live_state set last_tick_at = null where id = 1`;
+  const cronRes = await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  const c1 = await cronRes.json();
+  check("timer endpoint runs the engine with the right key", cronRes.status === 200 && c1.status === "ok" && c1.source === "cron", JSON.stringify(c1));
+  check("AI read backlog comments with nobody on the site", (c1.aiBacklog ?? 0) >= 25, `${c1.aiBacklog}`);
+  const [{ n: briefings }] = await db`select count(*)::int n from insights where data like '%Tanglish banter%'`;
+  check("AI briefing written by the engine", briefings >= 1, `${briefings}`);
+  const [{ n: slowReq }] = await db`select coalesce(sum(requests),0)::int n from llm_usage where model_key = 'gemini/slow-model'`;
+  check("a too-slow AI model was tried once, then skipped", slowReq === 1, `${slowReq} request(s)`);
+  const [st] = await db`select last_cron_at from live_state where id = 1`;
+  check("engine records that the 24/7 timer is active", !!st?.last_cron_at);
+  const manage = await (await get("/manage")).text();
+  check("Manage page shows the engine running 24/7", manage.includes("Running 24/7"));
 
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma"]) {

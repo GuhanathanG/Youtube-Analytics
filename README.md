@@ -148,6 +148,24 @@ To create `GITHUB_TOKEN`:
 
 After adding the variables, go to **Deployments → ⋯ → Redeploy** so the site picks them up.
 
+#### Run the engine 24/7, even with the website closed (free timer)
+
+Vercel's free plan only allows its own scheduler once a day. So a free outside service,
+**cron-job.org**, calls your website's engine every 2 minutes.
+
+1. In Vercel, open **youtube-analytics-web → Settings → Environment Variables**. Add `CRON_SECRET` with any
+   long random text (at least 16 characters; letters, numbers, `-` and `_` only). Then **Redeploy**.
+2. Sign up free at <https://cron-job.org> and click **Create cronjob**:
+   - **URL:** `https://<your-site>.vercel.app/api/cron?key=<your CRON_SECRET>`
+   - **Execution schedule:** every **2** minutes
+   - Under **Advanced**, set **Timeout** to the longest allowed (30 s is fine; the engine keeps working after the timer disconnects).
+   - Click **Create**.
+3. Within a few minutes, the website's **Manage → Engine** panel turns cyan and says **Running 24/7**.
+
+Each engine run picks up new uploads and comments, downloads comment history, has the AI read new comments
+and work through the backlog, and writes AI briefings. Vercel also calls the engine once a day as a backup.
+The GitHub job (every 2 hours) still runs the local sentiment model on the history.
+
 Live mode and the background job share YouTube's free 10,000 units a day. A minute of live mode costs
 about 1–3 units, so leaving the site open all day uses roughly 1,500–4,000 units. You can pause live mode
 from the **Live** pill at the top right.

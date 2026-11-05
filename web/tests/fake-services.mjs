@@ -50,8 +50,14 @@ export function startFake(port = 4100) {
     if (p.endsWith("/chat/completions")) {
       let body = "";
       req.on("data", (c) => (body += c));
-      req.on("end", () => {
-        const msg = JSON.parse(body).messages[1].content;
+      req.on("end", async () => {
+        const parsed = JSON.parse(body);
+        if (parsed.model === "slow-model") await new Promise((r) => setTimeout(r, 15000)); // never answers in time
+        const system = parsed.messages[0].content;
+        if (system.includes("audience-research analyst")) {
+          return send({ choices: [{ message: { content: JSON.stringify({ summary: "Viewers love the Tanglish banter.", liked: ["host"], complaints: ["audio"], requests: ["part 3"], topics: [{ name: "praise", share_pct: 60, sentiment: "positive" }] }) } }], usage: { total_tokens: 900 } });
+        }
+        const msg = parsed.messages[1].content;
         const results = msg.split("\n").filter((l) => /^\d+\. \[V/.test(l)).map((l) => {
           const i = Number(l.split(".")[0]); const t = l.toLowerCase(); const neg = /bad|worst|mokka/.test(t);
           return { i, sentiment: neg ? "negative" : "positive", score: neg ? -0.8 : 0.85, emotion: neg ? "disappointment" : "excitement",

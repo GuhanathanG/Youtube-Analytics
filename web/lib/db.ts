@@ -18,6 +18,7 @@ function makeClient() {
     // Timestamps are stored as UTC without a zone; keep them as ISO strings.
     types: { date: { to: 1184, from: [1082, 1083, 1114, 1184], serialize: (x: string) => x, parse: (x: string) => x } },
     transform: { undefined: null },
+    onnotice: () => {}, // e.g. "relation already exists, skipping" — not worth a log line
   });
 }
 

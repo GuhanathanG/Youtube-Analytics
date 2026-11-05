@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
-import { labelComments } from "./ai";
+import { labelBacklog, labelComments } from "./ai";
+import { writeDueInsights } from "./insights";
 import { quotaDay } from "./queries";
 import {
   QuotaExhausted, YouTubeError, getVideos, listThreads, listUploads, resolveChannel, thumb, youtubeConfigured,
@@ -21,6 +22,9 @@ export type TickResult = {
   newVideos: number;
   labelled: number;
   backfilled?: number;
+  aiBacklog?: number;
+  insights?: number;
+  source?: "browser" | "cron";
   at: string;
 };
 
@@ -34,9 +38,18 @@ async function ensureLiveTable() {
   const db = sql();
   await db`create table if not exists live_state (
     id integer primary key, last_tick_at timestamp, last_uploads_at timestamp, last_result text)`;
+  await db`alter table live_state add column if not exists last_cron_at timestamp`;
   await db`alter table live_state enable row level security`;
   await db`insert into live_state (id) values (1) on conflict do nothing`;
   tableReady = true;
+}
+
+export async function engineStatus(): Promise<{ lastCronAt: string | null; lastTickAt: string | null; last: TickResult | null }> {
+  await ensureLiveTable();
+  const [r] = await sql()`select last_cron_at, last_tick_at, last_result from live_state where id = 1`;
+  let last = null;
+  try { last = r?.last_result ? JSON.parse(r.last_result as string) : null; } catch { /* ignore */ }
+  return { lastCronAt: (r?.last_cron_at as string) ?? null, lastTickAt: (r?.last_tick_at as string) ?? null, last };
 }
 
 export async function lastTick(): Promise<TickResult | null> {
@@ -239,7 +252,9 @@ async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<
 }
 
 /* ------------------------------------------------------------------ the live tick */
-export async function liveTick(): Promise<TickResult> {
+/** One run of the engine. Called every minute by an open browser tab ("browser") and
+ *  every couple of minutes by an external timer ("cron"), so it also runs with the site closed. */
+export async function liveTick(source: "browser" | "cron" = "browser"): Promise<TickResult> {
   const at = new Date().toISOString();
   const empty = { newComments: 0, newVideos: 0, labelled: 0, at };
   if (!youtubeConfigured()) return { status: "off", message: "Add YOUTUBE_API_KEY in Vercel to turn on live mode.", ...empty };
@@ -252,11 +267,14 @@ export async function liveTick(): Promise<TickResult> {
     update live_state set last_tick_at = (now() at time zone 'utc')
     where id = 1 and (last_tick_at is null or last_tick_at < (now() at time zone 'utc') - make_interval(secs => ${interval - 5}))
     returning id`;
+  if (source === "cron") await db`update live_state set last_cron_at = (now() at time zone 'utc') where id = 1`;
   if (!claimed.length) return (await lastTick()) ?? { status: "skipped", ...empty };
 
   const started = Date.now();
-  const timeLeft = () => Date.now() - started < 40000;
-  const result: TickResult = { status: "ok", ...empty };
+  const BUDGET_MS = 45000; // the function may run 60 s; keep a margin
+  const deadline = started + BUDGET_MS;
+  const timeLeft = () => Date.now() < deadline - 5000;
+  const result: TickResult = { status: "ok", ...empty, source };
   const fresh: string[] = [];
 
   try {
@@ -316,7 +334,13 @@ export async function liveTick(): Promise<TickResult> {
     if (timeLeft()) result.backfilled = await backfillSome(Number(process.env.LIVE_BACKFILL_PAGES ?? 5), timeLeft);
 
     // 6. Let the AI read the new comments right away.
-    if (fresh.length && timeLeft()) result.labelled = await labelComments(fresh.slice(0, 120)).catch(() => 0);
+    if (fresh.length && timeLeft()) result.labelled = await labelComments(fresh.slice(0, 100), deadline).catch(() => 0);
+
+    // 7. AI works through the backlog of comments it hasn't read yet.
+    if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, 75).catch(() => 0);
+
+    // 8. AI briefings for videos/channels with enough new comments.
+    if (timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
   } catch (e) {
     if (e instanceof QuotaExhausted) { result.status = "quota"; result.message = e.message; }
     else { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }
