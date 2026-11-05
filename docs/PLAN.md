@@ -71,6 +71,22 @@ The whole platform must run on free tiers.
 - [ ] Topic clustering with multilingual embeddings (pgvector), for very large comment sets
 - [ ] Alerts when a video's negative share jumps compared with the channel's normal level
 
+### Phase 2.5: Creator Pulse website (this commit)
+- [x] Next.js website in `web/`, deployed free on Vercel, reading the same Supabase database
+- [x] Dark "mission control" design:
+  - glass panels and animated numbers
+  - ⌘K search across channels, videos and comments
+  - live sync status
+  - mobile bottom navigation
+- [x] Pages:
+  - overview with channel cards and the latest AI briefings
+  - channel deep-dive
+  - video page with the embedded player
+  - comment explorer with CSV export
+  - watchlist management with free-tier meters
+- [x] Password sign-in, using a signed cookie that never contains the password
+- [x] Supabase's public REST API is blocked by switching on Row Level Security for every table
+
 ### Phase 3: Ask your comments
 - A chat box: "What do people dislike about this creator's last 5 videos?"
 - Answers use semantic search over the stored comments and cite real comments.

@@ -64,3 +64,22 @@ def test_detect_romanized_indian_languages():
     assert detect_language("bhai bahut accha video hai") == "hi-Latn"
     assert detect_language("bad video") == "en"
     assert detect_language("Ceci est une très bonne vidéo, merci beaucoup") == "fr"
+
+
+def test_diagnose_database_url():
+    from ytanalytics.config import diagnose_database_url, mask_password
+
+    ok = "postgresql://postgres.abc:Secret123@aws-0-x.pooler.supabase.com:5432/postgres"
+    assert diagnose_database_url(ok, None) == []
+    assert "missing" in diagnose_database_url("", None)[0]
+    assert "YOUR-PASSWORD" in diagnose_database_url(ok.replace("Secret123", "[YOUR-PASSWORD]"), None)[0]
+    assert "brackets" in diagnose_database_url(ok.replace("Secret123", "[Secret123]"), None)[0]
+    assert "`@`" in diagnose_database_url(ok.replace("Secret123", "Se@cret"), None)[0]
+    assert "Session pooler" in diagnose_database_url(
+        "postgresql://postgres:pw@db.abc.supabase.co:5432/postgres", None)[0]
+    assert mask_password(ok) == "postgresql://postgres.abc:•••@aws-0-x.pooler.supabase.com:5432/postgres"
+
+    class Err(Exception):
+        orig = 'connection failed: FATAL:  password authentication failed for user "postgres"'
+    out = diagnose_database_url(ok, Err())
+    assert "password" in out[0] and "Secret123" not in " ".join(out)
