@@ -59,3 +59,17 @@ export async function setChannelActive(id: string, active: boolean) {
   revalidatePath("/manage");
   revalidatePath("/");
 }
+
+export async function askAction(question: string, channelId: string | null) {
+  await requireSession();
+  const q = question.trim().slice(0, 500);
+  if (q.length < 3) return { error: "Type a question first." };
+  const { askComments } = await import("@/lib/ask");
+  return askComments(q, channelId || null);
+}
+
+export async function testAlertAction() {
+  await requireSession();
+  const { sendTestAlert } = await import("@/lib/alerts");
+  return sendTestAlert();
+}

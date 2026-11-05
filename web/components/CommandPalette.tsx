@@ -1,7 +1,7 @@
 "use client";
 
 import { Command } from "cmdk";
-import { LayoutDashboard, MessageSquareText, Search, Settings2, Tv, Video } from "lucide-react";
+import { GitCompareArrows, LayoutDashboard, Lightbulb, MessageSquareText, Search, Settings2, Sparkles, Tv, Video } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -48,7 +48,10 @@ export function CommandPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
         {!q && (
           <Command.Group heading="Go to">
             <Command.Item className={item} onSelect={() => go("/")}><LayoutDashboard size={16} />Overview</Command.Item>
+            <Command.Item className={item} onSelect={() => go("/ask")}><Sparkles size={16} />Ask AI about comments</Command.Item>
             <Command.Item className={item} onSelect={() => go("/comments")}><MessageSquareText size={16} />Comment explorer</Command.Item>
+            <Command.Item className={item} onSelect={() => go("/compare")}><GitCompareArrows size={16} />Compare channels</Command.Item>
+            <Command.Item className={item} onSelect={() => go("/ideas")}><Lightbulb size={16} />Content ideas</Command.Item>
             <Command.Item className={item} onSelect={() => go("/manage")}><Settings2 size={16} />Manage channels</Command.Item>
           </Command.Group>
         )}

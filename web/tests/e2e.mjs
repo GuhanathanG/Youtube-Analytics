@@ -114,8 +114,40 @@ try {
   check("Manage page shows database storage", manage.includes("Database storage"));
   check("Manage page shows history progress with an estimate", manage.includes("History progress") && manage.includes("Read by AI"));
 
+  // Feature 1: Ask AI answers from stored comments, with citations
+  const askRes = await fetch(`${BASE}/api/ask`, { method: "POST", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ question: "What do people say about the audio?" }) });
+  const ask = await askRes.json();
+  check("Ask AI answers with cited comments", askRes.status === 200 && ask.answer?.includes("audio") && ask.citations?.length === 1,
+    JSON.stringify({ answer: ask.answer, cited: ask.citations?.length, error: ask.error }));
+  check("Ask AI cites a real stored comment", /audio/i.test(ask.citations?.[0]?.text ?? ""), ask.citations?.[0]?.text);
+  check("Ask API refuses requests without a session", (await fetch(`${BASE}/api/ask`, { method: "POST", body: "{}" })).status === 401);
+
+  // Feature 2: alerts (the new upload earlier should have raised one)
+  const [{ n: uploadAlerts }] = await db`select count(*)::int n from alerts where kind = 'upload'`;
+  check("an alert was raised for a new upload", uploadAlerts >= 1, `${uploadAlerts}`);
+
+  // Feature 4: content ideas from request comments
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  const [{ n: ideas }] = await db`select count(*)::int n from insights where scope = 'ideas'`;
+  check("content ideas written from viewer requests", ideas >= 1, `${ideas}`);
+  const ideasPage = await (await get("/ideas")).text();
+  check("Ideas page shows the AI's idea", ideasPage.includes("Budget phone buying guide"));
+
+  // Features 3, 5, 6, 7 render with real data
+  const chPage = await (await get(`/channels/${ch?.id}`)).text();
+  check("channel page shows topic trends", chPage.includes("Topic trends"));
+  check("channel page shows superfans & critics", chPage.includes("Superfans"));
+  check("channel page shows early performance of new videos", chPage.includes("Early performance"));
+  const overview = await (await get("/")).text();
+  check("overview shows alerts", overview.includes("New video from Live Creator"));
+  const [{ n: snaps }] = await db`select count(*)::int n from video_snapshots v join videos x on x.id = v.video_id where x.channel_id like '%live'`;
+  check("view snapshots recorded for predictions", snaps >= 1, `${snaps}`);
+
   // Use case: every page renders with real data
-  for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma"]) {
+  for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma",
+    "/ask", "/ideas", `/compare?c=${ch?.id}`]) {
     const r = await get(path);
     const body = await r.text();
     check(`page ${path} loads`, r.status === 200 && !body.includes("Something went wrong"), `${r.status}`);

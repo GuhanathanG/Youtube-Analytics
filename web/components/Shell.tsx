@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, LogOut, MessageSquareText, Search, Settings2 } from "lucide-react";
+import { GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, MessageSquareText, Search, Settings2, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -13,9 +13,14 @@ type NavChannel = { id: string; title: string; thumb: string | null; active: boo
 
 const NAV = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
+  { href: "/ask", label: "Ask AI", icon: Sparkles },
   { href: "/comments", label: "Comments", icon: MessageSquareText },
+  { href: "/compare", label: "Compare", icon: GitCompareArrows },
+  { href: "/ideas", label: "Ideas", icon: Lightbulb },
   { href: "/manage", label: "Manage", icon: Settings2 },
 ];
+// The phone bar has room for four items plus search.
+const MOBILE_NAV = NAV.filter((n) => ["/", "/ask", "/comments", "/manage"].includes(n.href));
 
 export function Shell({ children, channels }: { children: ReactNode; channels: NavChannel[] }) {
   const path = usePathname();
@@ -73,7 +78,7 @@ export function Shell({ children, channels }: { children: ReactNode; channels: N
 
       {/* Mobile bottom nav */}
       <nav className="fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-[#0a0e1a]/85 p-1.5 backdrop-blur-xl lg:hidden">
-        {NAV.map(({ href, label, icon: Icon }) => (
+        {MOBILE_NAV.map(({ href, label, icon: Icon }) => (
           <Link key={href} href={href} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${isActive(href) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
             <Icon size={18} className={isActive(href) ? "text-accent" : ""} />{label}
           </Link>

@@ -2,7 +2,7 @@
 
 import { Pause, Play, Plus, RefreshCw } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
-import { addChannel, runFullSync, setChannelActive } from "@/app/actions";
+import { addChannel, runFullSync, setChannelActive, testAlertAction } from "@/app/actions";
 
 export function AddChannelForm() {
   const [state, action, pending] = useActionState(addChannel, undefined);
@@ -44,5 +44,20 @@ export function ToggleChannel({ id, active }: { id: string; active: boolean }) {
       className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink-2 transition hover:border-line-2 hover:text-ink disabled:opacity-50">
       {active ? <><Pause size={13} />Pause</> : <><Play size={13} />Resume</>}
     </button>
+  );
+}
+
+export function TestAlertButton() {
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<{ ok: boolean; message: string } | null>(null);
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <span className="text-[13px] text-accent">● Connected</span>
+      <button disabled={pending} onClick={() => start(async () => setMsg(await testAlertAction()))}
+        className="rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-ink-2 transition hover:border-accent/50 hover:text-ink disabled:opacity-50">
+        {pending ? "Sending…" : "Send a test message"}
+      </button>
+      {msg && <span className={`text-[12.5px] ${msg.ok ? "text-accent" : "text-neg"}`}>{msg.message}</span>}
+    </div>
   );
 }

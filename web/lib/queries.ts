@@ -247,7 +247,7 @@ export async function videoSnapshots(id: string) {
 
 export type Insight = { data: Record<string, unknown>; created_at: string; comment_count: number; model: string | null };
 
-export async function latestInsight(scope: "video" | "channel", id: string): Promise<Insight | null> {
+export async function latestInsight(scope: "video" | "channel" | "ideas", id: string): Promise<Insight | null> {
   const db = sql();
   const [r] = await db`
     select data, created_at, comment_count, model from insights

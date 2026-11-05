@@ -13,6 +13,15 @@ const CHANNEL_SYSTEM = "You are an audience-research analyst. You get per-video 
 
 const MIN_COMMENTS = 20;
 
+const IDEAS_SYSTEM = `You help a YouTube creator-watcher spot what the audience is asking for.
+You get viewer comments that request or suggest content (any language; English meaning in [EN: ...]).
+Group them into distinct content ideas. Rank by how many viewers ask and how strongly (likes count too).
+Reply with JSON only:
+{"ideas": [{"title": "short, concrete video idea", "why": "one sentence on what viewers want",
+  "requests": number of comments asking for it, "likes": total likes on those comments,
+  "examples": ["short quote (original language) + English meaning if needed", ...max 2]}]}
+At most 10 ideas, most wanted first. Skip vague praise or spam.`;
+
 type Row = Record<string, unknown>;
 // A postgres.js SQL fragment (a "where" clause shared by several queries).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,6 +70,34 @@ async function statsBlock(where: Frag) {
 async function save(scope: string, id: string, total: number, data: Record<string, unknown>, model: string) {
   await sql()`insert into insights (scope, target_id, created_at, comment_count, model, data)
     values (${scope}, ${id}, (now() at time zone 'utc'), ${total}, ${model.slice(0, 100)}, ${JSON.stringify(data)})`;
+}
+
+/** Weekly "content ideas" per channel from viewer requests (needs 10+ request comments). */
+export async function writeDueIdeas(deadline: number): Promise<number> {
+  if (!aiSlots().length) return 0;
+  const db = sql();
+  const due = await db`
+    with req as (select channel_id, count(*)::int n from comments
+                 where is_suggestion and published_at >= (now() at time zone 'utc') - interval '90 days' group by channel_id having count(*) >= 10),
+         last as (select distinct on (target_id) target_id, created_at from insights where scope = 'ideas' order by target_id, created_at desc)
+    select ch.id, ch.title, r.n from req r join channels ch on ch.id = r.channel_id left join last l on l.target_id = ch.id
+    where ch.active and (l.target_id is null or l.created_at < (now() at time zone 'utc') - interval '7 days') limit 1`;
+  let written = 0;
+  for (const ch of due) {
+    if (Date.now() > deadline - 12000) break;
+    const rows = await db`
+      select text, translation, like_count from comments
+      where channel_id = ${ch.id as string} and is_suggestion and (is_spam is null or not is_spam)
+        and published_at >= (now() at time zone 'utc') - interval '90 days'
+      order by like_count desc limit 200`;
+    const prompt = [`Channel: ${ch.title}. ${ch.n} request/suggestion comments in the last 90 days; the ${rows.length} most liked:`,
+      ...rows.map((r) => `- (${r.like_count} likes) ${String(r.text).split(/\s+/).join(" ").slice(0, 240)}${r.translation ? ` [EN: ${String(r.translation).slice(0, 160)}]` : ""}`)].join("\n");
+    const out = await chatJson(IDEAS_SYSTEM, prompt, 3000, deadline);
+    if (!out) return written;
+    await save("ideas", ch.id as string, ch.n as number, out.data, out.model);
+    written++;
+  }
+  return written;
 }
 
 /** Write up to `max` due briefings before `deadline`. Returns how many were written. */

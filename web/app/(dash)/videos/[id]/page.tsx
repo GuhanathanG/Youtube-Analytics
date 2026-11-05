@@ -8,6 +8,8 @@ import { MixBar } from "@/components/charts/MixBar";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { CommentCard } from "@/components/CommentCard";
 import { InsightPanel } from "@/components/InsightPanel";
+import { PredictionBadge } from "@/components/FeaturePanels";
+import { predictions } from "@/lib/features";
 import { Reveal } from "@/components/Reveal";
 import { Empty, Panel, Stat } from "@/components/ui";
 import { date, duration } from "@/lib/format";
@@ -42,6 +44,7 @@ export default async function VideoPage({ params, searchParams }:
     latestInsight("video", id), sentimentMix(f), dailySentiment(f), languageCounts(f), emotionCounts(f),
     aspectCounts(f), videoSnapshots(id), comments({ ...f, ...tab.extra }, tab.order, 60),
   ]);
+  const prediction = (await predictions(v.channel_id).catch(() => [])).find((p) => p.video_id === id);
 
   return (
     <>
@@ -66,6 +69,7 @@ export default async function VideoPage({ params, searchParams }:
               <Stat label="Sentiment" value={Math.round((v.avg_sentiment ?? 0) * 100)} format="signed" hint="−100 … +100" />
             </div>
             <div className="mt-5"><MixBar mix={mix} /></div>
+            {prediction && <div className="mt-4"><PredictionBadge p={prediction} /></div>}
           </div>
         </div>
       </Reveal>

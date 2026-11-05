@@ -7,6 +7,8 @@ import { GrowthChart } from "@/components/charts/GrowthChart";
 import { MixBar } from "@/components/charts/MixBar";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { InsightPanel } from "@/components/InsightPanel";
+import { NewVideosPanel, SuperfansPanel, TopicTrendsPanel } from "@/components/FeaturePanels";
+import { commenters, predictions, topicTrends } from "@/lib/features";
 import { RangeTabs, rangeSince } from "@/components/RangeTabs";
 import { Reveal } from "@/components/Reveal";
 import { Empty, Panel, Stat, Tag } from "@/components/ui";
@@ -32,6 +34,7 @@ export default async function ChannelPage({ params, searchParams }:
     latestInsight("channel", id), sentimentMix(f), dailySentiment(f), languageCounts(f), emotionCounts(f),
     aspectCounts(f), channelSnapshots(id), getVideos(id),
   ]);
+  const [people, trend, preds] = await Promise.all([commenters(id), topicTrends(id), predictions(id)]);
 
   return (
     <>
@@ -94,6 +97,10 @@ export default async function ChannelPage({ params, searchParams }:
           </Panel>
         </Reveal>
       </div>
+
+      {preds.length > 0 && <Reveal delay={0.1} className="mt-4"><NewVideosPanel preds={preds} /></Reveal>}
+      <Reveal delay={0.1} className="mt-4"><TopicTrendsPanel trend={trend} /></Reveal>
+      <Reveal delay={0.1} className="mt-4"><SuperfansPanel superfans={people.superfans} critics={people.critics} /></Reveal>
 
       {snaps.length > 1 && (
         <div className="mt-4 grid gap-4 md:grid-cols-2">
