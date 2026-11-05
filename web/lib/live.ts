@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import { labelComments } from "./ai";
+import { quotaDay } from "./queries";
 import {
   QuotaExhausted, YouTubeError, getVideos, listThreads, listUploads, resolveChannel, thumb, youtubeConfigured,
   type ChannelItem, type CommentItem, type ThreadItem, type VideoItem,
@@ -19,6 +20,7 @@ export type TickResult = {
   newComments: number;
   newVideos: number;
   labelled: number;
+  backfilled?: number;
   at: string;
 };
 
@@ -186,6 +188,56 @@ export async function addChannelNow(query: string): Promise<{ ok: boolean; messa
   }
 }
 
+/* ------------------------------------------------------------------ history download */
+/** Download up to `maxPages` pages (100 comments each) of past comments, newest videos first.
+ *  Keeps a reserve of the daily quota for live checks. Returns comments saved. */
+async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<number> {
+  const db = sql();
+  const [q] = await db`select units from quota_usage where day = ${quotaDay()}`;
+  const reserve = Number(process.env.LIVE_QUOTA_RESERVE ?? 2000);
+  if (((q?.units as number) ?? 0) > (Number(process.env.DAILY_QUOTA ?? 9500) - reserve)) return 0;
+  // Videos without comments are done immediately.
+  await db`update videos set comments_backfilled = true, comment_count_checked = 0,
+      latest_comment_at = coalesce(latest_comment_at, published_at, (now() at time zone 'utc'))
+    where not comments_backfilled and not comments_disabled and comment_count = 0
+      and channel_id in (select id from channels where active)`;
+  let saved = 0;
+  for (let page = 0; page < maxPages && timeLeft(); page++) {
+    const [v] = await db`
+      select v.id, v.channel_id, v.comments_page_token, v.comment_count, v.latest_comment_at, v.published_at
+      from videos v join channels c on c.id = v.channel_id
+      where c.active and not v.comments_backfilled and not v.comments_disabled
+      order by v.published_at desc nulls last limit 1`;
+    if (!v) break;
+    let data;
+    try {
+      data = await listThreads(v.id as string, (v.comments_page_token as string) ?? undefined);
+    } catch (e) {
+      if (e instanceof YouTubeError && (e.reason === "commentsDisabled" || e.status === 404 || e.status === 403)) {
+        await db`update videos set comments_disabled = true, comments_backfilled = true where id = ${v.id}`;
+        continue;
+      }
+      if (e instanceof YouTubeError && e.status === 400 && v.comments_page_token) {
+        await db`update videos set comments_page_token = null where id = ${v.id}`; // expired token: restart video
+        continue;
+      }
+      throw e;
+    }
+    const res = await saveThreads(v.id as string, v.channel_id as string, data.items ?? []);
+    saved += (data.items ?? []).length;
+    const newest = res.newest && (!v.latest_comment_at || res.newest > (v.latest_comment_at as string)) ? res.newest : v.latest_comment_at;
+    if (data.nextPageToken) {
+      await db`update videos set comments_page_token = ${data.nextPageToken}, latest_comment_at = ${newest} where id = ${v.id}`;
+    } else {
+      await db`update videos set comments_page_token = null, comments_backfilled = true,
+          comment_count_checked = ${v.comment_count}, comments_checked_at = ${nowSql()},
+          latest_comment_at = coalesce(${newest}, published_at, (now() at time zone 'utc'))
+        where id = ${v.id}`;
+    }
+  }
+  return saved;
+}
+
 /* ------------------------------------------------------------------ the live tick */
 export async function liveTick(): Promise<TickResult> {
   const at = new Date().toISOString();
@@ -260,7 +312,10 @@ export async function liveTick(): Promise<TickResult> {
     }
     result.newComments = fresh.length;
 
-    // 5. Let the AI read the new comments right away.
+    // 5. Fill in comment history a few pages at a time (the background job does the same, faster).
+    if (timeLeft()) result.backfilled = await backfillSome(Number(process.env.LIVE_BACKFILL_PAGES ?? 5), timeLeft);
+
+    // 6. Let the AI read the new comments right away.
     if (fresh.length && timeLeft()) result.labelled = await labelComments(fresh.slice(0, 120)).catch(() => 0);
   } catch (e) {
     if (e instanceof QuotaExhausted) { result.status = "quota"; result.message = e.message; }

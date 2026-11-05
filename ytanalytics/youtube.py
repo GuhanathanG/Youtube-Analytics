@@ -52,22 +52,31 @@ class QuotaTracker:
         self.daily_limit = daily_limit
 
     def used_today(self) -> int:
-        row = self.session.get(QuotaUsage, quota_day())
-        return row.units if row else 0
+        from sqlalchemy import select
+
+        units = self.session.execute(select(QuotaUsage.units).where(QuotaUsage.day == quota_day())).scalar()
+        return units or 0
 
     def remaining(self) -> int:
         return max(0, self.daily_limit - self.used_today())
 
     def spend(self, units: int) -> None:
-        day = quota_day()
-        row = self.session.get(QuotaUsage, day)
-        used = row.units if row else 0
-        if used + units > self.daily_limit:
-            raise QuotaExhausted(f"Daily budget of {self.daily_limit} units reached ({used} used)")
-        if row is None:
-            self.session.add(QuotaUsage(day=day, units=units))
+        """Reserve units with one atomic statement (one round trip to a far-away database)."""
+        from sqlalchemy import update
+
+        dialect = self.session.get_bind().dialect.name
+        if dialect == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert
         else:
-            row.units = used + units
+            from sqlalchemy.dialects.sqlite import insert
+        day = quota_day()
+        stmt = insert(QuotaUsage).values(day=day, units=units)
+        stmt = stmt.on_conflict_do_update(index_elements=["day"], set_={"units": QuotaUsage.units + units})
+        used = self.session.execute(stmt.returning(QuotaUsage.units)).scalar_one()
+        if used > self.daily_limit:
+            self.session.execute(update(QuotaUsage).where(QuotaUsage.day == day).values(units=QuotaUsage.units - units))
+            self.session.commit()
+            raise QuotaExhausted(f"Daily budget of {self.daily_limit} units reached ({used - units} used)")
         self.session.commit()
 
 

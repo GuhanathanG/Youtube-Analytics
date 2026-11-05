@@ -201,6 +201,15 @@ class QuotaUsage(Base):
     units: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class SchemaMeta(Base):
+    """Remembers which table layout the database already has, so startup is one query."""
+
+    __tablename__ = "schema_meta"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(String(200))
+
+
 class RunLog(Base):
     __tablename__ = "run_log"
 
@@ -219,10 +228,32 @@ def make_engine(url: str) -> Engine:
     return create_engine(url, **kwargs)
 
 
+def schema_fingerprint() -> str:
+    import hashlib
+
+    parts = sorted(f"{t.name}.{c.name}:{c.type}" for t in Base.metadata.sorted_tables for c in t.columns)
+    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]
+
+
 def init_db(engine: Engine) -> None:
+    """Create/upgrade tables. Fast path: one query when the layout is already current
+    (each query to a distant database costs ~0.2 s, and every command calls this)."""
+    from sqlalchemy import text
+
+    fingerprint = schema_fingerprint()
+    try:
+        with engine.connect() as conn:
+            current = conn.execute(text("SELECT value FROM schema_meta WHERE key = 'layout'")).scalar()
+        if current == fingerprint:
+            return
+    except Exception:  # table missing on a brand-new database
+        pass
     Base.metadata.create_all(engine)
     _add_missing_columns(engine)
     _lock_public_api(engine)
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM schema_meta WHERE key = 'layout'"))
+        conn.execute(text("INSERT INTO schema_meta (key, value) VALUES ('layout', :v)"), {"v": fingerprint})
 
 
 def _lock_public_api(engine: Engine) -> None:
