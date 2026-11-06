@@ -3,6 +3,7 @@
  * read-only share links (/share/[token]). In "share" mode nothing links into the private site.
  */
 import Link from "next/link";
+import { within } from "@/lib/cache";
 import type { ReactNode } from "react";
 import { HealthCard } from "./CreatorPanels";
 import { OutlierBadge, Trend, times } from "./AnalyticsParts";
@@ -34,8 +35,8 @@ const Delta = ({ now, before, unit = "" }: { now: number | null; before: number 
 export async function ChannelReport({ channelId, mode, footer }: { channelId: string; mode: "report" | "share"; footer?: ReactNode }) {
   const share = mode === "share";
   const [ch, a, health, topics, questions, ideas, brands] = await Promise.all([
-    getChannel(channelId), channelAnalytics(channelId), channelHealth(channelId), channelTopics(channelId),
-    unansweredQuestions(channelId, 5).catch(() => []), latestInsight("ideas", channelId).catch(() => null), brandTracker(channelId).catch(() => []),
+    getChannel(channelId), channelAnalytics(channelId), within(channelHealth(channelId), 20000, { score: null, grade: "–", parts: [], weekly: [] }), within(channelTopics(channelId), 10000, []),
+    within(unansweredQuestions(channelId, 5), 15000, []), within(latestInsight("ideas", channelId), 8000, null), within(brandTracker(channelId), 15000, []),
   ]);
   if (!ch) return <Empty>Channel not found.</Empty>;
   const [prev, last] = health.weekly.slice(-2);

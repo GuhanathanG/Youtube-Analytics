@@ -22,7 +22,7 @@ function makeClient() {
   return postgres(url, {
     // Supabase's transaction pooler (port 6543) does not support prepared statements.
     prepare: false,
-    max: 2,          // few connections per server copy …
+    max: 4,          // a few connections per server copy (transaction pooler, made for this) …
     idle_timeout: 5, // … released quickly when idle
     connect_timeout: 15,
     ssl: url.includes("localhost") || url.includes("127.0.0.1") ? false : "require",

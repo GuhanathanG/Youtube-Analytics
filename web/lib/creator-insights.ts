@@ -15,16 +15,25 @@ export type OpenQuestion = {
 
 /** Top-level viewer questions from the last 6 months that the creator never replied to, most liked first. */
 export function unansweredQuestions(channelId: string, limit = 40): Promise<OpenQuestion[]> {
-  return cached(`questions:${channelId}:${limit}`, TTL, async () => (await sql()`
-    select c.id, c.video_id, v.title as video_title, c.text, c.translation, c.like_count, c.reply_count, c.published_at,
-           c.author_name, split_part(split_part(coalesce(c.aspects, ''), ',', 1), ':', 1) as aspect
-    from comments c join videos v on v.id = c.video_id
-    where c.channel_id = ${channelId} and c.parent_id is null and c.is_question
-      and coalesce(c.is_spam, false) = false and coalesce(c.author_channel_id, '') <> ${channelId}
-      and c.published_at >= (now() at time zone 'utc') - interval '180 days'
-      and not exists (select 1 from comments r where r.parent_id = c.id and r.author_channel_id = ${channelId})
-    order by c.like_count desc, c.published_at desc
-    limit ${limit}`) as unknown as OpenQuestion[]);
+  return cached(`questions:${channelId}:${limit}`, TTL, async () => {
+    const db = sql();
+    // Step 1: the most-liked recent questions (uses the channel index).
+    const candidates = (await db`
+      select c.id, c.video_id, v.title as video_title, c.text, c.translation, c.like_count, c.reply_count, c.published_at,
+             c.author_name, split_part(split_part(coalesce(c.aspects, ''), ',', 1), ':', 1) as aspect
+      from comments c join videos v on v.id = c.video_id
+      where c.channel_id = ${channelId} and c.parent_id is null and c.is_question
+        and coalesce(c.is_spam, false) = false and coalesce(c.author_channel_id, '') <> ${channelId}
+        and c.published_at >= (now() at time zone 'utc') - interval '180 days'
+      order by c.like_count desc, c.published_at desc
+      limit ${limit * 4}`) as unknown as OpenQuestion[];
+    if (!candidates.length) return [];
+    // Step 2: one lookup for which of those the creator replied to.
+    const answered = new Set((await db`select distinct parent_id from comments
+      where channel_id = ${channelId} and author_channel_id = ${channelId} and parent_id in ${db(candidates.map((q) => q.id))}`)
+      .map((r) => r.parent_id as string));
+    return candidates.filter((q) => !answered.has(q.id)).slice(0, limit);
+  });
 }
 
 /* ================================================================== 7. channel health score */
@@ -49,17 +58,24 @@ async function computeHealth(channelId: string): Promise<Health> {
     select avg(sentiment_value)::float8 as v, count(*)::int as n from comments
     where channel_id = ${channelId} and sentiment_value is not null
       and published_at >= (now() at time zone 'utc') - interval '30 days'`;
-  const weekly = await db`
-    with weeks as (select generate_series(date_trunc('week', (now() at time zone 'utc')) - interval '7 weeks',
-                                          date_trunc('week', (now() at time zone 'utc')), interval '1 week') as w)
-    select to_char(w.w, 'YYYY-MM-DD') as week,
-      (select avg(sentiment_value)::float8 from comments c where c.channel_id = ${channelId}
-         and c.published_at >= w.w and c.published_at < w.w + interval '1 week') as mood,
-      (select count(*)::int from comments c where c.channel_id = ${channelId}
-         and c.published_at >= w.w and c.published_at < w.w + interval '1 week') as comments,
-      (select count(*)::int from videos v where v.channel_id = ${channelId}
-         and v.published_at >= w.w and v.published_at < w.w + interval '1 week') as uploads
-    from weeks w order by w.w`;
+  const weekRows = await db`
+    select to_char(date_trunc('week', published_at), 'YYYY-MM-DD') as week, avg(sentiment_value)::float8 as mood, count(*)::int as comments
+    from comments where channel_id = ${channelId} and published_at >= date_trunc('week', (now() at time zone 'utc')) - interval '7 weeks'
+    group by 1`;
+  const upRows = await db`
+    select to_char(date_trunc('week', published_at), 'YYYY-MM-DD') as week, count(*)::int as uploads
+    from videos where channel_id = ${channelId} and published_at >= date_trunc('week', (now() at time zone 'utc')) - interval '7 weeks'
+    group by 1`;
+  const monday = (d: Date) => {
+    const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7));
+    return x;
+  };
+  const weekly = Array.from({ length: 8 }, (_, i) => {
+    const w = monday(new Date(Date.now() - (7 - i) * 7 * 86400_000)).toISOString().slice(0, 10);
+    const r = weekRows.find((x) => x.week === w), u = upRows.find((x) => x.week === w);
+    return { week: w, mood: (r?.mood as number) ?? null, comments: (r?.comments as number) ?? 0, uploads: (u?.uploads as number) ?? 0 };
+  });
   const settled = a.videos.filter((v) => v.ageDays >= 3 && v.ageDays <= 120).slice(0, 10);
   const inputs: HealthInputs = {
     subscriberGrowthPct: subs?.first && subs.last && Number(subs.days) >= 3 ? ((subs.last - subs.first) / subs.first) * 100 * (30 / Number(subs.days)) : null,
@@ -73,7 +89,7 @@ async function computeHealth(channelId: string): Promise<Health> {
   };
   return {
     ...healthScore(inputs),
-    weekly: weekly.map((w) => ({ week: w.week as string, mood: (w.mood as number) ?? null, comments: w.comments as number, uploads: w.uploads as number })),
+    weekly,
   };
 }
 
@@ -114,12 +130,11 @@ async function computeBrands(channelId: string): Promise<BrandRow[]> {
   if (!top.length) return [];
   const pats = top.map((b) => `%${b.name.toLowerCase().replace(/[%_\\]/g, "")}%`);
   // Comment mentions and mood per brand (15 small indexed scans of this channel's last year).
-  const stats = await Promise.all(top.map(async (_, i) => {
-    const [s] = await db`select count(*)::int as n, avg(sentiment_value)::float8 as m from comments
-      where channel_id = ${channelId} and published_at >= (now() at time zone 'utc') - interval '365 days'
-        and lower(text) like ${pats[i]}`;
-    return s;
-  }));
+  const cols = pats.map((_, i) => `count(*) filter (where lower(text) like $${i + 2})::int as n${i}, ` +
+    `avg(sentiment_value) filter (where lower(text) like $${i + 2})::float8 as m${i}`).join(", ");
+  const [row] = await db.unsafe(`select ${cols} from comments where channel_id = $1
+    and published_at >= (now() at time zone 'utc') - interval '365 days'`, [channelId, ...pats]);
+  const stats = top.map((_, i) => ({ n: row?.[`n${i}`] as number, m: row?.[`m${i}`] as number | null }));
   return top.map((b, i) => ({
     name: b.name, videos: b.videos.size, sponsored: b.sponsored.size,
     mentions: (stats[i]?.n as number) ?? 0, mood: (stats[i]?.m as number) ?? null,

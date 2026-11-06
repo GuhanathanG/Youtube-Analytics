@@ -1,4 +1,5 @@
 import { Heart, Lightbulb } from "lucide-react";
+import { within } from "@/lib/cache";
 import Link from "next/link";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
@@ -14,7 +15,7 @@ type Idea = { title?: string; why?: string; requests?: number; likes?: number; e
 export default async function IdeasPage() {
   const chs = (await getChannels()).filter((c) => c.active);
   const ideas = await Promise.all(chs.map(async (c) => ({ c, ins: await latestInsight("ideas", c.id),
-    questions: await unansweredQuestions(c.id).catch(() => []) })));
+    questions: await within(unansweredQuestions(c.id), 15000, []) })));
   return (
     <>
       <PageHeader eyebrow="Content ideas" title={<>What viewers are <span className="glow-text">asking for</span></>}>

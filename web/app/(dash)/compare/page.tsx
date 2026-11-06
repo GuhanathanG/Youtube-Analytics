@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { within } from "@/lib/cache";
 import { CompareChart, SERIES } from "@/components/charts/CompareChart";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
@@ -21,7 +22,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
     ({ rows, weekly, overlap } = await compareChannels(ids));
   }
   const ordered = ids.map((id) => rows.find((r) => r.id === id)!).filter(Boolean);
-  const health = new Map(await Promise.all(ordered.map(async (r) => [r.id, await channelHealth(r.id).catch(() => null)] as const)));
+  const health = new Map(await Promise.all(ordered.map(async (r) => [r.id, await within(channelHealth(r.id), 15000, null)] as const)));
   const name = (id: string) => rows.find((r) => r.id === id)?.title ?? all.find((c) => c.id === id)?.title ?? id;
   const toggle = (id: string) => {
     const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id].slice(-4);
