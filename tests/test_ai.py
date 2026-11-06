@@ -335,8 +335,9 @@ def test_gemini_models_are_discovered_not_guessed():
 def test_new_free_providers_from_env():
     from ytanalytics.llm import slots_from_env
     slots = slots_from_env({"MISTRAL_API_KEY": "m", "CLOUDFLARE_API_KEY": "c", "CLOUDFLARE_ACCOUNT_ID": "acc1"})
-    assert [s.key for s in slots] == ["mistral/mistral-small-latest", "cloudflare/@cf/openai/gpt-oss-20b"]
-    assert slots[1].base_url == "https://api.cloudflare.com/client/v4/accounts/acc1/ai/v1/"
+    assert [s.key for s in slots] == ["mistral/mistral-small-latest", "mistral/ministral-8b-latest",
+                                      "mistral/open-mistral-nemo", "cloudflare/@cf/openai/gpt-oss-20b"]
+    assert slots[3].base_url == "https://api.cloudflare.com/client/v4/accounts/acc1/ai/v1/"
     assert all("reasoning_effort" not in s.extra for s in slots)
     # Cloudflare needs its account id too.
     assert slots_from_env({"CLOUDFLARE_API_KEY": "c"}) == []
@@ -345,3 +346,17 @@ def test_new_free_providers_from_env():
 def test_public_repo_gives_the_ai_lane_half_of_each_run(session):
     plan = plan_minutes(session, {"MONTHLY_MINUTES_BUDGET": "0", "MAX_WORK_MINUTES": "20"})
     assert plan.ai == 10.0 and plan.sync == 7.0 and plan.analyze == 3.0
+
+
+def test_busy_model_is_skipped_with_its_reason(session):
+    busy = {"message": "Service tier capacity exceeded for this model.", "code": "3505"}
+    http = FakeHTTP({
+        "mistral-small-latest": [Resp(429, {"error": busy}) for _ in range(4)],
+        "ministral-8b-latest": [ok('{"z": 1}')],
+    })
+    router = LLMRouter(session, [slot("mistral-small-latest", "mistral"), slot("ministral-8b-latest", "mistral")],
+                       http=http, sleep=lambda s: None)
+    assert router.chat_json("s", "u") == ({"z": 1}, "mistral/ministral-8b-latest")
+    assert "capacity exceeded" in router.errors["mistral/mistral-small-latest"]
+    # Not marked as used up for the day: a temporary problem, so the next run tries it again.
+    assert not session.scalars(select(LlmUsage).where(LlmUsage.model_key == "mistral/mistral-small-latest")).one().exhausted
