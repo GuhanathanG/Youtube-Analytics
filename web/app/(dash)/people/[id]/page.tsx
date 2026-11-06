@@ -18,7 +18,7 @@ export default async function PersonPage({ params, searchParams }: {
   const { id } = await params;
   const sp = await searchParams;
   if (!/^UC[\w-]{2,40}$/.test(id)) notFound();
-  const channelId = sp.c && /^UC[\w-]{22}$/.test(sp.c) ? sp.c : null;
+  const channelId = sp.c && /^(UC[\w-]{22}|ig_[a-z0-9._]{1,30})$/.test(sp.c) ? sp.c : null;
   const order = sp.sort === "most_liked" ? "most_liked" : "newest";
   const page = Math.max(1, Math.min(200, Number(sp.page ?? 1) || 1));
   const [stats, list] = await Promise.all([personStats(id, channelId), personComments(id, channelId, order, page)]);

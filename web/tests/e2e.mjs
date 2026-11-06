@@ -51,7 +51,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100",
-    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0" },
+    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0" },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true, // own process group, so the whole server tree can be stopped
 });
@@ -242,6 +242,20 @@ try {
     anH.includes("Channel health") && /Excellent|Healthy|Fair|Needs attention/.test(anH) && anH.includes("PhoneX"));
   const cmpH = await (await get(`/compare?c=${ch.id}&c=${"UC" + "y".repeat(18) + "twoo"}`)).text();
   check("compare shows each channel's health score", cmpH.includes("Health score"));
+
+  // Channels never mix: the channel picked in the top bar scopes Overview, Comments and Ideas
+  const as = (focus) => ({ headers: { cookie: `${cookie}; cp_focus=${focus}` }, redirect: "manual" });
+  const ov2 = await (await fetch(`${BASE}/`, as(second))).text();
+  check("Overview for one channel shows only that channel's comments", ov2.includes("also here") && !ov2.includes("love it"));
+  const ov1 = await (await fetch(`${BASE}/`, as(ch.id))).text();
+  check("…and the other channel shows only its own", ov1.includes("love it") && !ov1.includes("also here"));
+  check("the top bar offers a channel switcher", ov1.includes("Channel shown across the site") && ov1.includes("All channels (combined)"));
+  const cm = await (await fetch(`${BASE}/comments`, as(second))).text();
+  check("Comments opens on the chosen channel", cm.includes("also here") && !cm.includes("love it"));
+  const id2 = await (await fetch(`${BASE}/ideas`, as(second))).text();
+  check("Ideas shows only the chosen channel's questions", !id2.includes("Which mic do you use for outdoor shoots?"));
+  const allC = await (await fetch(`${BASE}/comments?channel=all&q=also%20here`, as(second))).text();
+  check("'All channels' is still available when chosen", allC.includes("also here"));
 
   // Thumbnail analysis (on the video-analysis timer), weekly report, share links
   await db`update videos set thumbnail_url = 'http://localhost:4100/thumbs/' || id || '/hqdefault.jpg' where channel_id = ${ch.id}`;

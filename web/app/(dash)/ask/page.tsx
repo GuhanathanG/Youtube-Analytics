@@ -2,6 +2,7 @@ import { ChatView } from "@/components/ChatView";
 import { PageHeader } from "@/components/ui";
 import { getThread, listThreads } from "@/lib/chat";
 import { channels as getChannels } from "@/lib/queries";
+import { focusChannel } from "@/lib/focus";
 
 export const metadata = { title: "Ask AI" };
 export const maxDuration = 60;
@@ -16,7 +17,7 @@ export default async function AskPage({ searchParams }: { searchParams: Promise<
       </PageHeader>
       <ChatView key={current?.thread.id ?? "new"} threads={threads} threadId={current?.thread.id ?? null}
         messages={current?.messages ?? []} channels={chs.map((c) => ({ id: c.id, title: c.title }))}
-        threadChannel={current?.thread.channel_id ?? null} />
+        threadChannel={current ? current.thread.channel_id ?? null : await focusChannel(chs.filter((c) => c.active).map((c) => c.id))} />
     </div>
   );
 }

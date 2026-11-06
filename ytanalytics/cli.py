@@ -70,8 +70,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd != "db-health":  # the health report only reads; never change tables for it
         init_db(engine)
     if args.cmd in ("sync", "init-db"):
-        from .db import guard_website_queries
+        from .db import ensure_extra_indexes, guard_website_queries
         guard_website_queries(engine)
+        ensure_extra_indexes(engine)
     Session = make_session_factory(engine)
 
     with Session() as session:

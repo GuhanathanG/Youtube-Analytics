@@ -76,6 +76,14 @@ export async function addInstagram(_: { ok?: string; error?: string } | undefine
   }
 }
 
+/** Top-bar channel switcher: remember the channel the site should focus on ("all" = combined). */
+export async function setFocus(channelId: string) {
+  await requireSession();
+  const { FOCUS_COOKIE } = await import("@/lib/focus");
+  (await cookies()).set(FOCUS_COOKIE, channelId.slice(0, 80), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 365 * 86400, path: "/" });
+  revalidatePath("/", "layout");
+}
+
 export async function runFullSync(): Promise<{ ok: boolean; message: string }> {
   await requireSession();
   return startFullSync();

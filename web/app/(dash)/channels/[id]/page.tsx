@@ -1,6 +1,8 @@
 import { ExternalLink, Play } from "lucide-react";
 import { channelUrl, isInstagram } from "@/lib/platform";
-import { cached, within } from "@/lib/cache";
+import { within } from "@/lib/cache";
+import { Suspense } from "react";
+import { panel } from "@/lib/panels";
 import Link from "next/link";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { creatorMemory } from "@/lib/memory";
@@ -12,15 +14,11 @@ import { MixBar } from "@/components/charts/MixBar";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { InsightPanel } from "@/components/InsightPanel";
 import { NewVideosPanel, SuperfansPanel, TopicTrendsPanel } from "@/components/FeaturePanels";
-import { commenters, predictions, topicTrends } from "@/lib/features";
 import { RangeTabs, rangeSince } from "@/components/RangeTabs";
 import { Reveal } from "@/components/Reveal";
 import { Empty, Panel, Stat, Tag } from "@/components/ui";
 import { compact, date, duration, score } from "@/lib/format";
-import {
-  aspectCounts, channel as getChannel, channelSnapshots, dailySentiment, emotionCounts, languageCounts,
-  latestInsight, sentimentMix, videos as getVideos,
-} from "@/lib/queries";
+import { channel as getChannel, channelSnapshots, latestInsight, videos as getVideos } from "@/lib/queries";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const c = await getChannel((await params).id);
@@ -28,24 +26,16 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 export default async function ChannelPage({ params, searchParams }:
-  { params: Promise<{ id: string }>; searchParams: Promise<{ range?: string }> }) {
+  { params: Promise<{ id: string }>; searchParams: Promise<{ range?: string; all?: string }> }) {
   const { id } = await params;
-  const { key, since } = rangeSince((await searchParams).range);
+  const sp = await searchParams;
+  const { key } = rangeSince(sp.range);
   const c = await getChannel(id);
   if (!c) notFound();
-  const f = { channelId: id, since };
-  // Heavy counts are remembered for 2 minutes and give up after 12 s, so the page always opens.
-  const safe = <T,>(name: string, fn: () => Promise<T>, fallback: T) => within(cached(`ch:${id}:${key}:${name}`, Number(process.env.PAGE_CACHE_SECONDS ?? 600) * 1000, fn), 12_000, fallback);
   const emptyMix = { positive: 0, neutral: 0, negative: 0, pending: 0 };
-  const [insight, mix, daily, langs, emos, aspects, snaps, vids] = await Promise.all([
-    within(latestInsight("channel", id), 8000, null), safe("mix", () => sentimentMix(f), emptyMix), safe("daily", () => dailySentiment(f), []),
-    safe("langs", () => languageCounts(f), []), safe("emos", () => emotionCounts(f), []),
-    safe("aspects", () => aspectCounts(f), []), within(channelSnapshots(id), 8000, []), getVideos(id),
-  ]);
-  const [people, trend, preds, memory] = await Promise.all([
-    safe("people", () => commenters(id), { top: [], superfans: [], critics: [] }), safe("trend", () => topicTrends(id), { months: [], series: [], rising: [] }),
-    safe("preds", () => predictions(id), []), within(creatorMemory(id), 10000, { profile: null, months: [] })]);
+  const mix = await within(panel("mix", id, key), 6000, emptyMix);
 
+  // The header shows straight away; each section below appears as soon as its data is ready.
   return (
     <>
       <Reveal>
@@ -79,6 +69,29 @@ export default async function ChannelPage({ params, searchParams }:
         <Reveal delay={0.15}><Stat label="Sentiment score" value={Math.round((c.avg_sentiment ?? 0) * 100)} format="signed" hint="−100 … +100" /></Reveal>
       </div>
 
+      <Suspense fallback={<SectionSkeleton rows={2} />}><Signals id={id} range={key} /></Suspense>
+      <Suspense fallback={<SectionSkeleton rows={2} />}><AudienceSections id={id} /></Suspense>
+      <Suspense fallback={<SectionSkeleton rows={1} />}><VideoTable id={id} all={sp.all === "1"} /></Suspense>
+    </>
+  );
+}
+
+function SectionSkeleton({ rows }: { rows: number }) {
+  return (
+    <div className="mt-6 grid gap-4 xl:grid-cols-3" aria-busy="true">
+      {Array.from({ length: rows * 3 }, (_, i) => <div key={i} className={`panel h-56 animate-pulse bg-white/[0.02] ${i % 3 === 0 ? "xl:col-span-2" : ""}`} />)}
+    </div>
+  );
+}
+
+async function Signals({ id, range: key }: { id: string; range: string }) {
+  const [insight, daily, langs, emos, aspects, memory] = await Promise.all([
+    within(latestInsight("channel", id), 8000, null), within(panel("daily", id, key), 12_000, []),
+    within(panel("langs", id, key), 12_000, []), within(panel("emos", id, key), 12_000, []),
+    within(panel("aspects", id, key), 12_000, []), within(creatorMemory(id), 10000, { profile: null, months: [] }),
+  ]);
+  return (
+    <>
       <Reveal delay={0.1} className="mt-6"><InsightPanel insight={insight} scope="channel" /></Reveal>
       <Reveal delay={0.1} className="mt-6"><MemoryPanel profile={memory.profile} months={memory.months} /></Reveal>
 
@@ -111,6 +124,18 @@ export default async function ChannelPage({ params, searchParams }:
         </Reveal>
       </div>
 
+    </>
+  );
+}
+
+async function AudienceSections({ id }: { id: string }) {
+  const [people, trend, preds, snaps] = await Promise.all([
+    within(panel("people", id), 12_000, { top: [], superfans: [], critics: [] }),
+    within(panel("trend", id), 12_000, { months: [], series: [], rising: [] }),
+    within(panel("preds", id), 12_000, []), within(channelSnapshots(id), 8000, []),
+  ]);
+  return (
+    <>
       {preds.length > 0 && <Reveal delay={0.1} className="mt-4"><NewVideosPanel preds={preds} /></Reveal>}
       <Reveal delay={0.1} className="mt-4"><TopicTrendsPanel trend={trend} /></Reveal>
       <Reveal delay={0.1} className="mt-4"><SuperfansPanel top={people.top} superfans={people.superfans} critics={people.critics} channelId={id} /></Reveal>
@@ -122,8 +147,18 @@ export default async function ChannelPage({ params, searchParams }:
         </div>
       )}
 
+    </>
+  );
+}
+
+const VIDEO_ROWS = 60;
+async function VideoTable({ id, all }: { id: string; all: boolean }) {
+  const everything = await within(getVideos(id), 12_000, []);
+  const vids = all ? everything : everything.slice(0, VIDEO_ROWS);
+  return (
+    <>
       <Reveal delay={0.1} className="mt-6">
-        <Panel title="Videos" subtitle={`${vids.length} videos · newest first`}>
+        <Panel title="Videos" subtitle={`${everything.length} videos · newest first`}>
           {vids.length === 0 ? <Empty>Videos appear after the next sync run.</Empty> : (
             <div className="scrollbar-thin -mx-2 overflow-x-auto">
               <table className="w-full min-w-[760px] border-separate border-spacing-y-1 text-[13.5px]">
@@ -163,6 +198,11 @@ export default async function ChannelPage({ params, searchParams }:
           )}
         </Panel>
       </Reveal>
+      {!all && everything.length > VIDEO_ROWS && (
+        <div className="mt-3 text-center">
+          <Link href={`/channels/${id}?all=1`} scroll={false} className="text-[13px] text-accent hover:underline">Show all {everything.length} videos</Link>
+        </div>
+      )}
     </>
   );
 }
