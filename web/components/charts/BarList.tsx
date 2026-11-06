@@ -1,5 +1,5 @@
 /** Ranked horizontal bars with direct labels (languages, emotions…). Max 8 rows; the rest folds into "Other". */
-export function BarList({ rows, color = "#22d3ee", empty }: { rows: { label: string; value: number; hint?: string }[]; color?: string; empty?: string }) {
+export function BarList({ rows, color = "#c8a97e", empty }: { rows: { label: string; value: number; hint?: string }[]; color?: string; empty?: string }) {
   if (!rows.length) return <p className="text-[13px] text-ink-3">{empty ?? "Nothing yet."}</p>;
   let list = rows;
   if (rows.length > 8) {

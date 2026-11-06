@@ -34,22 +34,22 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
           const jobs: Job[] = [
             { key: "videos", label: "Find every video", done: p.videos_known, total: Math.max(p.videos_total ?? 0, p.videos_known), left: videosLeft,
               perHour: videosLeft ? 3000 / Math.max(1, rows.filter((r) => r.videos_total && r.videos_total > r.videos_known).length) : 0, unit: "videos",
-              note: "about 100 videos every 2 minutes (estimate)", color: "#8b7cf6" },
+              note: "about 100 videos every 2 minutes (estimate)", color: "#9c8467" },
             { key: "comments", label: "Download comment history", done: p.comments_stored, total: Math.max(p.comments_on_youtube, p.comments_stored), left: commentsLeft,
-              perHour: p.saved_last_hour, unit: "comments", note: `${fmt(p.saved_last_hour)}/hour`, color: "#22d3ee" },
+              perHour: p.saved_last_hour, unit: "comments", note: `${fmt(p.saved_last_hour)}/hour`, color: "#c8a97e" },
             { key: "sentiment", label: "Sentiment & language (local model)", done: p.sentiment_done, total: Math.max(p.comments_stored, p.sentiment_done),
               left: Math.max(0, p.comments_stored - p.sentiment_done) + commentsLeft, perHour: p.sentiment_last_hour, unit: "comments",
-              note: `${fmt(p.sentiment_last_hour)}/hour · runs every 30 min`, color: "#0ca30c" },
+              note: `${fmt(p.sentiment_last_hour)}/hour · runs every 30 min`, color: "#8db39a" },
             { key: "ai", label: "AI reads every comment", done: p.ai_read, total: Math.max(p.comments_stored, p.ai_read),
               left: Math.max(0, p.comments_stored - p.ai_read) + commentsLeft, perHour: p.ai_last_hour, unit: "comments",
-              note: `${fmt(p.ai_last_hour)}/hour`, color: "#3987e5" },
+              note: `${fmt(p.ai_last_hour)}/hour`, color: "#8db39a" },
           ];
           if (p.videos_to_watch != null) jobs.push({ key: "watch", label: "AI watches new videos (30 days)", done: 0, total: 0, left: p.videos_to_watch,
-            perHour: (p.watch_per_hour ?? 0) / share("videos_to_watch"), unit: "videos", note: "about 1 every 2 hours", color: "#fab219" });
+            perHour: (p.watch_per_hour ?? 0) / share("videos_to_watch"), unit: "videos", note: "about 1 every 2 hours", color: "#d3a657" });
           if (p.thumbs_to_check != null) jobs.push({ key: "thumbs", label: "AI checks thumbnails", done: 0, total: 0, left: p.thumbs_to_check,
-            perHour: (p.thumbs_per_hour ?? 0) / share("thumbs_to_check"), unit: "thumbnails", note: "25 every 2 hours", color: "#e66767" });
+            perHour: (p.thumbs_per_hour ?? 0) / share("thumbs_to_check"), unit: "thumbnails", note: "25 every 2 hours", color: "#c98479" });
           if (p.months_to_remember != null) jobs.push({ key: "memory", label: "Creator Memory (months)", done: 0, total: 0, left: p.months_to_remember,
-            perHour: (p.memory_per_hour ?? 0) / share("months_to_remember"), unit: "months", note: "about 6 an hour across channels", color: "#8b7cf6" });
+            perHour: (p.memory_per_hour ?? 0) / share("months_to_remember"), unit: "months", note: "about 6 an hour across channels", color: "#9c8467" });
           const finishes = jobs.map((j) => finishAt(j.left, j.perHour, now));
           const overall = finishes.some((f) => f === null) ? null : Math.max(0, ...(finishes as number[]));
           const allDone = jobs.every((j) => j.left <= 0);

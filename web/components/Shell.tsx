@@ -36,7 +36,7 @@ function FocusSwitcher({ channels, focus }: { channels: NavChannel[]; focus: str
   return (
     <select aria-label="Channel shown across the site" value={focus ?? "all"} disabled={pending}
       onChange={(e) => { const v = e.target.value; start(async () => { await setFocus(v); router.refresh(); }); }}
-      className="h-10 min-w-0 flex-1 truncate rounded-xl border border-accent/40 bg-accent/10 px-3 text-[13.5px] text-ink outline-none sm:max-w-[240px] sm:flex-none">
+      className="h-10 min-w-0 flex-1 truncate rounded-full border border-line-2 bg-panel px-4 text-[13.5px] text-ink outline-none transition hover:border-accent/50 sm:max-w-[260px] sm:flex-none">
       {active.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
       <option value="all">All channels (combined)</option>
     </select>
@@ -52,13 +52,13 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
   return (
     <div className="min-h-dvh lg:pl-[260px]">
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[260px] flex-col border-r border-line bg-[#05070d]/70 px-4 py-5 backdrop-blur-xl lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[260px] flex-col border-r border-line bg-bg px-4 py-6 lg:flex">
         <Link href="/" className="px-2"><Logo /></Link>
         <nav className="mt-8 space-y-1">
           {NAV.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href}
-              className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] transition ${isActive(href) ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
-              {isActive(href) && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-accent shadow-[0_0_12px_#22d3ee]" />}
+              className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[14px] transition ${isActive(href) ? "bg-white/[0.035] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
+              {isActive(href) && <span className="absolute left-0 top-2.5 bottom-2.5 w-px bg-accent" />}
               <Icon size={17} className={isActive(href) ? "text-accent" : ""} />{label}
             </Link>
           ))}
@@ -74,7 +74,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
                 <img src={c.thumb} alt="" className="h-6 w-6 rounded-full object-cover ring-1 ring-white/10" />
               ) : <span className="grid h-6 w-6 place-items-center rounded-full bg-white/10 text-[11px]">{c.title.slice(0, 1)}</span>}
               <span className="truncate">{c.title}</span>
-              {!c.active ? <span className="ml-auto text-[10px] text-ink-3">paused</span> : c.rival ? <span className="ml-auto font-mono text-[9.5px] tracking-wider text-accent-2">RIVAL</span> : null}
+              {!c.active ? <span className="ml-auto text-[10px] text-ink-3">paused</span> : c.rival ? <span className="ml-auto text-[9.5px] font-medium uppercase tracking-[0.14em] text-accent-2">Rival</span> : null}
             </Link>
           ))}
         </div>
@@ -86,7 +86,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
       </aside>
 
       {/* Top bar */}
-      <header className="safe-top sticky top-0 z-20 flex h-16 box-content items-center gap-3 border-b border-line bg-[#05070d]/60 px-4 backdrop-blur-xl sm:px-8">
+      <header className="safe-top sticky top-0 z-20 flex h-16 box-content items-center gap-3 border-b border-line bg-bg/85 px-4 backdrop-blur-md sm:px-8">
         <Link href="/" className="shrink-0 lg:hidden" aria-label="Overview"><Logo size={28} compact /></Link>
         <FocusSwitcher channels={channels} focus={focus} />
         <button onClick={() => setOpen(true)}
@@ -100,7 +100,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
       <main className="safe-main mx-auto max-w-[1400px] px-4 pt-6 sm:px-8 sm:pt-8">{children}</main>
 
       {/* Mobile bottom nav */}
-      <nav className="safe-bottom fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-[#0a0e1a]/85 p-1.5 backdrop-blur-xl lg:hidden">
+      <nav className="safe-bottom fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-panel/95 p-1.5 backdrop-blur-md lg:hidden">
         {MOBILE_NAV.map(({ href, label, icon: Icon }) => (
           <Link key={href} href={href} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${isActive(href) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
             <Icon size={18} className={isActive(href) ? "text-accent" : ""} />{label}
@@ -116,7 +116,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
       {more && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="All pages">
           <button aria-label="Close" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMore(false)} />
-          <div className="safe-bottom absolute inset-x-3 bottom-3 rounded-2xl border border-line-2 bg-[#0a0e1a] p-3 shadow-2xl">
+          <div className="safe-bottom absolute inset-x-3 bottom-3 rounded-2xl border border-line-2 bg-[#141416] p-3 shadow-2xl">
             <div className="mb-1 flex items-center justify-between px-2 py-1">
               <span className="label">All pages</span>
               <button onClick={() => setMore(false)} aria-label="Close menu" className="rounded-lg p-1.5 text-ink-3 hover:text-ink"><X size={18} /></button>

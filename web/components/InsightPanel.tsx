@@ -41,7 +41,7 @@ export function InsightPanel({ insight, scope }: { insight: Insight | null; scop
     <section className="panel relative overflow-hidden p-6">
       <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-accent-2/20 blur-3xl" />
       <div className="relative flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 font-[family-name:var(--font-display)] text-[16px] font-semibold">
+        <div className="flex items-center gap-2 text-[16px] font-medium">
           <Sparkles size={17} className="text-accent" />AI briefing
         </div>
         {typeof d.mood === "string" && <Tag tone="accent">{d.mood}</Tag>}
@@ -71,7 +71,7 @@ export function InsightPanel({ insight, scope }: { insight: Insight | null; scop
           <div className="label mb-2">What people talk about</div>
           <div className="grid gap-2 sm:grid-cols-2">
             {topics.slice(0, 6).map((t, i) => {
-              const color = t.sentiment === "positive" ? "#3987e5" : t.sentiment === "negative" ? "#e66767" : "#8a8f9c";
+              const color = t.sentiment === "positive" ? "#8db39a" : t.sentiment === "negative" ? "#c98479" : "#8a8f9c";
               return (
                 <div key={i} className="rounded-xl border border-line bg-white/[0.02] p-3">
                   <div className="flex items-center justify-between gap-3 text-[13.5px]">

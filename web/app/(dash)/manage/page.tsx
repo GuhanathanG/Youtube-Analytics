@@ -29,11 +29,11 @@ const REPO_ACTIONS = "https://github.com/GuhanathanG/Youtube-Analytics/actions/w
 
 function Meter({ label, used, total, unit }: { label: string; used: number; total: number; unit: string }) {
   const p = Math.min(100, (used / total) * 100);
-  const color = p > 90 ? "#e66767" : p > 70 ? "#fab219" : "#22d3ee";
+  const color = p > 90 ? "#c98479" : p > 70 ? "#d3a657" : "#c8a97e";
   return (
     <div className="rounded-xl border border-line bg-white/[0.02] p-4">
       <div className="label">{label}</div>
-      <div className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold tabular">
+      <div className="mt-2 text-2xl font-light tabular">
         {used.toLocaleString("en")}<span className="text-[14px] font-normal text-ink-3"> / {total.toLocaleString("en")} {unit}</span>
       </div>
       <div className="mt-3 h-1.5 rounded-full bg-white/5">

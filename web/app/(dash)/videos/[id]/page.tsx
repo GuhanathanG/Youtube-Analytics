@@ -88,7 +88,7 @@ export default async function VideoPage({ params, searchParams }:
           </div>
           <div className="flex flex-col justify-center">
             <div className="label">{isInstagram(id) ? "Instagram post" : "Video"} · {date(v.published_at)} {v.duration && `· ${duration(v.duration)}`}</div>
-            <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">{v.title}</h1>
+            <h1 className="mt-2 font-serif-display text-[30px] leading-tight sm:text-[36px]">{v.title}</h1>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <Stat label="Views" value={v.view_count ?? 0} accent />
               <Stat label="Likes" value={v.like_count ?? 0} />
@@ -103,13 +103,13 @@ export default async function VideoPage({ params, searchParams }:
 
       {mine && (
         <Reveal className="mt-6"><section className="panel p-5">
-          <div className="font-mono text-[10.5px] tracking-[0.3em] text-accent">PRIVATE ANALYTICS · LAST 28 DAYS</div>
+          <div className="label text-accent">Private analytics · last 28 days</div>
           <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {([["Views", mine.views.toLocaleString("en")], ["Watch time", `${Math.round(mine.minutes / 60).toLocaleString("en")} h`],
               ["Avg view", `${Math.floor(mine.avgViewDuration / 60)}:${String(Math.round(mine.avgViewDuration % 60)).padStart(2, "0")}`],
               ["Avg % watched", `${mine.avgViewPct.toFixed(0)}%`]] as [string, string][]).map(([k, val]) => (
               <div key={k} className="rounded-xl border border-accent/20 bg-accent/[0.04] px-3 py-2.5"><div className="label">{k}</div>
-                <div className="mt-1 font-[family-name:var(--font-display)] text-[18px] font-semibold tabular">{val}</div></div>
+                <div className="mt-1 text-[18px] font-light tabular">{val}</div></div>
             ))}
           </div>
           {owner && owner.totals.avgViewPct !== null && (
@@ -136,7 +136,7 @@ export default async function VideoPage({ params, searchParams }:
           {aspects.length ? <AspectChart data={aspects} /> : <Empty>Appears after the AI has read comments.</Empty>}
         </Panel>
         <Panel title="Emotions">
-          <BarList color="#8b7cf6" rows={emos.filter((e) => e.emotion !== "neutral").map((e) => ({ label: `${e.icon} ${e.emotion}`, value: e.comments }))}
+          <BarList color="#9c8467" rows={emos.filter((e) => e.emotion !== "neutral").map((e) => ({ label: `${e.icon} ${e.emotion}`, value: e.comments }))}
             empty="Appears after the AI has read comments." />
         </Panel>
       </div>

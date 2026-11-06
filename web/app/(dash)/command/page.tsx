@@ -48,8 +48,8 @@ async function Moves({ id, title, subs, comments }: { id: string; title: string;
           <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center">
             <RingGauge value={health?.score ?? null} label="HEALTH" />
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-[0.3em] text-accent"><Sparkles size={13} />AI BRIEF</div>
-              <h2 className="mt-2 font-[family-name:var(--font-display)] text-[22px] font-semibold leading-snug tracking-tight sm:text-[26px]">
+              <div className="label flex items-center gap-2 text-accent"><Sparkles size={13} />Today&apos;s brief</div>
+              <h2 className="mt-3 font-serif-display text-[28px] leading-[1.15] text-ink sm:text-[34px]">
                 {brief?.headline ?? (moves[0] ? moves[0].title : "All clear for now")}
               </h2>
               <p className="mt-2 max-w-3xl text-[14.5px] leading-relaxed text-ink-2">
@@ -67,28 +67,28 @@ async function Moves({ id, title, subs, comments }: { id: string; title: string;
       </Reveal>
 
       {moves.length === 0 ? <div className="mt-6"><Empty>No moves yet: they appear once there are enough videos and comments to learn from.</Empty></div> : (
-        <ol className="mt-6 grid gap-4 lg:grid-cols-2">
+        <ol className="mt-8 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel">
           {moves.map((m, k) => (
-            <Reveal key={m.id} delay={Math.min(k * 0.04, 0.3)}>
-              <li className="panel panel-hover flex h-full flex-col p-5">
+            <li key={m.id} className="group grid gap-4 p-5 transition-colors hover:bg-white/[0.015] sm:grid-cols-[56px_minmax(0,1fr)_auto] sm:items-start sm:p-7">
+              <span className="font-serif-display text-[34px] leading-none text-accent/80 tabular">{String(k + 1).padStart(2, "0")}</span>
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="grid h-8 w-8 place-items-center rounded-xl bg-accent/12 font-mono text-[13px] text-accent ring-1 ring-accent/30">{String(k + 1).padStart(2, "0")}</span>
-                  <span className="chip">{KIND[m.kind].glyph} {KIND[m.kind].label}</span>
-                  <span className={`chip ${m.impact === 3 ? "chip-hi" : m.impact === 2 ? "chip-mid" : ""}`}>impact {LEVEL[m.impact]}</span>
-                  <span className="chip">effort {LEVEL[m.effort]}</span>
+                  <span className="label">{KIND[m.kind].label}</span>
+                  <span className="text-ink-3">·</span>
+                  <span className={`text-[11.5px] ${m.impact === 3 ? "text-accent" : "text-ink-2"}`}>{LEVEL[m.impact]} impact</span>
+                  <span className="text-ink-3">·</span>
+                  <span className="text-[11.5px] text-ink-3">{LEVEL[m.effort]} effort</span>
                 </div>
-                <h3 className="mt-3 font-[family-name:var(--font-display)] text-[17px] font-semibold leading-snug tracking-tight">{m.title}</h3>
-                <p className="mt-1.5 text-[13.5px] leading-relaxed text-ink-2">{m.why}</p>
+                <h3 className="mt-2 text-[18px] font-medium leading-snug tracking-tight text-ink">{m.title}</h3>
+                <p className="mt-1.5 max-w-3xl text-[14px] leading-relaxed text-ink-2">{m.why}</p>
                 <ul className="mt-3 space-y-1">
                   {m.evidence.map((e) => (
-                    <li key={e} className="flex gap-2 text-[12.5px] text-ink-3"><span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-accent" />{e}</li>
+                    <li key={e} className="flex gap-2.5 text-[12.5px] text-ink-3"><span className="mt-[8px] h-px w-3 shrink-0 bg-accent/60" />{e}</li>
                   ))}
                 </ul>
-                <div className="mt-auto pt-4">
-                  <Link href={m.href} className="btn-neon">{m.cta}<ArrowRight size={14} /></Link>
-                </div>
-              </li>
-            </Reveal>
+              </div>
+              <Link href={m.href} className="btn-ghost justify-self-start whitespace-nowrap sm:mt-1">{m.cta}<ArrowRight size={14} /></Link>
+            </li>
           ))}
         </ol>
       )}

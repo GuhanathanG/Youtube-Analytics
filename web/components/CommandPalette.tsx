@@ -36,7 +36,7 @@ export function CommandPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
   return (
     <Command.Dialog open={open} onOpenChange={setOpen} label="Search" shouldFilter={false}
       overlayClassName="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
-      contentClassName="fixed left-1/2 top-[12vh] z-50 w-[min(640px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-2xl border border-line-2 bg-[#0a0e1a]/95 shadow-[0_30px_80px_-20px_rgba(34,211,238,0.25)] backdrop-blur-xl">
+      contentClassName="fixed left-1/2 top-[12vh] z-50 w-[min(640px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-2xl border border-line-2 bg-[#141416]/95 shadow-[0_30px_80px_-20px_rgba(200,169,126,0.25)] backdrop-blur-xl">
       <div className="flex items-center gap-3 border-b border-line px-4">
         <Search size={18} className="text-accent" />
         <Command.Input value={q} onValueChange={setQ} placeholder="Search channels, videos, pages…"
