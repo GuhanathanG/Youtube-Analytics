@@ -454,6 +454,14 @@ try {
   check("…and only once per window", sent.telegram.filter((m) => String(m.text).includes("Background job stopped")).length === 1);
   await db`update run_log set started_at = (now() at time zone 'utc')`;
 
+  // Pulse Glance: the widget-style home-screen app
+  const gl = await (await get("/glance")).text();
+  check("Glance shows every channel with its mood, the dock and its own home-screen manifest",
+    gl.includes("PULSE // GLANCE") && gl.includes("Live Creator") && gl.includes("MOOD") && gl.includes("Ask AI") && gl.includes("/glance.webmanifest"));
+  check("Glance needs sign-in", (await get("/glance", false)).status === 307);
+  const gm = await (await fetch(`${BASE}/glance.webmanifest`)).json().catch(() => ({}));
+  check("Glance installs as its own app (opens on /glance)", gm.start_url === "/glance" && gm.short_name === "Glance");
+
   // iPhone widget: read-only numbers with its own key (shown on Manage), refused without it
   const mgW = await (await get("/manage")).text();
   check("Manage shows the iPhone widget setup", mgW.includes("iPhone widget") && mgW.includes("Copy widget script"));

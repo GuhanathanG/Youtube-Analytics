@@ -40,7 +40,7 @@ export async function checkWidgetToken(key: string | null): Promise<boolean> {
 }
 
 export type WidgetChannel = {
-  id: string; title: string; platform: "youtube" | "instagram"; followers: number | null; comments: number; comments24h: number;
+  id: string; title: string; thumb: string | null; platform: "youtube" | "instagram"; followers: number | null; comments: number; comments24h: number;
   sentiment: number | null; positive: number; neutral: number; negative: number; aiRead: number;
 };
 export type WidgetData = { at: string; engine: string | null; engineAt: string | null; channels: WidgetChannel[] };
@@ -52,7 +52,7 @@ export async function widgetData(channelId?: string | null): Promise<WidgetData>
     const analysed = c.positive + c.neutral + c.negative;
     const pct = (n: number) => (analysed ? Math.round((n / analysed) * 100) : 0);
     return {
-      id: c.id, title: c.title, platform: c.id.startsWith("ig_") ? "instagram" : "youtube",
+      id: c.id, title: c.title, thumb: c.thumbnail_url, platform: c.id.startsWith("ig_") ? "instagram" : "youtube",
       followers: c.subscriber_count, comments: c.comments, comments24h: s?.comments_24h ?? 0,
       sentiment: c.avg_sentiment === null ? null : Math.round(c.avg_sentiment * 100),
       positive: pct(c.positive), neutral: pct(c.neutral), negative: pct(c.negative),

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChartNoAxesCombined, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
+import { ChartNoAxesCombined, Gauge, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
@@ -19,6 +19,7 @@ const NAV = [
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/ideas", label: "Ideas", icon: Lightbulb },
   { href: "/manage", label: "Manage", icon: Settings2 },
+  { href: "/glance", label: "Glance", icon: Gauge },
 ];
 // The phone bar has room for four items plus search.
 const MOBILE_NAV = NAV.filter((n) => ["/", "/analytics", "/ask", "/comments"].includes(n.href));
