@@ -124,7 +124,7 @@ export default async function ManagePage() {
       <Reveal className="mt-4">
         <Panel title="iPhone widget" subtitle="Live mood, comments today and followers on your home screen (refreshes about every 15 minutes)">
           {widgetScript ? <WidgetSetup script={widgetScript} /> : <p className="text-[13px] text-ink-2">The widget key couldn&apos;t be loaded right now; reload the page.</p>}
-          <p className="mt-3 text-[12.5px] text-ink-3">For the full app: open this site in Safari → Share → <b>Add to Home Screen</b>. It opens full-screen with its own icon and stays signed in for 30 days.</p>
+          <p className="mt-3 text-[12.5px] text-ink-3"><b>Pulse Glance</b> (widget-style app): open <Link href="/glance" className="text-accent">/glance</Link> in Safari → Share → <b>Add to Home Screen</b>. You get a separate “Glance” icon that opens straight into the live view. For the full site do the same from any other page.</p>
         </Panel>
       </Reveal>
 

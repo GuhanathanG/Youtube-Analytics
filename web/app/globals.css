@@ -187,3 +187,21 @@ input, select, textarea {
 /* Grid/flex children may shrink below their content (long words, links): no sideways scrolling on phones */
 .reveal { min-width: 0; }
 .panel { overflow-wrap: anywhere; }
+
+/* ---------- Pulse Glance (futuristic widget view) ---------- */
+.glance { background: radial-gradient(120% 60% at 50% -10%, rgba(34, 211, 238, 0.14), transparent 60%),
+  radial-gradient(80% 50% at 100% 30%, rgba(139, 124, 246, 0.12), transparent 60%), #03040a; }
+.glance-card { border-radius: 22px; background: linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+  border: 1px solid rgba(34, 211, 238, 0.22); box-shadow: 0 0 0 1px rgba(139,124,246,0.08) inset, 0 18px 50px -20px rgba(34,211,238,0.35);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.glance-grid { position: absolute; inset: 0; opacity: 0.35; pointer-events: none;
+  background-image: linear-gradient(rgba(34,211,238,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(34,211,238,0.07) 1px, transparent 1px);
+  background-size: 22px 22px; mask-image: radial-gradient(90% 70% at 80% 0%, black, transparent 75%); }
+.glance-key { border-radius: 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); transition: transform .15s, border-color .15s; }
+.glance-key:active { transform: scale(0.96); border-color: rgba(34,211,238,0.5); }
+.glance-pill { border-radius: 999px; padding: 4px 10px; border: 1px solid rgba(34,211,238,0.3); color: #b4f3fc; background: rgba(34,211,238,0.06); }
+.glance-chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 10px; color: #b4f3fc;
+  border: 1px solid rgba(34,211,238,0.35); background: rgba(34,211,238,0.08); box-shadow: 0 0 18px -6px rgba(34,211,238,0.7); }
+.glance-chip-warn { color: #fde3a0; border-color: rgba(250,178,25,0.4); background: rgba(250,178,25,0.08); box-shadow: none; }
+.glance-live { border: 1px solid rgba(230,103,103,0.45); background: rgba(230,103,103,0.08); box-shadow: 0 0 22px -8px rgba(230,103,103,0.8); }
+.glance-rail { scrollbar-width: none; } .glance-rail::-webkit-scrollbar { display: none; }
