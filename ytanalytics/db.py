@@ -181,6 +181,27 @@ class Insight(Base):
     data: Mapped[str] = mapped_column(Text, default="{}")
 
 
+class Topic(Base):
+    """Themes found in a channel's recent comments (rebuilt about once a day by the worker)."""
+
+    __tablename__ = "topics"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    channel_id: Mapped[str] = mapped_column(ForeignKey("channels.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    rank: Mapped[int] = mapped_column(Integer, default=0)
+    label: Mapped[str] = mapped_column(String(120), default="")
+    keywords: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    share: Mapped[float] = mapped_column(Float, default=0)  # of the channel's analysed comments
+    sentiment: Mapped[float | None] = mapped_column(Float, nullable=True)  # -1 .. +1
+    negative_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recent: Mapped[int] = mapped_column(Integer, default=0)  # comments in the last 14 days
+    trend_pct: Mapped[float | None] = mapped_column(Float, nullable=True)  # change in share vs the 14 days before
+    weekly: Mapped[str] = mapped_column(Text, default="{}")  # {"2026-10-26": 12, ...}
+    examples: Mapped[str] = mapped_column(Text, default="[]")
+
+
 class LlmUsage(Base):
     """Requests sent to each free AI model per day, so we stay under free limits."""
 

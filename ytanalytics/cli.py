@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import sys
+import time
 
 from sqlalchemy import func, select
 
@@ -42,6 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     ai.add_argument("--minutes", type=float, default=None)
     ai.add_argument("--until", type=float, default=None, help="stop by this unix time")
     sub.add_parser("ai-check", help="test the configured free AI models")
+    la = sub.add_parser("local-ai", help="free on-machine AI: emotions, questions/requests, topic groups")
+    la.add_argument("--until", type=float, default=None, help="stop by this unix time")
+    sub.add_parser("topics-due", help="print 1 if any channel's topic groups need rebuilding, else 0")
     sub.add_parser("pending", help="number of comments waiting for analysis")
     sub.add_parser("status", help="summary of what is stored")
     sub.add_parser("plan", help="print minutes for this run (GitHub Actions budget)")
@@ -55,7 +59,6 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "minutes", None):
         settings.max_run_minutes = args.minutes
     if getattr(args, "until", None):
-        import time
 
         # At least ~20 seconds, so new comments are always picked up.
         settings.max_run_minutes = max(0.35, (args.until - time.time()) / 60)
@@ -95,14 +98,14 @@ def main(argv: list[str] | None = None) -> int:
             from .ai import run_ai
             from .llm import LLMRouter, slots_from_env
 
-            slots = slots_from_env()
+            slots = slots_from_env(discover=True)
             if not slots:
                 print("No AI key set (GEMINI_API_KEY / GROQ_API_KEY); skipping AI step.")
                 return 0
             router = LLMRouter(session, slots)
             stats = run_ai(
                 session, router, settings.max_run_minutes,
-                batch_size=int(os.environ.get("AI_BATCH_SIZE", "25")),
+                batch_size=int(os.environ.get("AI_BATCH_SIZE", "100")),
                 insights_per_run=int(os.environ.get("AI_INSIGHTS_PER_RUN", "5")),
                 channel_insight_hours=int(os.environ.get("AI_CHANNEL_INSIGHT_HOURS", "24")),
             )
@@ -114,10 +117,24 @@ def main(argv: list[str] | None = None) -> int:
                 state = f"NOT AVAILABLE - {problem}" if problem else "OK"
                 print(f"  {slot.key:45s} {usage.requests:4d} requests today  {state}")
             session.commit()
+        elif args.cmd == "local-ai":
+            from .llm import LLMRouter, slots_from_env
+            from .local_ai import build_topics, local_emotions
+
+            deadline = time.monotonic() + settings.max_run_minutes * 60
+            n = local_emotions(session, deadline=deadline - 60)
+            slots = slots_from_env(discover=True)
+            router = LLMRouter(session, slots) if slots else None
+            t = build_topics(session, router=router, deadline=deadline)
+            print(json.dumps({"emotions": n, "topic_channels": t}))
+        elif args.cmd == "topics-due":
+            from .local_ai import topics_due
+
+            print(1 if topics_due(session) else 0)
         elif args.cmd == "ai-check":
             from .llm import check_models, slots_from_env
 
-            slots = slots_from_env()
+            slots = slots_from_env(discover=True)
             if not slots:
                 print("No AI key set. Add GEMINI_API_KEY and/or GROQ_API_KEY.")
                 return 1

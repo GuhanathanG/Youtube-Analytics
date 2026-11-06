@@ -11,6 +11,7 @@ import { InsightPanel } from "@/components/InsightPanel";
 import { PredictionBadge } from "@/components/FeaturePanels";
 import { predictions } from "@/lib/features";
 import { AIWatchPanel, DetailsPanel, MomentsPanel, PerformancePanel } from "@/components/VideoAnalysis";
+import { videoAdvanced } from "@/lib/analytics";
 import { commentMoments, durationSeconds, getAnalysis, performance } from "@/lib/video";
 import { Reveal } from "@/components/Reveal";
 import { Empty, Panel, Stat } from "@/components/ui";
@@ -48,8 +49,9 @@ export default async function VideoPage({ params, searchParams }:
   ]);
   const prediction = (await predictions(v.channel_id).catch(() => [])).find((p) => p.video_id === id);
   const durS = durationSeconds(v.duration);
-  const [perf, analysis, momentData] = await Promise.all([
+  const [perf, analysis, momentData, adv] = await Promise.all([
     performance(id).catch(() => null), getAnalysis(id).catch(() => null), commentMoments(id, durS).catch(() => ({ moments: [], histogram: [] })),
+    videoAdvanced(id, v.channel_id).catch(() => null),
   ]);
   const chapters = ((analysis?.data?.chapters as { start: string; title: string }[] | undefined) ?? []);
 
@@ -81,7 +83,7 @@ export default async function VideoPage({ params, searchParams }:
         </div>
       </Reveal>
 
-      {perf && <Reveal delay={0.05} className="mt-6"><PerformancePanel perf={perf} /></Reveal>}
+      {perf && <Reveal delay={0.05} className="mt-6"><PerformancePanel perf={perf} adv={adv} /></Reveal>}
       <Reveal delay={0.1} className="mt-4"><AIWatchPanel videoId={id} analysis={analysis} hasKey={!!process.env.GEMINI_API_KEY} /></Reveal>
       <Reveal delay={0.1} className="mt-4"><MomentsPanel videoId={id} durationS={durS} moments={momentData.moments} histogram={momentData.histogram} chapters={chapters} /></Reveal>
       <Reveal delay={0.1} className="mt-4"><InsightPanel insight={insight} scope="video" /></Reveal>

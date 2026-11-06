@@ -1,6 +1,8 @@
 import "server-only";
 import { sql } from "./db";
 import { quotaDay } from "./queries";
+import { quickLabel } from "./quick-labels";
+import { pickGeminiModels } from "./gemini-models";
 
 /**
  * Free AI (Gemini first, then Groq) for the website's live mode. Mirrors the Python
@@ -12,21 +14,48 @@ const PROVIDERS: Record<string, { base: string; prefix: string; models: string; 
   gemini: { base: "https://generativelanguage.googleapis.com/v1beta/openai/", prefix: "GEMINI",
     models: "gemini-2.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash-lite,gemini-3.8-flash", daily: 200 },
   groq: { base: "https://api.groq.com/openai/v1/", prefix: "GROQ", models: "openai/gpt-oss-20b,openai/gpt-oss-120b", daily: 900 },
+  // Mistral free "Experiment" plan: ~1 request/second, ~1B tokens/month (phone verification only).
+  mistral: { base: "https://api.mistral.ai/v1/", prefix: "MISTRAL", models: "mistral-small-latest", daily: 20000 },
+  // Cloudflare Workers AI: 10,000 free "neurons"/day. Needs CLOUDFLARE_ACCOUNT_ID too.
+  cloudflare: { base: "https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1/", prefix: "CLOUDFLARE",
+    models: "@cf/openai/gpt-oss-20b", daily: 40 },
   // OpenRouter ":free" models: 50 requests/day per account, shared across its free models.
   openrouter: { base: "https://openrouter.ai/api/v1/", prefix: "OPENROUTER",
     models: "google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free,nvidia/nemotron-3.5-lightning:free", daily: 50 },
 };
 
+// Gemini model names change; ask Google which ones this key can use (cached for 6 hours).
+let geminiFound: { at: number; models: string[] } | null = null;
+async function discoverGemini() {
+  const key = process.env.GEMINI_API_KEY?.trim();
+  if (!key || process.env.GEMINI_MODELS || (geminiFound && Date.now() - geminiFound.at < 6 * 3600_000)) return;
+  try {
+    const base = process.env.GEMINI_NATIVE_BASE ?? "https://generativelanguage.googleapis.com/v1beta";
+    const res = await fetch(`${base}/models?pageSize=200`, { headers: { "x-goog-api-key": key }, signal: AbortSignal.timeout(8000) });
+    const models = res.ok ? pickGeminiModels(((await res.json()).models ?? []) as never[]) : [];
+    geminiFound = { at: Date.now(), models };
+  } catch {
+    geminiFound = { at: Date.now() - 5 * 3600_000, models: [] }; // try again in an hour
+  }
+}
+
 export function aiSlots(): Slot[] {
   const env = process.env;
-  const order = (env.AI_PROVIDER_ORDER ?? "gemini,groq,openrouter").split(",").map((s) => s.trim());
+  const order = (env.AI_PROVIDER_ORDER ?? "gemini,mistral,groq,cloudflare,openrouter").split(",").map((s) => s.trim());
   const slots: Slot[] = [];
   for (const name of order) {
     const p = PROVIDERS[name];
     const key = p && env[`${p.prefix}_API_KEY`]?.trim();
     if (!p || !key) continue;
-    for (const model of (env[`${p.prefix}_MODELS`] ?? p.models).split(",").map((m) => m.trim()).filter(Boolean)) {
-      slots.push({ provider: name, baseUrl: env[`${p.prefix}_BASE_URL`] ?? p.base, key, model, daily: Number(env[`${p.prefix}_DAILY_REQUESTS`] ?? p.daily) });
+    let base = env[`${p.prefix}_BASE_URL`] ?? p.base;
+    if (base.includes("{account}")) {
+      const account = env[`${p.prefix}_ACCOUNT_ID`]?.trim();
+      if (!account) continue;
+      base = base.replace("{account}", encodeURIComponent(account));
+    }
+    const found = name === "gemini" && !env.GEMINI_MODELS && geminiFound?.models.length ? geminiFound.models.join(",") : null;
+    for (const model of (found ?? env[`${p.prefix}_MODELS`] ?? p.models).split(",").map((m) => m.trim()).filter(Boolean)) {
+      slots.push({ provider: name, baseUrl: base, key, model, daily: Number(env[`${p.prefix}_DAILY_REQUESTS`] ?? p.daily) });
     }
   }
   return slots;
@@ -62,7 +91,7 @@ export function parseJson(content: string): Record<string, unknown> {
 /** Least "thinking" each model allows: thinking makes answers slow and labelling doesn't need it. */
 function reasoningFor(s: Slot): string | null {
   if (s.provider === "gemini") return s.model.startsWith("gemini-2.5") ? "none" : "minimal";
-  if (s.provider === "openrouter") return null; // not part of OpenRouter's API
+  if (["openrouter", "mistral", "cloudflare"].includes(s.provider)) return null; // not part of these APIs
   return "low";
 }
 
@@ -72,6 +101,7 @@ const slowUntil = new Map<string, number>();
 
 /** Ask the first available free model for JSON. Returns null when none can answer right now. */
 export async function chatJson(system: string, user: string, maxTokens = 4000, deadline?: number, startAt = 0): Promise<{ data: Record<string, unknown>; model: string } | null> {
+  await discoverGemini();
   const all = aiSlots();
   // Parallel callers start at different models so they don't all queue on the first one.
   const ordered = [...all.slice(startAt % Math.max(1, all.length)), ...all.slice(0, startAt % Math.max(1, all.length))];
@@ -147,12 +177,45 @@ For EVERY comment return one object:
 
 Reply with JSON only: {"results": [ ... ]}`;
 
-/** AI-label the given comments. Batches of 25 go out in parallel (up to AI_PARALLEL at once),
- *  each starting at a different model, so throughput isn't limited to one model's speed. */
+/** Rule-label short reactions ("first!", "❤️🔥", "semma bro") so free AI requests go to comments
+ *  that need reading. Returns the ids that still need the AI. */
+export async function labelTrivial(ids: string[]): Promise<string[]> {
+  if (!ids.length) return ids;
+  const db = sql();
+  const rows = await db`select id, text from comments where id in ${db(ids)} and ai_at is null and length(text) <= 60`;
+  const hits = rows.map((r) => ({ id: r.id as string, q: quickLabel(r.text as string) })).filter((h) => h.q);
+  if (hits.length) {
+    const now = new Date().toISOString().slice(0, 19);
+    // One statement for all of them (each round trip to the database costs time).
+    await db`
+      update comments c set emotion = v.emotion, is_question = false, is_suggestion = false, is_spam = false,
+        is_toxic = false, aspects = null, ai_at = ${now}::timestamp, ai_model = 'rules',
+        sentiment = v.sentiment, sentiment_value = v.score, sentiment_score = v.conf,
+        sentiment_source = 'rules', analyzed_at = ${now}::timestamp, analyzer = 'rules',
+        language = coalesce(v.lang, c.language)
+      from unnest(${hits.map((h) => h.id)}::text[], ${hits.map((h) => h.q!.emotion)}::text[],
+                  ${hits.map((h) => h.q!.sentiment)}::text[], ${hits.map((h) => h.q!.score)}::float8[],
+                  ${hits.map((h) => (h.q!.sentiment === "neutral" ? 1 : Math.abs(h.q!.score)))}::float8[],
+                  ${hits.map((h) => h.q!.lang)}::text[]) as v(id, emotion, sentiment, score, conf, lang)
+      where c.id = v.id and c.ai_at is null`;
+  }
+  const done = new Set(hits.map((h) => h.id));
+  return ids.filter((id) => !done.has(id));
+}
+
+const BATCH = () => Math.max(5, Math.min(100, Number(process.env.AI_BATCH ?? 50)));
+
+/** AI-label the given comments. Short reactions are rule-labelled first; the rest go out in batches
+ *  of AI_BATCH (default 50) in parallel (up to AI_PARALLEL at once), each starting at a different model. */
 export async function labelComments(ids: string[], deadline?: number): Promise<number> {
-  if (!ids.length || !aiSlots().length) return 0;
+  if (!ids.length) return 0;
+  const rest = await labelTrivial(ids);
+  const ruled = ids.length - rest.length;
+  ids = rest;
+  if (!ids.length || !aiSlots().length) return ruled;
   const chunks: string[][] = [];
-  for (let i = 0; i < ids.length; i += 25) chunks.push(ids.slice(i, i + 25));
+  const size = BATCH();
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
   const parallel = Math.max(1, Number(process.env.AI_PARALLEL ?? 3));
   let done = 0, next = 0, stop = false;
   async function worker(w: number) {
@@ -165,7 +228,7 @@ export async function labelComments(ids: string[], deadline?: number): Promise<n
     }
   }
   await Promise.all(Array.from({ length: Math.min(parallel, chunks.length) }, (_, w) => worker(w)));
-  return done;
+  return done + ruled;
 }
 
 async function labelChunk(chunkIds: string[], deadline: number | undefined, startAt: number): Promise<number> {
@@ -176,10 +239,13 @@ async function labelChunk(chunkIds: string[], deadline: number | undefined, star
       select c.id, c.text, v.title from comments c join videos v on v.id = c.video_id
       where c.id in ${db(chunkIds)} and c.ai_at is null`;
     if (!rows.length) return 0;
+    const rank = new Map(chunkIds.map((id, n) => [id, n]));
+    rows.sort((a, b) => rank.get(a.id as string)! - rank.get(b.id as string)!);
     const titles = [...new Set(rows.map((r) => r.title as string))];
     const prompt = ["Videos:", ...titles.map((t, n) => `V${n + 1}: ${t}`), "", "Comments:",
       ...rows.map((r, n) => `${n + 1}. [V${titles.indexOf(r.title as string) + 1}] ${String(r.text ?? "").split(/\s+/).join(" ").slice(0, 500)}`)].join("\n");
-    const out = await chatJson(SYSTEM, prompt, 4000, deadline, startAt);
+    // ~110 output tokens per comment (with translation), plus headroom.
+    const out = await chatJson(SYSTEM, prompt, Math.min(16000, 1000 + 130 * rows.length), deadline, startAt);
     if (!out) return -1;
     const results = new Map<number, Record<string, unknown>>();
     for (const item of (out.data.results as Record<string, unknown>[] | undefined) ?? []) {
@@ -216,18 +282,28 @@ async function labelChunk(chunkIds: string[], deadline: number | undefined, star
   return done;
 }
 
-/** The backlog: comments the AI hasn't read yet. Tanglish/Hinglish, unknown language and
- *  comments the local model was unsure about go first, then the newest. */
+/** The backlog: comments the AI hasn't read yet, most important first: the last 2 days, then the
+ *  most liked and longest, then Tanglish/Hinglish and ones the local model was unsure about. */
 export async function labelBacklog(deadline: number, maxComments = 100): Promise<number> {
-  if (!aiSlots().length) return 0;
-  // Look at the newest 2,000 unread comments (index ix_comments_ai_pending), then put Tanglish/Hinglish,
-  // unknown-language and uncertain ones first. Avoids sorting the whole backlog every run.
-  const rows = await sql()`
+  const db = sql();
+  // Short reactions never need the AI: clear them from the newest part of the backlog first.
+  const short = await db`select id from comments where ai_at is null and length(text) <= 60
+    order by published_at desc nulls last limit 3000`;
+  let ruled = 0;
+  for (let i = 0; i < short.length; i += 500) {
+    const ids = short.slice(i, i + 500).map((r) => r.id as string);
+    ruled += ids.length - (await labelTrivial(ids)).length;
+  }
+  if (!aiSlots().length) return ruled;
+  // Look at the newest 5,000 unread comments (index ix_comments_ai_pending) and pick the important ones.
+  const rows = await db`
     select id from (
-      select id, language, sentiment_score, published_at from comments
-      where ai_at is null order by published_at desc nulls last limit 2000) recent
-    order by (case when language like '%-Latn' or language = 'und' or sentiment_score is null or sentiment_score < 0.6 then 0 else 1 end),
-             published_at desc nulls last
+      select id, language, sentiment_score, published_at, like_count, length(text) as len from comments
+      where ai_at is null order by published_at desc nulls last limit 5000) recent
+    order by (published_at >= (now() at time zone 'utc') - interval '2 days') desc nulls last,
+             like_count desc,
+             (case when language like '%-Latn' or language = 'und' or sentiment_score is null or sentiment_score < 0.6 then 0 else 1 end),
+             len desc, published_at desc nulls last
     limit ${maxComments}`;
-  return labelComments(rows.map((r) => r.id as string), deadline);
+  return ruled + await labelComments(rows.map((r) => r.id as string), deadline);
 }

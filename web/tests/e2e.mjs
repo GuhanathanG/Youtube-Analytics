@@ -68,6 +68,12 @@ try {
   check("the AI read those comments", ai === 18, `${ai}`);
   const [tl] = await db`select language, sentiment from comments where text = 'semma video bro' limit 1`;
   check("Tanglish comment labelled as positive Tanglish", tl?.language === "ta-Latn" && tl?.sentiment === "positive", JSON.stringify(tl));
+  // Short reactions are labelled by rules and never use a free AI request.
+  const [rl] = await db`select ai_model from comments where text = 'semma video bro' limit 1`;
+  const [aiRow] = await db`select ai_model from comments where text = 'super explanation' limit 1`;
+  check("short reaction labelled by rules, without an AI request", rl?.ai_model === "rules" && !sent.aiPrompts.some((m) => m.includes("semma video bro")),
+    JSON.stringify(rl));
+  check("other comments still read by the AI", (aiRow?.ai_model ?? "").startsWith("gemini/"), JSON.stringify(aiRow));
 
   // Use case: history (250 comments on a 90-day-old video) downloads over live checks
   let old = 0;
@@ -213,6 +219,19 @@ try {
   check("compare shows both channels and their shared audience", cmp.includes("Second Creator") && cmp.includes("Shared audience") && /\b1(<!-- -->)? people/.test(cmp),
     `second channel shown: ${cmp.includes("Second Creator")}; panel: ${(cmp.match(/Shared audience.{0,600}/) ?? ["none"])[0].replace(/<[^>]+>/g, " ").slice(0, 200)}`);
 
+  // Advanced analytics: performance, timing, titles, audience and topics
+  await db`insert into topics (channel_id, created_at, rank, label, keywords, size, share, sentiment, negative_pct, recent, trend_pct, weekly, examples)
+    values (${ch.id}, now(), 0, 'Audio quality complaints', 'audio, sound, mic', 40, 0.3, -0.6, 85, 25, 140,
+            '{"2026-10-19": 3, "2026-10-26": 9, "2026-11-02": 28}', '[{"id": "x", "text": "the audio is too low", "likes": 9}]')`;
+  const an = await (await get(`/analytics?c=${ch.id}`)).text();
+  check("analytics page shows all four sections",
+    ["Shorts vs long videos", "Breakout videos", "When uploads do best", "Title styles", "New vs returning commenters",
+     "Languages over time", "Audio quality complaints"].every((t) => an.includes(t)),
+    ["Shorts vs long videos", "Breakout videos", "When uploads do best", "Title styles", "New vs returning commenters", "Languages over time", "Audio quality complaints"].filter((t) => !an.includes(t)).join(", "));
+  check("rising topic shows its trend", /▲(<!-- -->)?\s*(<!-- -->)?140(<!-- -->)?%/.test(an), (an.match(/.{60}▲.{60}/) ?? ["no ▲"])[0]);
+  const vpAdv = await (await get("/videos/livevid0001")).text();
+  check("video page shows outlier score, first 24 hours and forecast", vpAdv.includes("Outlier score") && vpAdv.includes("First 24 hours") && vpAdv.includes("View forecast"));
+
   // When YouTube's daily quota is used up, the AI still works through its backlog
   await db`update comments set ai_at = null, ai_model = null where text like 'old comment%'`;
   await db`insert into quota_usage (day, units) values (to_char((now() at time zone 'America/Los_Angeles'), 'YYYY-MM-DD'), 99999)
@@ -224,7 +243,7 @@ try {
 
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma",
-    "/ask", "/ideas", `/compare?c=${ch?.id}`]) {
+    "/ask", "/ideas", `/compare?c=${ch?.id}`, "/analytics"]) {
     const r = await get(path);
     const body = await r.text();
     check(`page ${path} loads`, r.status === 200 && !body.includes("Something went wrong"), `${r.status}`);

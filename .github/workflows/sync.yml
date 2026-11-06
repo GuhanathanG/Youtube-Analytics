@@ -23,6 +23,9 @@ jobs:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
       RUNS_PER_DAY: "12"
       MONTHLY_MINUTES_BUDGET: "1700"
@@ -51,26 +54,36 @@ jobs:
 
       - name: Count comments waiting for analysis
         id: pending
-        run: echo "count=$(python -m ytanalytics pending)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "count=$(python -m ytanalytics pending)" >> "$GITHUB_OUTPUT"
+          echo "topics=$(python -m ytanalytics topics-due)" >> "$GITHUB_OUTPUT"
 
       - name: Install sentiment model packages
-        if: steps.pending.outputs.count != '0'
+        if: steps.pending.outputs.count != '0' || steps.pending.outputs.topics == '1'
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements-ai.txt
 
-      - name: Cache the sentiment model
-        if: steps.pending.outputs.count != '0'
+      - name: Cache the AI models
+        if: steps.pending.outputs.count != '0' || steps.pending.outputs.topics == '1'
         uses: actions/cache@v5
         with:
           path: ~/.cache/huggingface
-          key: hf-${{ env.SENTIMENT_MODEL }}
+          key: hf-${{ env.SENTIMENT_MODEL }}-emo-minilm-v1
+          restore-keys: hf-${{ env.SENTIMENT_MODEL }}
 
       - name: Sentiment and language for every new comment
         if: steps.pending.outputs.count != '0'
         run: python -m ytanalytics analyze --until ${{ steps.plan.outputs.analyze_until }}
 
-      - name: AI deep analysis and insights (free Gemini / Groq)
+      - name: Free local AI - emotions, questions, topic groups
+        if: steps.pending.outputs.count != '0' || steps.pending.outputs.topics == '1'
+        continue-on-error: true  # optional extras; never block the online AI step
+        run: |
+          A=${{ steps.plan.outputs.analyze_until }}; B=${{ steps.plan.outputs.ai_until }}
+          python -m ytanalytics local-ai --until $(( (A + B) / 2 ))
+
+      - name: AI deep analysis and insights (free Gemini / Mistral / Groq)
         run: python -m ytanalytics ai --until ${{ steps.plan.outputs.ai_until }}
 
       - name: Record minutes used

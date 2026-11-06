@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from .db import Channel, Comment, Insight, RunLog, Video, utcnow
 from .llm import LLMRouter, NoModelAvailable
+from .quick_labels import quick_label
 
 log = logging.getLogger(__name__)
 
@@ -105,23 +106,67 @@ class AIRunner:
         return self.deadline is None or time.monotonic() < self.deadline
 
     # -- 1. per-comment enrichment -------------------------------------------------
-    def enrich_comments(self, max_batches: int | None = None) -> int:
-        done = 0
-        batches = 0
-        priority = case(
+    def label_trivial(self, limit: int = 20000) -> int:
+        """Rule-label short reactions ("first!", "❤️🔥", "semma bro") so the AI's free
+        allowance is spent on comments that need reading."""
+        rows = self.s.execute(
+            select(Comment.id, Comment.text)
+            .where(Comment.ai_at.is_(None), func.length(Comment.text) <= 60)
+            .order_by(Comment.published_at.desc()).limit(limit)
+        ).all()
+        now = utcnow()
+        updates = []
+        for r in rows:
+            q = quick_label(r.text)
+            if q is None:
+                continue
+            updates.append({
+                "id": r.id, "emotion": q["emotion"], "is_question": False, "is_suggestion": False,
+                "is_spam": False, "is_toxic": False, "aspects": None, "ai_at": now, "ai_model": "rules",
+                "sentiment": q["sentiment"], "sentiment_value": q["score"],
+                "sentiment_score": abs(q["score"]) if q["sentiment"] != "neutral" else 1.0,
+                "sentiment_source": "rules", "analyzed_at": now, "analyzer": "rules",
+            })
+            if q["lang"]:
+                updates[-1]["language"] = q["lang"]
+        for i in range(0, len(updates), 1000):
+            self.s.execute(update(Comment), updates[i:i + 1000])
+        self.s.commit()
+        self.stats["rules"] += len(updates)
+        return len(updates)
+
+    def _priority_ids(self, limit: int) -> list[str]:
+        """Most important unread comments first: the last 2 days, then the most liked and
+        longest, then Tanglish/Hinglish and comments the local model was unsure about."""
+        recent = case((Comment.published_at >= utcnow() - timedelta(days=2), 0), else_=1)
+        unsure = case(
             (or_(Comment.language.like("%-Latn"), Comment.language == "und",
                  Comment.sentiment_score.is_(None), Comment.sentiment_score < 0.6), 0),
             else_=1,
         )
-        while self._time_left() and (max_batches is None or batches < max_batches):
+        return list(self.s.scalars(
+            select(Comment.id).where(Comment.ai_at.is_(None))
+            .order_by(recent, Comment.like_count.desc(), unsure,
+                      func.length(Comment.text).desc(), Comment.published_at.desc())
+            .limit(limit)
+        ))
+
+    def enrich_comments(self, max_batches: int | None = None) -> int:
+        done = 0
+        batches = 0
+        self.label_trivial()
+        # Plan the order once per run (sorting the whole backlog for every batch gets slow).
+        queue = self._priority_ids(self.batch_size * (max_batches or 200))
+        while self._time_left() and (max_batches is None or batches < max_batches) and queue:
+            ids, queue = queue[:self.batch_size], queue[self.batch_size:]
             rows = self.s.execute(
                 select(Comment.id, Comment.text, Comment.video_id)
-                .where(Comment.ai_at.is_(None))
-                .order_by(priority, Comment.published_at.desc())
-                .limit(self.batch_size)
+                .where(Comment.id.in_(ids), Comment.ai_at.is_(None))
             ).all()
             if not rows:
-                break
+                continue
+            rank = {cid: n for n, cid in enumerate(ids)}
+            rows.sort(key=lambda r: rank[r.id])
             titles = dict(self.s.execute(
                 select(Video.id, Video.title).where(Video.id.in_({r.video_id for r in rows}))
             ).all())
@@ -132,8 +177,10 @@ class AIRunner:
                 text = " ".join((r.text or "").split())[:500]
                 lines.append(f"{i}. [V{video_nums.get(r.video_id, 0)}] {text}")
             try:
+                # ~110 output tokens per comment (with translation), plus headroom.
                 data, model = self.router.chat_json(COMMENT_SYSTEM, "\n".join(lines),
-                                                    max_tokens=6000, deadline=self.deadline)
+                                                    max_tokens=min(16000, 1000 + 130 * len(rows)),
+                                                    deadline=self.deadline)
             except NoModelAvailable as e:
                 self.stats["stopped"] = 1
                 log.info("AI enrichment paused: %s", e)
@@ -154,13 +201,12 @@ class AIRunner:
             for i, r in enumerate(rows, start=1):
                 item = results.get(i)
                 if item is None:
-                    # The model skipped it; mark so we don't loop forever, keep model sentiment.
-                    updates.append({"id": r.id, "ai_at": now, "ai_model": "skipped"})
-                    continue
+                    continue  # the model skipped it (e.g. a cut-off answer): a later batch retries it
                 updates.append(_comment_update(r.id, item, now, model))
-            self.s.execute(update(Comment), updates)
+            if updates:
+                self.s.execute(update(Comment), updates)
             self.s.commit()
-            done += len(results)
+            done += len(updates)
             batches += 1
             log.info("AI labelled %d comments (%s)", done, model)
         self.stats["comments"] += done
