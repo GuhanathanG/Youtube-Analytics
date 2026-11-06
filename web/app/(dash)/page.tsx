@@ -12,6 +12,8 @@ import { recentAlerts } from "@/lib/alerts";
 import { predictions } from "@/lib/features";
 import { channels as getChannels, comments, dailySentiment, kpis, progress, recentInsights } from "@/lib/queries";
 import { ProgressPanel } from "@/components/ProgressPanel";
+import { LiveNowBanner } from "@/components/LiveChatPanel";
+import { liveNow } from "@/lib/livechat";
 
 export const metadata = { title: "Overview" };
 
@@ -22,7 +24,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     kpis(), getChannels(), dailySentiment({ since }), recentInsights(4), comments({ hideSpam: true }, "newest", 8),
   ]);
   const prog = await progress().catch(() => []);
-  const [alertList, preds] = await Promise.all([recentAlerts(8).catch(() => []), predictions().catch(() => [])]);
+  const [alertList, preds, live] = await Promise.all([recentAlerts(8).catch(() => []), predictions().catch(() => []), liveNow().catch(() => [])]);
   const historyBusy = prog.some((p) => p.comments_stored < p.comments_on_youtube * 0.98 || p.ai_read < p.comments_stored * 0.98
     || (p.videos_total ?? 0) > p.videos_known);
   const analysed = chs.reduce((s, c) => s + c.positive + c.neutral + c.negative, 0);
@@ -30,6 +32,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
 
   return (
     <>
+      <LiveNowBanner live={live} />
       <PageHeader eyebrow="Mission control" title={<>Audience <span className="glow-text">pulse</span></>}>
         <p className="max-w-2xl text-[15px] text-ink-2">
           {k.channels} channel{k.channels === 1 ? "" : "s"} under watch · {compact(k.comments)} comments captured ·{" "}

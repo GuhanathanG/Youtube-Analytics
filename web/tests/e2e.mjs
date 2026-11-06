@@ -42,7 +42,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
-    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1",
+    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100" },
   stdio: ["ignore", "inherit", "inherit"],
@@ -258,6 +258,49 @@ try {
     && (await fetch(`${BASE}/share/AAAAAAAAAAAAAAAAAAAAAAAA`)).status === 404);
   const [views] = await db`select views from share_links where token = 'e2eShareToken0123456789'`;
   check("share link views are counted", views.views === 1);
+
+  // Phone app (PWA) and push notifications
+  const mf = await fetch(`${BASE}/manifest.webmanifest`);
+  check("app manifest, service worker and icons load without signing in", mf.status === 200 && (await mf.json()).name === "Creator Pulse"
+    && (await fetch(`${BASE}/sw.js`)).status === 200 && (await fetch(`${BASE}/icons/icon-192.png`)).headers.get("content-type") === "image/png");
+  check("push key needs sign-in", (await fetch(`${BASE}/api/push`)).status === 401);
+  const { publicKey: pushPublicKey } = await (await get("/api/push")).json();
+  check("push signing key is created automatically", typeof pushPublicKey === "string" && pushPublicKey.length > 80);
+  const ecdh = crypto.createECDH("prime256v1"); ecdh.generateKeys();
+  const pushKeys = { p256dh: ecdh.getPublicKey().toString("base64url"), auth: crypto.randomBytes(16).toString("base64url") };
+  for (const endpoint of ["http://localhost:4100/push/phone1", "http://localhost:4100/push/gone"]) {
+    const r = await fetch(`${BASE}/api/push`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ subscription: { endpoint, keys: pushKeys } }) });
+    check(`phone subscribes to notifications (${endpoint.split("/").pop()})`, r.status === 200);
+  }
+  const pushTest = await (await fetch(`${BASE}/api/push`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ test: true }) })).json();
+  const [subsLeft] = await db`select count(*)::int as n from push_subscriptions`;
+  check("test notification delivered; an unsubscribed phone is cleaned up", pushTest.sent === 1 && sent.push === 1 && subsLeft.n === 1, JSON.stringify({ pushTest, push: sent.push, subsLeft }));
+  const pushBefore = sent.push;
+  await db`insert into comments (id, video_id, channel_id, text, like_count, reply_count, fetched_at, published_at) values ('viral-push', 'livevid0001', ${ch.id}, 'this deserves a million likes', 5000, 0, now(), now())`;
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  check("alerts also arrive as phone notifications", sent.push > pushBefore, JSON.stringify({ pushBefore, after: sent.push }));
+
+  // Live chat: a stream goes live, its chat is read every engine run, then it ends and the AI summarises it
+  await fetch("http://localhost:4100/_golive");
+  await db`update live_state set last_tick_at = null where id = 1`;
+  const lc = await (await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`)).json();
+  const [chatN] = await db`select count(*)::int as n, count(*) filter (where amount_micros is not null)::int as supers,
+    count(*) filter (where is_question)::int as qs from live_chat where video_id = 'livevid0003'`;
+  check("live chat is read while the stream is live (with Super Chats and questions)", chatN.n === 35 && chatN.supers === 1 && chatN.qs >= 7,
+    JSON.stringify({ chatN, lc }));
+  check("Overview shows the LIVE NOW banner", (await (await get("/")).text()).includes("LIVE NOW"));
+  const liveVid = await (await get("/videos/livevid0003")).text();
+  check("video page shows the live chat panel", liveVid.includes("Live chat") && liveVid.includes("Super Chats") && liveVid.includes("INR"));
+  await fetch("http://localhost:4100/_endlive");
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  const [ended] = await db`select live_status from videos where id = 'livevid0003'`;
+  const [chatSum] = await db`select data from insights where scope = 'livechat' and target_id = 'livevid0003'`;
+  check("stream marked ended and its chat summarised by the AI", ended.live_status === "ended" && String(chatSum?.data ?? "").includes("complained about audio"),
+    JSON.stringify({ ended, chatSum }));
 
   // Smarter checking: an old video not checked for a day is re-checked; a 3-day-old one checked 5 min ago is left alone.
   await db`update videos set stats_updated_at = (now() at time zone 'utc') - interval '25 hours' where id = 'livevid0000'`;

@@ -60,6 +60,33 @@ export function startFake(port = 4100) {
     if (p.includes("/actions/workflows/sync.yml/runs")) {
       return send({ workflow_runs: [{ status: "completed", conclusion: "success", created_at: new Date().toISOString(), html_url: "https://github.com/x/runs/1", event: "schedule" }] });
     }
+    if (p.startsWith("/push/")) { // stand-in push service (like Google's/Apple's)
+      req.on("data", () => {}); req.on("end", () => {
+        if (p === "/push/gone") { res.writeHead(410); return res.end(); }
+        sent.push = (sent.push ?? 0) + 1; res.writeHead(201); res.end();
+      });
+      return;
+    }
+    if (p === "/_golive") { // livevid0003 becomes a live stream with 35 chat messages
+      const v = state.videos.find((x) => x.id === "livevid0003");
+      v.snippet.liveBroadcastContent = "live";
+      v.liveStreamingDetails = { actualStartTime: iso(new Date(Date.now() - 3600e3)), activeLiveChatId: "chat-live-1", concurrentViewers: "1234" };
+      state.chatEnded = false;
+      return send({ ok: true });
+    }
+    if (p === "/_endlive") { state.chatEnded = true; return send({ ok: true }); }
+    if (p.endsWith("/liveChat/messages")) {
+      sent.chatReads = (sent.chatReads ?? 0) + 1;
+      if (u.searchParams.get("pageToken") === "chat-page-2") {
+        return send({ items: [], nextPageToken: "chat-page-2", pollingIntervalMillis: 5000, ...(state.chatEnded ? { offlineAt: iso(new Date()) } : {}) });
+      }
+      const texts = ["semma stream anna 🔥", "eppo next video?", "hello from Chennai", "worst audio today 😡", "❤️❤️"];
+      const items = Array.from({ length: 35 }, (_, i) => ({ id: `chatmsg${i}`,
+        snippet: { type: i === 0 ? "superChatEvent" : "textMessageEvent", publishedAt: iso(new Date(Date.now() - (35 - i) * 60e3)),
+          displayMessage: texts[i % texts.length], ...(i === 0 ? { superChatDetails: { amountMicros: "500000000", currency: "INR", userComment: "semma stream anna 🔥" } } : {}) },
+        authorDetails: { channelId: `UCchat${i % 7}`, displayName: `Chatter${i % 7}`, isChatSponsor: i % 10 === 0 } }));
+      return send({ items, nextPageToken: "chat-page-2", pollingIntervalMillis: 5000 });
+    }
     if (p.startsWith("/thumbs/")) { // tiny JPEG-like bytes for thumbnail analysis
       res.writeHead(200, { "Content-Type": "image/jpeg" }); return res.end(Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
     }
@@ -104,6 +131,9 @@ export function startFake(port = 4100) {
         }
         if (system.includes("Group them into distinct content ideas")) {
           return send({ choices: [{ message: { content: JSON.stringify({ ideas: [{ title: "Budget phone buying guide", why: "Many ask for it", requests: 25, likes: 80, examples: ["please make part 2"] }] }) } }], usage: { total_tokens: 300 } });
+        }
+        if (system.includes("live stream's chat")) {
+          return send({ choices: [{ message: { content: JSON.stringify({ summary: "Chat loved the stream but complained about audio.", highlights: ["Super Chat from a fan"], requests: ["next video date"], mood: "mixed" }) } }], usage: { total_tokens: 400 } });
         }
         if (system.includes("audience-research analyst")) {
           return send({ choices: [{ message: { content: JSON.stringify({ summary: "Viewers love the Tanglish banter.", liked: ["host"], complaints: ["audio"], requests: ["part 3"], topics: [{ name: "praise", share_pct: 60, sentiment: "positive" }] }) } }], usage: { total_tokens: 900 } });
