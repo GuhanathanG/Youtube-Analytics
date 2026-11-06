@@ -9,6 +9,7 @@ import { writeDueMemory } from "./memory";
 import { refreshDueSummaries } from "./summary";
 import { warmChannel } from "./panels";
 import { renewSubscriptions, rssLatest } from "./uploads";
+import { pullDueReports } from "./owner";
 import { kickBackgroundJob } from "./github";
 import { addInstagramNow, ensureInstagram, instagramTick, looksLikeInstagram } from "./instagram";
 import { quotaDay } from "./queries";
@@ -43,6 +44,7 @@ export type TickResult = {
   unstuck?: number;
   warmed?: number;
   push?: number;
+  owner?: number;
   instagram?: { collected: number; started: number; newComments: number; newPosts: number; note?: string };
   at: string;
 };
@@ -549,6 +551,8 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     if (insightsTurn && process.env.ALWAYS_ON_URL) {
       await fetch(process.env.ALWAYS_ON_URL, { cache: "no-store", signal: AbortSignal.timeout(5000) }).catch(() => null);
     }
+    // Connected channels: private YouTube Analytics (watch time, % watched, traffic sources), every 6 hours.
+    if (insightsTurn && timeLeft()) result.owner = await pullDueReports().catch(() => 0);
     // Push notifications for new uploads: keep each channel's subscription renewed (lasts 5 days).
     if (insightsTurn && timeLeft()) result.push = await renewSubscriptions().catch(() => 0);
     // Backup for GitHub's scheduler: start the background job if it hasn't run for 35 minutes.

@@ -16,11 +16,11 @@ long-term creator memory and Ask AI. Phase 2 turns those into decisions.
 | **Command Center** | Health ring, AI daily brief, ranked *next moves* (each with evidence, impact/effort, one-tap action) | ✅ v1 shipped |
 | **Grow** | Outliers, title/thumbnail patterns, best upload slot, format and length sweet spots, forecasts | ✅ analytics exist; feed the moves |
 | **Audience** | Questions to answer, requests, superfans/critics, rising topics, languages, mood | ✅ exist; feed the moves |
-| **Content Studio** | Idea → angle → title options → thumbnail brief → script outline, built from requests + memory + outliers | Next |
-| **Packaging Lab** | Score a draft title/thumbnail against the channel's own winners before publishing | Next |
-| **Competitor radar** | Mark channels as competitors: their outliers, topics, upload rhythm, gaps you can own | Next |
-| **Connect your channel** (YouTube Analytics API, OAuth) | Private metrics: impressions, click-through rate, retention curves, watch time, traffic sources, revenue → retention-based editing advice | Planned (needs Google verification) |
-| **Instagram parity** | Same moves for Instagram accounts (posts, reels, comments) | Partly (data flows; moves next) |
+| **Content Studio** | Idea → angle → title options → thumbnail brief → script outline, built from requests + memory + outliers | ✅ shipped |
+| **Packaging Lab** | Score a draft title against the channel's own winners before publishing; AI rewrites | ✅ shipped |
+| **Competitor radar** | Mark channels as competitors: their outliers, topics, upload rhythm, gaps you can own | ✅ shipped |
+| **Connect your channel** (YouTube Analytics API, OAuth) | Private metrics: watch time, % watched, subscribers, traffic sources, impressions/CTR where available → moves | ✅ shipped (setup: docs/CONNECT_CHANNEL.md) |
+| **Instagram parity** | Same moves for Instagram accounts (posts, reels, comments) | ✅ moves adapt to Instagram |
 | **Pulse OS UI** | Futuristic glass/neon design system, Glance home-screen app, phone-first | ✅ v1 shipped |
 
 ## Milestones

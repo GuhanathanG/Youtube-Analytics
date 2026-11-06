@@ -46,6 +46,33 @@ export function startFake(port = 4100) {
     const u = new URL(req.url, "http://x");
     const send = (o, s = 200) => { res.writeHead(s, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
     const p = u.pathname;
+    if (p.endsWith("/channels") && u.searchParams.get("mine") === "true") { // "Connect your channel": who signed in
+      return send(req.headers.authorization === "Bearer at-1" ? { items: [{ id: CH, snippet: { title: "Live Creator" } }] } : { error: { message: "bad token" } }, req.headers.authorization === "Bearer at-1" ? 200 : 401);
+    }
+    if (p === "/token" && req.method === "POST") { // Google OAuth token endpoint
+      let body = ""; req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        const f = Object.fromEntries(new URLSearchParams(body));
+        if (f.client_secret !== "test-secret") return send({ error: "invalid_client" }, 401);
+        if (f.grant_type === "authorization_code" && f.code === "goodcode") return send({ access_token: "at-1", refresh_token: "rt-secret-123", expires_in: 3600 });
+        if (f.grant_type === "refresh_token" && f.refresh_token === "rt-secret-123") return send({ access_token: "at-1", expires_in: 3600 });
+        return send({ error: "invalid_grant", error_description: "Bad code" }, 400);
+      });
+      return;
+    }
+    if (p === "/yta/v2/reports") { // YouTube Analytics API
+      if (req.headers.authorization !== "Bearer at-1") return send({ error: { message: "unauthorized" } }, 401);
+      const dim = u.searchParams.get("dimensions"), metrics = u.searchParams.get("metrics");
+      const h = (names) => names.map((name) => ({ name }));
+      if (metrics.includes("videoThumbnailImpressions")) return send({ columnHeaders: h(["day", "videoThumbnailImpressions", "videoThumbnailImpressionsClickRate"]),
+        rows: [["2026-01-01", 40000, 2.5], ["2026-01-02", 60000, 2.9]] });
+      if (dim === "video") return send({ columnHeaders: h(["video", "views", "estimatedMinutesWatched", "averageViewDuration", "averageViewPercentage", "subscribersGained"]),
+        rows: [["livevid0001", 5000, 9000, 70, 18.5, 40], ["livevid0002", 3000, 8000, 150, 52, 30]] });
+      if (dim === "day") return send({ columnHeaders: h(["day", "views", "estimatedMinutesWatched", "subscribersGained"]), rows: [["2026-01-01", 4000, 9000, 50], ["2026-01-02", 4000, 8000, 60]] });
+      if (dim === "insightTrafficSourceType") return send({ columnHeaders: h(["insightTrafficSourceType", "views"]), rows: [["SUBSCRIBER", 6000], ["YT_SEARCH", 2000]] });
+      return send({ columnHeaders: h(["views", "estimatedMinutesWatched", "averageViewDuration", "averageViewPercentage", "subscribersGained", "subscribersLost"]),
+        rows: [[8000, 17000, 128, 41.2, 120, 10]] });
+    }
     if (p.endsWith("/channels")) return send({ items: (u.searchParams.get("forHandle") === "@livecreator" || u.searchParams.get("id") === CH) ? [channel] : [] });
     if (p === "/feeds/videos.xml") { // free RSS feed of a channel's newest uploads
       if (state.rssDown) { res.writeHead(500); return res.end(); }

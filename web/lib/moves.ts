@@ -32,6 +32,9 @@ export type MoveInputs = {
   typicalGapDays: number | null;
   platform?: "youtube" | "instagram";
   rivalBreakouts?: { channel: string; id: string; title: string; outlier: number }[];
+  /** Private YouTube Analytics for connected channels. */
+  owner?: { avgViewPct: number | null; ctr: number | null; videos: { id: string; title: string; views: number; avgViewPct: number }[];
+    trafficShare: { source: string; label: string; share: number }[] } | null;
 };
 
 const enc = encodeURIComponent;
@@ -136,6 +139,24 @@ export function buildMoves(i: MoveInputs, limit = 8): Move[] {
     why: `${rival.channel}'s ${item} took off. A fresh angle on the same topic usually finds the same demand.`,
     evidence: [`${x(rival.outlier)} ${rival.channel}'s usual views`], impact: 2, effort: 3,
     href: `/studio?topic=${enc(rival.title)}`, cta: "Plan it in Studio" });
+
+  // Private analytics (connected channels).
+  if (i.owner) {
+    const o = i.owner;
+    const avg = o.avgViewPct;
+    const leaky = avg ? o.videos.filter((v) => v.views >= 100 && v.avgViewPct < avg * 0.75).sort((a, b) => b.views - a.views)[0] : undefined;
+    if (leaky && avg) m.push({ id: `retention-${leaky.id}`, kind: "fix", title: `Fix the opening of “${short(leaky.title, 46)}”`,
+      why: "Viewers leave this one much sooner than your other videos. Tighten the first 30 seconds and cut slow parts; the same edit helps future videos.",
+      evidence: [`${leaky.avgViewPct.toFixed(0)}% watched vs ${avg.toFixed(0)}% channel average`, `${leaky.views.toLocaleString("en")} views in 28 days`],
+      impact: 2, effort: 2, href: `/videos/${enc(leaky.id)}`, cta: "Open video" });
+    if (o.ctr !== null && o.ctr < 4) m.push({ id: "ctr", kind: "packaging", title: `Lift click-through (${o.ctr.toFixed(1)}%)`,
+      why: "Fewer people click than usual for YouTube. Clearer thumbnails (one subject, 3–4 words, strong emotion) and sharper titles move this fastest.",
+      evidence: [`${o.ctr.toFixed(1)}% of impressions became views (last 28 days)`], impact: 3, effort: 1, href: "/studio?tab=lab", cta: "Packaging Lab" });
+    const subs = o.trafficShare.find((t) => t.source === "SUBSCRIBER");
+    if (subs && subs.share >= 0.45) m.push({ id: "reach", kind: "growth", title: "Reach beyond your subscribers",
+      why: "Most views come from people who already subscribe. Topics with search demand and packaging made for Home and Suggested bring new viewers.",
+      evidence: [`${Math.round(subs.share * 100)}% of views from the subscriptions feed`], impact: 2, effort: 2, href: "/radar", cta: "See topic gaps" });
+  }
 
   // Community.
   if (i.superfans.length >= 3) m.push({ id: "superfans", kind: "community", title: `Thank your top ${Math.min(5, i.superfans.length)} superfans`,

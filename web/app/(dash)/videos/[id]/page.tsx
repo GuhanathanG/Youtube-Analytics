@@ -13,6 +13,7 @@ import { PredictionBadge } from "@/components/FeaturePanels";
 import { predictions } from "@/lib/features";
 import { AIWatchPanel, DetailsPanel, MomentsPanel, PerformancePanel, ThumbnailPanel } from "@/components/VideoAnalysis";
 import { thumbnailsFor } from "@/lib/thumbnails";
+import { ownerReport } from "@/lib/owner";
 import { liveChatStats } from "@/lib/livechat";
 import { LiveChatPanel } from "@/components/LiveChatPanel";
 import { videoAdvanced } from "@/lib/analytics";
@@ -59,6 +60,8 @@ export default async function VideoPage({ params, searchParams }:
   ]);
   const thumb = (await thumbnailsFor(v.channel_id)).get(id);
   const chat = await liveChatStats(id).catch(() => null);
+  const owner = await ownerReport(v.channel_id).catch(() => null);
+  const mine = owner?.videos.find((x) => x.id === id) ?? null;
   const chapters = ((analysis?.data?.chapters as { start: string; title: string }[] | undefined) ?? []);
 
   return (
@@ -98,6 +101,24 @@ export default async function VideoPage({ params, searchParams }:
         </div>
       </Reveal>
 
+      {mine && (
+        <Reveal className="mt-6"><section className="panel p-5">
+          <div className="font-mono text-[10.5px] tracking-[0.3em] text-accent">PRIVATE ANALYTICS · LAST 28 DAYS</div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {([["Views", mine.views.toLocaleString("en")], ["Watch time", `${Math.round(mine.minutes / 60).toLocaleString("en")} h`],
+              ["Avg view", `${Math.floor(mine.avgViewDuration / 60)}:${String(Math.round(mine.avgViewDuration % 60)).padStart(2, "0")}`],
+              ["Avg % watched", `${mine.avgViewPct.toFixed(0)}%`]] as [string, string][]).map(([k, val]) => (
+              <div key={k} className="rounded-xl border border-accent/20 bg-accent/[0.04] px-3 py-2.5"><div className="label">{k}</div>
+                <div className="mt-1 font-[family-name:var(--font-display)] text-[18px] font-semibold tabular">{val}</div></div>
+            ))}
+          </div>
+          {owner && owner.totals.avgViewPct !== null && (
+            <p className="mt-3 text-[13px] text-ink-2">Channel average: {owner.totals.avgViewPct.toFixed(0)}% watched. {mine.avgViewPct < owner.totals.avgViewPct * 0.8
+              ? "This video loses viewers faster than usual: check the first 30 seconds and any slow sections."
+              : mine.avgViewPct > owner.totals.avgViewPct * 1.2 ? "Viewers stay longer than usual on this one: its pacing is worth repeating." : "Retention is in line with the channel."}</p>
+          )}
+        </section></Reveal>
+      )}
       {chat && <Reveal className="mt-6"><LiveChatPanel s={chat} /></Reveal>}
       {perf && <Reveal delay={0.05} className="mt-6"><PerformancePanel perf={perf} adv={adv} /></Reveal>}
       {thumb && <Reveal delay={0.05} className="mt-4"><ThumbnailPanel t={thumb} /></Reveal>}

@@ -9,6 +9,7 @@ import { channelHealth, unansweredQuestions } from "./creator-insights";
 import { panel } from "./panels";
 import { buildMoves, type Move } from "./moves";
 import { radar } from "./radar";
+import { ownerReport, TRAFFIC_LABELS } from "./owner";
 
 /**
  * Command Center data: the channel's next moves (rule-based, from everything the platform already
@@ -36,6 +37,17 @@ export async function nextMoves(channelId: string): Promise<{ moves: Move[]; hea
     within(panel("preds", channelId), 8000, []), within(uploadRhythm(channelId), 5000, { last: null, gap: null }),
   ]);
   const rivals = await within(radar(channelId), 8000, null);
+  const own = await within(ownerReport(channelId), 5000, null);
+  let owner = null;
+  if (own) {
+    const titles = new Map(((await sql()`select id, title from videos where id in ${sql()(own.videos.slice(0, 100).map((v) => v.id).concat("-"))}`) as unknown as { id: string; title: string }[]).map((r) => [r.id, r.title]));
+    const total = own.traffic.reduce((s, t) => s + t.views, 0) || 1;
+    const impressions = own.daily.reduce((s, d) => s + (d.impressions ?? 0), 0);
+    const ctr = own.reach && impressions ? own.daily.reduce((s, d) => s + (d.ctr ?? 0) * (d.impressions ?? 0), 0) / impressions : null;
+    owner = { avgViewPct: own.totals.avgViewPct, ctr,
+      videos: own.videos.filter((v) => titles.has(v.id)).map((v) => ({ id: v.id, title: titles.get(v.id)!, views: v.views, avgViewPct: v.avgViewPct })),
+      trafficShare: own.traffic.map((t) => ({ source: t.source, label: TRAFFIC_LABELS[t.source] ?? t.source, share: t.views / total })) };
+  }
   const moves = buildMoves({
     channelId, questions,
     ideas: ((ideas?.data as { ideas?: unknown[] } | undefined)?.ideas ?? []) as { title?: string; why?: string; requests?: number; likes?: number }[],
@@ -46,6 +58,7 @@ export async function nextMoves(channelId: string): Promise<{ moves: Move[]; hea
     lastUploadDays: rhythm.last, typicalGapDays: rhythm.gap,
     platform: channelId.startsWith("ig_") ? "instagram" : "youtube",
     rivalBreakouts: (rivals?.breakouts ?? []).map((b) => ({ channel: b.channel, id: b.id, title: b.title, outlier: b.outlier })),
+    owner,
   });
   return { moves, health: health ? { score: health.score, grade: health.grade, parts: health.parts } : null };
 }
