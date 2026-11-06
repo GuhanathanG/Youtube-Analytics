@@ -4,6 +4,7 @@ import { aiSlots, labelBacklog, labelComments } from "./ai";
 import { writeDueIdeas, writeDueInsights } from "./insights";
 import { ensureVideoTables } from "./video";
 import { checkAlerts, sendWeeklyReports } from "./alerts";
+import { pollLiveChats, saveLiveInfo, summariseEndedChats } from "./livechat";
 import { quotaDay } from "./queries";
 import {
   QuotaExhausted, YouTubeError, getVideos, listThreads, listUploads, resolveChannel, thumb, youtubeConfigured,
@@ -29,6 +30,7 @@ export type TickResult = {
   source?: "browser" | "cron";
   durationMs?: number;
   alerts?: number;
+  liveChat?: number;
   at: string;
 };
 
@@ -111,6 +113,7 @@ async function saveVideos(channelId: string, items: VideoItem[]): Promise<string
       like_count = excluded.like_count, comment_count = excluded.comment_count, stats_updated_at = excluded.stats_updated_at,
       comments_disabled = excluded.comments_disabled
     returning id, (xmax = 0) as inserted`;
+  await saveLiveInfo(items); // live streams / premieres: status and chat id
   return res.filter((r) => r.inserted).map((r) => r.id as string);
 }
 
@@ -412,6 +415,9 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
                           and s.taken_at >= (now() at time zone 'utc') - interval '30 minutes')`;
     }
 
+    // 3b. Live chat of streams/premieres that are live right now (5 units per read).
+    if (timeLeft()) result.liveChat = await pollLiveChats(timeLeft);
+
     // 4. New comments wherever the count went up (newest videos first).
     const changed = await db`
       select v.id, v.channel_id, v.latest_comment_at from videos v join channels c on c.id = v.channel_id
@@ -448,6 +454,7 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     const insightsTurn = Math.floor(Date.now() / 60000) % everyMin < 2;
     if (insightsTurn && timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
     if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await writeDueIdeas(deadline).catch(() => 0));
+    if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await summariseEndedChats(deadline).catch(() => 0));
     if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, Number(process.env.AI_BACKLOG_PER_RUN ?? 150)).catch(() => 0);
 
     // 9. Alerts (new uploads, negative spikes, viral comments): checked on the same ~10-minute turn,

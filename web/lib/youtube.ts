@@ -35,10 +35,10 @@ async function spend(units: number) {
   }
 }
 
-async function get<T = Record<string, unknown>>(endpoint: string, params: Record<string, string | number | undefined>): Promise<T> {
+async function get<T = Record<string, unknown>>(endpoint: string, params: Record<string, string | number | undefined>, cost = 1): Promise<T> {
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) throw new YouTubeError(0, "noKey", "YOUTUBE_API_KEY is not set in Vercel");
-  await spend(1);
+  await spend(cost);
   const qs = new URLSearchParams({ key });
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
   let res: Response | null = null;
@@ -71,7 +71,9 @@ export type ChannelItem = {
 export type VideoItem = {
   id: string;
   snippet?: Thumbs & { title?: string; description?: string; publishedAt?: string; channelId?: string;
-    tags?: string[]; categoryId?: string; defaultAudioLanguage?: string; defaultLanguage?: string };
+    tags?: string[]; categoryId?: string; defaultAudioLanguage?: string; defaultLanguage?: string; liveBroadcastContent?: string };
+  liveStreamingDetails?: { actualStartTime?: string; actualEndTime?: string; scheduledStartTime?: string;
+    concurrentViewers?: string; activeLiveChatId?: string };
   statistics?: { viewCount?: string; likeCount?: string; commentCount?: string };
   contentDetails?: { duration?: string; definition?: string; caption?: string };
   topicDetails?: { topicCategories?: string[] };
@@ -101,7 +103,7 @@ export async function getChannels(opts: { ids?: string[]; handle?: string; usern
 export async function getVideos(ids: string[]): Promise<VideoItem[]> {
   const out: VideoItem[] = [];
   for (let i = 0; i < ids.length; i += 50) {
-    const data = await get<{ items?: VideoItem[] }>("videos", { part: "snippet,statistics,contentDetails,topicDetails", id: ids.slice(i, i + 50).join(","), maxResults: 50 });
+    const data = await get<{ items?: VideoItem[] }>("videos", { part: "snippet,statistics,contentDetails,topicDetails,liveStreamingDetails", id: ids.slice(i, i + 50).join(","), maxResults: 50 });
     out.push(...(data.items ?? []));
   }
   return out;
@@ -115,6 +117,21 @@ export async function listUploads(playlistId: string, pageToken?: string) {
 export async function listThreads(videoId: string, pageToken?: string) {
   return get<{ items?: ThreadItem[]; nextPageToken?: string }>("commentThreads",
     { part: "snippet,replies", videoId, order: "time", maxResults: 100, textFormat: "plainText", pageToken });
+}
+
+export type ChatMessage = {
+  id: string;
+  snippet?: { type?: string; publishedAt?: string; displayMessage?: string; authorChannelId?: string;
+    textMessageDetails?: { messageText?: string };
+    superChatDetails?: { amountMicros?: string; currency?: string; userComment?: string };
+    superStickerDetails?: { amountMicros?: string; currency?: string } };
+  authorDetails?: { channelId?: string; displayName?: string; isChatSponsor?: boolean };
+};
+
+/** One page of a live stream's chat (costs 5 quota units). */
+export async function liveChatPage(liveChatId: string, pageToken?: string) {
+  return get<{ items?: ChatMessage[]; nextPageToken?: string; offlineAt?: string; pollingIntervalMillis?: number }>(
+    "liveChat/messages", { liveChatId, part: "snippet,authorDetails", maxResults: 2000, pageToken }, 5);
 }
 
 /** Same rules as the Python worker: @handle, channel URL/ID, /user/ URL, or any video URL. */

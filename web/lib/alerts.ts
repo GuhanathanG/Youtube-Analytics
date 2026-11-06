@@ -46,7 +46,8 @@ async function raise(kind: string, key: string, title: string, body: string, lin
   if (!rows.length) return false; // already alerted
   const site = process.env.SITE_URL ?? "";
   const sent = await sendTelegram(`${title}\n${body}${link && site ? `\n${site}${link}` : ""}`);
-  if (sent) await db`update alerts set sent = true where id = ${rows[0].id as number}`;
+  const pushed = await import("./push").then((p) => p.sendPush(title, body, link ?? "/", key)).catch(() => 0);
+  if (sent || pushed) await db`update alerts set sent = true where id = ${rows[0].id as number}`;
   return true;
 }
 

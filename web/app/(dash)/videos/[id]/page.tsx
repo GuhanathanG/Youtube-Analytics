@@ -12,6 +12,8 @@ import { PredictionBadge } from "@/components/FeaturePanels";
 import { predictions } from "@/lib/features";
 import { AIWatchPanel, DetailsPanel, MomentsPanel, PerformancePanel, ThumbnailPanel } from "@/components/VideoAnalysis";
 import { thumbnailsFor } from "@/lib/thumbnails";
+import { liveChatStats } from "@/lib/livechat";
+import { LiveChatPanel } from "@/components/LiveChatPanel";
 import { videoAdvanced } from "@/lib/analytics";
 import { commentMoments, durationSeconds, getAnalysis, performance } from "@/lib/video";
 import { Reveal } from "@/components/Reveal";
@@ -55,6 +57,7 @@ export default async function VideoPage({ params, searchParams }:
     videoAdvanced(id, v.channel_id).catch(() => null),
   ]);
   const thumb = (await thumbnailsFor(v.channel_id)).get(id);
+  const chat = await liveChatStats(id).catch(() => null);
   const chapters = ((analysis?.data?.chapters as { start: string; title: string }[] | undefined) ?? []);
 
   return (
@@ -85,6 +88,7 @@ export default async function VideoPage({ params, searchParams }:
         </div>
       </Reveal>
 
+      {chat && <Reveal className="mt-6"><LiveChatPanel s={chat} /></Reveal>}
       {perf && <Reveal delay={0.05} className="mt-6"><PerformancePanel perf={perf} adv={adv} /></Reveal>}
       {thumb && <Reveal delay={0.05} className="mt-4"><ThumbnailPanel t={thumb} /></Reveal>}
       <Reveal delay={0.1} className="mt-4"><AIWatchPanel videoId={id} analysis={analysis} hasKey={!!process.env.GEMINI_API_KEY} /></Reveal>

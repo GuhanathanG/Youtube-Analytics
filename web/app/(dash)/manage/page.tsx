@@ -12,6 +12,8 @@ import { ago, compact } from "@/lib/format";
 import { actionsMinutesThisMonth, channelRequests, channels as getChannels, kpis, lastRuns, llmUsageToday, progress } from "@/lib/queries";
 import { ProgressPanel } from "@/components/ProgressPanel";
 import { ShareLinks } from "@/components/ShareLinks";
+import { PushToggle } from "@/components/PushToggle";
+import { pushCount } from "@/lib/push";
 import { listShareLinks } from "@/lib/share";
 
 export const metadata = { title: "Manage" };
@@ -95,6 +97,12 @@ export default async function ManagePage() {
               ))}
             </ul>
           )}
+        </Panel>
+      </Reveal>
+
+      <Reveal className="mt-4">
+        <Panel title="Phone app & notifications" subtitle="Install: on Android tap ⋮ → Install app; on iPhone tap Share → Add to Home Screen. Then turn on notifications for alerts and the weekly report.">
+          <PushToggle devices={await pushCount()} />
         </Panel>
       </Reveal>
 
