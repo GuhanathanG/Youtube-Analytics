@@ -280,7 +280,7 @@ Supabase's free database holds about 1 million comments (500 MB). The background
 
 Setup (about 5 minutes):
 1. Sign up at <https://neon.tech> (free plan, no card).
-2. Create a project and pick the region closest to Sydney: **AWS Asia Pacific (Sydney)** if offered, else Singapore.
+2. Create a project and pick the region closest to the main database (now Mumbai, ap-south-1): **AWS Asia Pacific (Mumbai)** if offered, else Singapore.
 3. On the project dashboard click **Connect**, choose **Pooled connection**, and copy the connection string. It starts with `postgresql://` and ends with `?sslmode=require`.
 4. Add it as `ARCHIVE_DATABASE_URL` in **GitHub Secrets** (the background job moves comments) **and in Vercel** (the website reads the archive). Then redeploy in Vercel.
 
