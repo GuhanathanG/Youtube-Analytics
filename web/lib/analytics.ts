@@ -9,7 +9,7 @@ import {
  * Advanced analytics, calculated from stored data (no AI quota). Results are cached for
  * 10 minutes per server copy because they scan every video and many comments.
  */
-const TTL = 10 * 60_000;
+const TTL = Number(process.env.ANALYTICS_CACHE_SECONDS ?? 600) * 1000; // 10 minutes
 export const TIMEZONE = process.env.DISPLAY_TIMEZONE ?? "Asia/Kolkata";
 
 export type VideoPerf = {

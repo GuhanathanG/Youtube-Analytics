@@ -42,7 +42,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
-    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50",
+    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100" },
   stdio: ["ignore", "inherit", "inherit"],
@@ -218,6 +218,22 @@ try {
   const cmp = await cmpRes.text();
   check("compare shows both channels and their shared audience", cmp.includes("Second Creator") && cmp.includes("Shared audience") && /\b1(<!-- -->)? people/.test(cmp),
     `second channel shown: ${cmp.includes("Second Creator")}; panel: ${(cmp.match(/Shared audience.{0,600}/) ?? ["none"])[0].replace(/<[^>]+>/g, " ").slice(0, 200)}`);
+
+  // Unanswered questions board, health score and brand tracker
+  for (const [id, text, likes] of [["q-open", "Which mic do you use for outdoor shoots?", 90], ["q-done", "When is part 3 coming?", 80]]) {
+    await db`insert into comments (id, video_id, channel_id, text, like_count, reply_count, fetched_at, published_at, author_channel_id, is_question)
+      values (${id}, 'livevid0001', ${ch.id}, ${text}, ${likes}, 0, now(), now(), 'UCasker', true)`;
+  }
+  await db`insert into comments (id, video_id, channel_id, parent_id, text, like_count, reply_count, fetched_at, published_at, author_channel_id)
+    values ('q-done.r1', 'livevid0001', ${ch.id}, 'q-done', 'Next Friday!', 3, 0, now(), now(), ${ch.id})`;
+  const ideasHtml = await (await get("/ideas")).text();
+  check("questions board shows unanswered questions, not ones the creator replied to",
+    ideasHtml.includes("Which mic do you use for outdoor shoots?") && !ideasHtml.includes("When is part 3 coming?"));
+  const anH = await (await get(`/analytics?c=${ch.id}`)).text();
+  check("analytics shows a channel health score and the brand tracker (from video analysis)",
+    anH.includes("Channel health") && /Excellent|Healthy|Fair|Needs attention/.test(anH) && anH.includes("PhoneX"));
+  const cmpH = await (await get(`/compare?c=${ch.id}&c=${"UC" + "y".repeat(18) + "twoo"}`)).text();
+  check("compare shows each channel's health score", cmpH.includes("Health score"));
 
   // Smarter checking: an old video not checked for a day is re-checked; a 3-day-old one checked 5 min ago is left alone.
   await db`update videos set stats_updated_at = (now() at time zone 'utc') - interval '25 hours' where id = 'livevid0000'`;
