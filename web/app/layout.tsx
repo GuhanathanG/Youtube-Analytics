@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="blob" style={{ right: "-20%", top: "10%", background: "#8b7cf6", animationDelay: "-9s" }} />
         </div>
         {children}
+        <Analytics />
       </body>
     </html>
   );
