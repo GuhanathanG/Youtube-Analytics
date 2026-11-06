@@ -27,6 +27,9 @@ jobs:
       CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       ARCHIVE_DATABASE_URL: ${{ secrets.ARCHIVE_DATABASE_URL }}
+      # Engine-stopped alarm (optional; same values as in Vercel)
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
       RUNS_PER_DAY: "48"
       MONTHLY_MINUTES_BUDGET: "0"     # 0 = no limit (public repository)

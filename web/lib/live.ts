@@ -3,11 +3,12 @@ import { sql, ensureRls, ensureColumns, ensureIndex } from "./db";
 import { aiSlots, labelBacklog, labelComments } from "./ai";
 import { writeDueIdeas, writeDueInsights } from "./insights";
 import { ensureVideoTables } from "./video";
-import { checkAlerts, sendWeeklyReports } from "./alerts";
+import { checkAlerts, checkHealth, sendWeeklyReports } from "./alerts";
 import { pollLiveChats, saveLiveInfo, summariseEndedChats } from "./livechat";
 import { writeDueMemory } from "./memory";
 import { refreshDueSummaries } from "./summary";
 import { warmChannel } from "./panels";
+import { renewSubscriptions, rssLatest } from "./uploads";
 import { kickBackgroundJob } from "./github";
 import { addInstagramNow, ensureInstagram, instagramTick, looksLikeInstagram } from "./instagram";
 import { quotaDay } from "./queries";
@@ -41,6 +42,7 @@ export type TickResult = {
   job?: string;
   unstuck?: number;
   warmed?: number;
+  push?: number;
   instagram?: { collected: number; started: number; newComments: number; newPosts: number; note?: string };
   at: string;
 };
@@ -102,6 +104,7 @@ async function saveChannel(item: ChannelItem) {
 
 /** Insert or update videos; returns the ids that are new. */
 async function saveVideos(channelId: string, items: VideoItem[]): Promise<string[]> {
+  items = [...new Map(items.map((v) => [v.id, v])).values()]; // the same video twice would fail the save
   if (!items.length) return [];
   const db = sql();
   const rows = items.map((v) => ({
@@ -307,6 +310,19 @@ async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<
   return results.reduce((a, b) => a + b, 0);
 }
 
+/** Save videos we don't have yet (1 quota unit per 50). Used by RSS, push and the upload list. */
+export async function ingestVideoIds(channelId: string, ids: string[]): Promise<number> {
+  ids = [...new Set(ids)];
+  if (!ids.length) return 0;
+  const db = sql();
+  const known = new Set((await db`select id from videos where id in ${db(ids)}`).map((r) => r.id as string));
+  const fresh = ids.filter((id) => !known.has(id));
+  if (!fresh.length) return 0;
+  const items = [...new Map((await getVideos(fresh)).filter((v) => !v.snippet?.channelId || v.snippet.channelId === channelId)
+    .map((v) => [v.id, v])).values()];
+  return (await saveVideos(channelId, items)).length;
+}
+
 /* ------------------------------------------------------------------ auto-clean */
 export async function unstickConnections(): Promise<number> {
   const rows = await sql()`select pid, left(query, 100) as query, pg_terminate_backend(pid) as ended from pg_stat_activity
@@ -379,21 +395,23 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
       }
     }
 
-    // 2. New uploads, every 10 minutes (1 quota unit per channel).
+    // 2. New uploads. Every run: each channel's free RSS feed (no quota). New videos also arrive
+    //    instantly by push (/api/websub). The API's upload list (1 unit per channel) is only a backup,
+    //    used hourly or when a feed can't be read.
+    const ytChans = await db`select id, uploads_playlist_id from channels where active and platform is null and uploads_playlist_id is not null`;
     const [st] = await db`select last_uploads_at from live_state where id = 1`;
-    const uploadsDue = !st?.last_uploads_at || Date.now() - new Date(String(st.last_uploads_at).replace(" ", "T") + "Z").getTime() > 10 * 60000;
-    if (uploadsDue) {
-      await db`update live_state set last_uploads_at = (now() at time zone 'utc') where id = 1`;
-      const chans = await db`select id, uploads_playlist_id from channels where active and uploads_playlist_id is not null`;
-      for (const c of chans) {
-        if (!timeLeft()) break;
+    const apiDue = !st?.last_uploads_at || Date.now() - new Date(String(st.last_uploads_at).replace(" ", "T") + "Z").getTime()
+      > Number(process.env.LIVE_UPLOADS_API_MINUTES ?? 60) * 60000;
+    if (apiDue) await db`update live_state set last_uploads_at = (now() at time zone 'utc') where id = 1`;
+    const feeds = await Promise.all(ytChans.map(async (c) => ({ c, ids: timeLeft() ? await rssLatest(c.id as string) : null })));
+    for (const { c, ids: rss } of feeds) {
+      if (!timeLeft()) break;
+      let ids = rss?.slice(0, 10) ?? null;
+      if (ids === null || apiDue) {
         const page = await listUploads(c.uploads_playlist_id as string).catch(() => null);
-        const ids = (page?.items ?? []).slice(0, 10).map((i) => i.contentDetails.videoId);
-        if (!ids.length) continue;
-        const known = new Set((await db`select id from videos where id in ${db(ids)}`).map((r) => r.id as string));
-        const newIds = ids.filter((id) => !known.has(id));
-        if (newIds.length) result.newVideos += (await saveVideos(c.id as string, await getVideos(newIds))).length;
+        ids = [...new Set([...(ids ?? []), ...(page?.items ?? []).slice(0, 10).map((i) => i.contentDetails.videoId)])];
       }
+      result.newVideos += await ingestVideoIds(c.id as string, ids);
     }
 
     // 2b. Older videos: walk each channel's upload history, 2 pages (100 videos) per run,
@@ -524,6 +542,10 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 9. Alerts (new uploads, negative spikes, viral comments): checked on the same ~10-minute turn,
     //    since the checks aggregate recent comments.
     if (insightsTurn || result.newVideos) result.alerts = await checkAlerts().catch(() => 0);
+    // Engine health alarm: background job stopped, AI stopped, database nearly full, quota gone early.
+    if (insightsTurn && timeLeft()) result.alerts = (result.alerts ?? 0) + await checkHealth().catch((e) => { console.log("[health]", e instanceof Error ? e.message : e); return 0; });
+    // Push notifications for new uploads: keep each channel's subscription renewed (lasts 5 days).
+    if (insightsTurn && timeLeft()) result.push = await renewSubscriptions().catch(() => 0);
     // Backup for GitHub's scheduler: start the background job if it hasn't run for 35 minutes.
     if (insightsTurn && timeLeft()) result.job = await kickBackgroundJob().catch(() => "error");
     // 10. Monday-morning weekly report on Telegram (once per channel per week).

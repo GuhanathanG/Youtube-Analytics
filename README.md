@@ -267,6 +267,19 @@ Watch Instagram accounts next to YouTube channels. Needs `APIFY_TOKEN` in Vercel
 
 Limits of the free Apify plan: about 15 comments per post are returned, and Instagram image links expire after a few days (the newest posts' images refresh every 12 hours). Private accounts can't be read. Settings: `IG_PROFILE_HOURS` (12), `IG_COMMENT_HOURS` (6), `IG_POSTS_PER_RUN` (8), `IG_COMMENTS_PER_POST` (50), `IG_HISTORY_POSTS` (50), `IG_PRICE_PER_RESULT` (0.0027).
 
+## Engine power-ups
+
+- **Instant new uploads.** The engine reads each channel's free RSS feed on every run (no YouTube quota), and
+  YouTube pushes new uploads to `/api/websub` the moment they go live (subscriptions renew automatically; the
+  push is verified with a signature). The quota-costing upload list is only an hourly backup.
+- **Health alarm** (Telegram + phone push, once per 6 hours per problem): background job stopped for 2+ hours,
+  AI read nothing for an hour while comments wait, database 85% full, YouTube quota used up early, engine error.
+  The opposite case — the 2-minute engine itself stopping — is reported by the GitHub job: add
+  `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as GitHub secrets too (same values as in Vercel).
+- **Smarter AI reading order:** brand-new comments, then comments on new videos, likely questions/requests,
+  well-liked comments, comments the quick model was unsure about, then longer ones.
+- **Always-on server (optional):** see [docs/ORACLE_SETUP.md](docs/ORACLE_SETUP.md).
+
 ## Comment archive (free Neon database, when Supabase fills up)
 
 Supabase's free database holds about 1 million comments (500 MB). The background job can move **old comments the AI has already read** to a second free database, so downloads never stop:

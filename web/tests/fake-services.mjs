@@ -47,6 +47,21 @@ export function startFake(port = 4100) {
     const send = (o, s = 200) => { res.writeHead(s, { "content-type": "application/json" }); res.end(JSON.stringify(o)); };
     const p = u.pathname;
     if (p.endsWith("/channels")) return send({ items: (u.searchParams.get("forHandle") === "@livecreator" || u.searchParams.get("id") === CH) ? [channel] : [] });
+    if (p === "/feeds/videos.xml") { // free RSS feed of a channel's newest uploads
+      if (state.rssDown) { res.writeHead(500); return res.end(); }
+      const cid = u.searchParams.get("channel_id");
+      const entries = cid === CH ? state.videos.slice(0, 15).map((v) => `<entry><yt:videoId>${v.id}</yt:videoId><yt:channelId>${CH}</yt:channelId></entry>`).join("") : "";
+      res.writeHead(200, { "content-type": "application/atom+xml" });
+      return res.end(`<?xml version="1.0"?><feed xmlns:yt="http://www.youtube.com/xml/schemas/2015">${entries}</feed>`);
+    }
+    if (p === "/subscribe" && req.method === "POST") { // WebSub hub
+      let body = ""; req.on("data", (c) => (body += c));
+      req.on("end", () => { sent.hubSubs = [...(sent.hubSubs ?? []), Object.fromEntries(new URLSearchParams(body))]; res.writeHead(202); res.end(); });
+      return;
+    }
+    if (p === "/_pushvid") { addVideo(77, 0); return send({ ok: true, id: state.videos[0].id }); }
+    if (p === "/_rssvid") { const v = addVideo(66, 0); addComment(v, "found by rss"); return send({ ok: true, id: v }); }
+    if (p.endsWith("/playlistItems")) sent.playlistCalls = (sent.playlistCalls ?? 0) + 1;
     if (p.endsWith("/playlistItems")) return send(page(state.videos.map((v) => ({ contentDetails: { videoId: v.id } })), u.searchParams.get("pageToken"), 50));
     if (p.endsWith("/videos")) { const ids = u.searchParams.get("id").split(","); sent.ytVideoIds = [...(sent.ytVideoIds ?? []), ...ids]; return send({ items: state.videos.filter((v) => ids.includes(v.id)) }); }
     if (p.endsWith("/commentThreads")) sent.ytThreadIds = [...(sent.ytThreadIds ?? []), u.searchParams.get("videoId")];

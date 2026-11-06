@@ -51,7 +51,8 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100",
-    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0" },
+    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0",
+    YOUTUBE_RSS_BASE: "http://localhost:4100", WEBSUB_HUB: "http://localhost:4100/subscribe", WEBSUB_CALLBACK_BASE: `http://localhost:${PORT}` },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true, // own process group, so the whole server tree can be stopped
 });
@@ -414,6 +415,45 @@ try {
   const mg = await (await get("/manage")).text();
   check("Manage shows the Instagram form and budget", mg.includes("Watch on Instagram") && mg.includes("Instagram budget"));
 
+  // Instant uploads: the free RSS feed finds new videos on every run, without the quota-costing upload list
+  await db`update live_state set last_uploads_at = (now() at time zone 'utc') where id = 1`;
+  const pl0 = sent.playlistCalls ?? 0;
+  await fetch("http://localhost:4100/_rssvid");
+  const tr = await tick();
+  check("a new upload is found through the free RSS feed", tr.newVideos >= 1, JSON.stringify(tr).slice(0, 200));
+  check("…without calling YouTube's upload list (saves quota)", (sent.playlistCalls ?? 0) === pl0, `${pl0} -> ${sent.playlistCalls}`);
+
+  // Push notifications (WebSub): the engine subscribes; the hub's check and pushes are verified
+  const sub = (sent.hubSubs ?? []).find((x) => (x["hub.topic"] ?? "").includes(ch.id));
+  check("the engine subscribes to push notifications for new uploads", !!sub && sub["hub.callback"].includes("/api/websub?key=") && (sub["hub.secret"] ?? "").length > 20,
+    JSON.stringify(sent.hubSubs ?? []).slice(0, 200));
+  const cb = new URL(sub["hub.callback"]);
+  const verify = await fetch(`${cb}&hub.mode=subscribe&hub.topic=${encodeURIComponent(sub["hub.topic"])}&hub.challenge=chal123`);
+  check("the hub's subscription check is answered", verify.status === 200 && (await verify.text()) === "chal123");
+  const badVerify = await fetch(`${BASE}/api/websub?key=wrong&hub.mode=subscribe&hub.topic=${encodeURIComponent(sub["hub.topic"])}&hub.challenge=x`);
+  check("…but not with a wrong key", badVerify.status === 404);
+  const { id: pushed } = await (await fetch("http://localhost:4100/_pushvid")).json();
+  const atom = `<feed><entry><yt:videoId>${pushed}</yt:videoId><yt:channelId>${ch.id}</yt:channelId></entry></feed>`;
+  const sig = crypto.createHmac("sha1", sub["hub.secret"]).update(atom).digest("hex");
+  const forged = await fetch(cb, { method: "POST", body: atom, headers: { "x-hub-signature": "sha1=" + "0".repeat(40) } });
+  check("a push with a wrong signature is refused", forged.status === 403);
+  const okPush = await fetch(cb, { method: "POST", body: atom, headers: { "x-hub-signature": `sha1=${sig}` } });
+  const [pv] = await db`select id from videos where id = ${pushed}`;
+  check("a signed push saves the new video at once", okPush.status === 204 && !!pv, `${okPush.status} ${!!pv}`);
+
+  // Engine health alarm: a stopped background job is reported on Telegram (once per window)
+  await db`insert into run_log (kind, started_at, status) values ('sync', (now() at time zone 'utc') - interval '5 hours', 'ok')`;
+  await db`update run_log set started_at = (now() at time zone 'utc') - interval '5 hours'`;
+  const tgBefore = sent.telegram.length;
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  check("a stopped background job raises a health alarm on Telegram", sent.telegram.slice(tgBefore).some((m) => String(m.text).includes("Background job stopped")),
+    JSON.stringify(sent.telegram.slice(tgBefore)).slice(0, 300));
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  check("…and only once per window", sent.telegram.filter((m) => String(m.text).includes("Background job stopped")).length === 1);
+  await db`update run_log set started_at = (now() at time zone 'utc')`;
+
   // iPhone widget: read-only numbers with its own key (shown on Manage), refused without it
   const mgW = await (await get("/manage")).text();
   check("Manage shows the iPhone widget setup", mgW.includes("iPhone widget") && mgW.includes("Copy widget script"));
@@ -440,8 +480,11 @@ try {
   check("engine starts the GitHub background job when GitHub's scheduler skipped it", (sent.dispatches ?? 0) > 0, `dispatches: ${sent.dispatches}`);
 
   // Archiving: old, read comments move to the archive database; totals stay; Ask AI still finds them
-  await db`update live_state set last_tick_at = null where id = 1`;
-  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`); // fresh channel totals
+  // Fresh channel totals: one channel's summary is refreshed per engine run, so run it once per channel
+  // (this also picks up any comments still arriving from earlier steps).
+  const settle = async () => { for (let i = 0; i < 4; i++) { await db`update live_state set last_tick_at = null where id = 1`;
+    await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`); } };
+  await settle();
   const [archBefore] = await db`select coalesce(sum(comments), 0)::int as n from channel_summary where channel_id like '%live'`;
   const { spawnSync } = await import("node:child_process");
   const py = spawnSync("python", ["-m", "ytanalytics", "archive"], { cwd: "..", encoding: "utf8",
@@ -450,8 +493,7 @@ try {
   check("old, already-read comments are moved to the archive database", moved > 0, (py.stdout + py.stderr).slice(-300));
   const [{ n: liveAudio }] = await db`select count(*)::int as n from comments where text = 'audio is bad' and ai_at is not null and like_count < 25`;
   check("moved comments are gone from the main database", liveAudio === 0);
-  await db`update live_state set last_tick_at = null where id = 1`;
-  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  await settle();
   const [archAfter] = await db`select coalesce(sum(comments), 0)::int as n from channel_summary where channel_id like '%live'`;
   check("channel totals still include archived comments", archAfter.n === archBefore.n, JSON.stringify({ before: archBefore.n, after: archAfter.n, moved }));
   const askArch = await fetch(`${BASE}/api/ask`, { method: "POST", headers: { cookie, "Content-Type": "application/json" },
