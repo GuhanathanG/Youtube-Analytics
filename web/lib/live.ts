@@ -7,6 +7,7 @@ import { checkAlerts, sendWeeklyReports } from "./alerts";
 import { pollLiveChats, saveLiveInfo, summariseEndedChats } from "./livechat";
 import { writeDueMemory } from "./memory";
 import { refreshDueSummaries } from "./summary";
+import { kickBackgroundJob } from "./github";
 import { quotaDay } from "./queries";
 import {
   QuotaExhausted, YouTubeError, getVideos, listThreads, listUploads, resolveChannel, thumb, youtubeConfigured,
@@ -35,6 +36,7 @@ export type TickResult = {
   liveChat?: number;
   memory?: number;
   summaries?: number;
+  job?: string;
   at: string;
 };
 
@@ -469,6 +471,8 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 9. Alerts (new uploads, negative spikes, viral comments): checked on the same ~10-minute turn,
     //    since the checks aggregate recent comments.
     if (insightsTurn || result.newVideos) result.alerts = await checkAlerts().catch(() => 0);
+    // Backup for GitHub's scheduler: start the background job if it hasn't run for 35 minutes.
+    if (insightsTurn && timeLeft()) result.job = await kickBackgroundJob().catch(() => "error");
     // 10. Monday-morning weekly report on Telegram (once per channel per week).
     if (insightsTurn && timeLeft()) result.alerts = (result.alerts ?? 0) + await sendWeeklyReports().catch(() => 0);
   } catch (e) {

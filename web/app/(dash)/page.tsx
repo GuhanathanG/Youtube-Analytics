@@ -22,7 +22,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const { range } = await searchParams;
   const { key, since } = rangeSince(range);
   const [k, chs, daily, briefs, latest] = await Promise.all([
-    kpis(), getChannels(), within(cached(`overview:daily:${key}`, Number(process.env.PAGE_CACHE_SECONDS ?? 120) * 1000, () => dailySentiment({ since })), 12_000, []),
+    kpis(), getChannels(), within(cached(`overview:daily:${key}`, Number(process.env.PAGE_CACHE_SECONDS ?? 600) * 1000, () => dailySentiment({ since })), 12_000, []),
     within(recentInsights(4), 8000, []), within(comments({ hideSpam: true }, "newest", 8), 8000, []),
   ]);
   const prog = await within(progress(), 15000, []);

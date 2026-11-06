@@ -252,7 +252,38 @@ def make_engine(url: str) -> Engine:
     kwargs: dict = {"pool_pre_ping": True}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
-    return create_engine(url, **kwargs)
+    engine = create_engine(url, **kwargs)
+    if engine.dialect.name == "postgresql":
+        from sqlalchemy import event
+
+        @event.listens_for(engine, "connect")
+        def _no_time_limit(dbapi_conn, _record):  # the background job's big batches may take longer than 25 s
+            cur = dbapi_conn.cursor()
+            cur.execute("SET statement_timeout = 0")
+            cur.close()
+            dbapi_conn.commit()
+    return engine
+
+
+def guard_website_queries(engine: Engine) -> None:
+    """Database-side safety net: any query from the website that runs longer than WEB_STATEMENT_TIMEOUT
+    (default 25 s) is stopped, so one slow page (or an old copy of the site) can't clog the database.
+    Set as the role's default; the background job turns it off for its own connections (make_engine)."""
+    if engine.dialect.name != "postgresql":
+        return
+    import os
+    import re
+
+    from sqlalchemy import text
+    limit = os.environ.get("WEB_STATEMENT_TIMEOUT", "25s")
+    if not re.fullmatch(r"\d+(ms|s|min)?", limit):
+        return
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f"ALTER ROLE CURRENT_USER SET statement_timeout = '{limit}'"))
+    except Exception as e:  # never block the job over this
+        import logging
+        logging.getLogger(__name__).warning("Could not set the website query time limit: %s", e)
 
 
 def schema_fingerprint() -> str:

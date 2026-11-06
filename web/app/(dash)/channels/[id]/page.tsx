@@ -34,7 +34,7 @@ export default async function ChannelPage({ params, searchParams }:
   if (!c) notFound();
   const f = { channelId: id, since };
   // Heavy counts are remembered for 2 minutes and give up after 12 s, so the page always opens.
-  const safe = <T,>(name: string, fn: () => Promise<T>, fallback: T) => within(cached(`ch:${id}:${key}:${name}`, Number(process.env.PAGE_CACHE_SECONDS ?? 120) * 1000, fn), 12_000, fallback);
+  const safe = <T,>(name: string, fn: () => Promise<T>, fallback: T) => within(cached(`ch:${id}:${key}:${name}`, Number(process.env.PAGE_CACHE_SECONDS ?? 600) * 1000, fn), 12_000, fallback);
   const emptyMix = { positive: 0, neutral: 0, negative: 0, pending: 0 };
   const [insight, mix, daily, langs, emos, aspects, snaps, vids] = await Promise.all([
     within(latestInsight("channel", id), 8000, null), safe("mix", () => sentimentMix(f), emptyMix), safe("daily", () => dailySentiment(f), []),
