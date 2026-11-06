@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, ensureRls, ensureColumns, ensureIndex } from "./db";
 import { aiSlots, labelBacklog, labelComments } from "./ai";
 import { writeDueIdeas, writeDueInsights } from "./insights";
 import { ensureVideoTables } from "./video";
@@ -50,10 +50,10 @@ async function ensureLiveTable() {
   const db = sql();
   await db`create table if not exists live_state (
     id integer primary key, last_tick_at timestamp, last_uploads_at timestamp, last_result text)`;
-  await db`alter table live_state add column if not exists last_cron_at timestamp`;
-  await db`alter table live_state enable row level security`;
+  await ensureColumns("live_state", [["last_cron_at", "timestamp"]]);
+  await ensureRls("live_state");
   // Fast "what should the AI read next" without sorting the whole backlog.
-  await db`create index if not exists ix_comments_ai_pending on comments (published_at desc) where ai_at is null`;
+  await ensureIndex("ix_comments_ai_pending", "create index if not exists ix_comments_ai_pending on comments (published_at desc) where ai_at is null");
   await db`insert into live_state (id) values (1) on conflict do nothing`;
   tableReady = true;
 }

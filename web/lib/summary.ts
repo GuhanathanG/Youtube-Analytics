@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, ensureRls } from "./db";
 import { archivedTotals } from "./archive";
 
 /**
@@ -24,7 +24,7 @@ export async function ensureSummary() {
     ai_read integer not null default 0, positive integer not null default 0, neutral integer not null default 0, negative integer not null default 0,
     avg_sentiment double precision, saved_hour integer not null default 0, ai_hour integer not null default 0, sentiment_hour integer not null default 0,
     comments_24h integer not null default 0, last_fetch timestamp, languages text, emotions text)`;
-  await db`alter table channel_summary enable row level security`;
+  await ensureRls("channel_summary");
   ready = true;
 }
 

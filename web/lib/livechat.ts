@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, ensureRls, ensureColumns, ensureIndex } from "./db";
 import { chatJson } from "./ai";
 import { quickLabel } from "./quick-labels";
 import { liveChatPage, YouTubeError, type VideoItem } from "./youtube";
@@ -18,12 +18,10 @@ export async function ensureLiveChat() {
     id text primary key, video_id text not null references videos(id) on delete cascade, published_at timestamp,
     author_name text, author_channel_id text, text text not null default '', kind text, amount_micros bigint, currency text,
     sentiment text, is_question boolean, is_member boolean)`;
-  await db`create index if not exists ix_live_chat_video on live_chat (video_id, published_at)`;
-  await db`alter table live_chat enable row level security`;
-  for (const col of [db`live_status text`, db`live_chat_id text`, db`live_chat_token text`, db`live_started_at timestamp`,
-    db`live_ended_at timestamp`, db`live_viewers integer`, db`live_chat_error text`]) {
-    await db`alter table videos add column if not exists ${col}`;
-  }
+  await ensureIndex("ix_live_chat_video", "create index if not exists ix_live_chat_video on live_chat (video_id, published_at)");
+  await ensureRls("live_chat");
+  await ensureColumns("videos", [["live_status", "text"], ["live_chat_id", "text"], ["live_chat_token", "text"],
+    ["live_started_at", "timestamp"], ["live_ended_at", "timestamp"], ["live_viewers", "integer"], ["live_chat_error", "text"]]);
   ready = true;
 }
 

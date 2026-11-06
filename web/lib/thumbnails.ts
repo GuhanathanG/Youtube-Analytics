@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, ensureRls } from "./db";
 import { geminiModelList } from "./ai";
 import { quotaDay } from "./queries";
 
@@ -32,7 +32,7 @@ async function ensureTable() {
   await db`create table if not exists thumb_analysis (
     video_id text primary key, status text not null, model text, data text, error text,
     created_at timestamp not null default (now() at time zone 'utc'))`;
-  await db`alter table thumb_analysis enable row level security`;
+  await ensureRls("thumb_analysis");
   ready = true;
 }
 
