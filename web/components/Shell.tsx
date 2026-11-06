@@ -1,6 +1,6 @@
 "use client";
 
-import { ChartNoAxesCombined, Gauge, Rocket, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
+import { ChartNoAxesCombined, Clapperboard, Gauge, Radar, Rocket, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
@@ -14,6 +14,7 @@ type NavChannel = { id: string; title: string; thumb: string | null; active: boo
 const NAV = [
   { href: "/command", label: "Command", icon: Rocket },
   { href: "/", label: "Overview", icon: LayoutDashboard },
+  { href: "/studio", label: "Studio", icon: Clapperboard },
   { href: "/ask", label: "Ask AI", icon: Sparkles },
   { href: "/comments", label: "Comments", icon: MessageSquareText },
   { href: "/analytics", label: "Analytics", icon: ChartNoAxesCombined },

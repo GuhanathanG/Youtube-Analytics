@@ -460,6 +460,21 @@ try {
     (cmd.match(/Answer[^<]{0,60}/) ?? ["no move"])[0]);
   check("Command Center shows the AI brief", cmd.includes("Answer the mic question today"));
 
+  // Content Studio: a topic becomes a grounded plan with scored titles; Packaging Lab scores and improves titles
+  const studio = (body) => fetch(`${BASE}/api/studio`, { method: "POST", headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  check("Studio refuses requests without a session", (await fetch(`${BASE}/api/studio`, { method: "POST", body: "{}" })).status === 401);
+  const plan = await (await studio({ action: "plan", channelId: ch.id, topic: "budget phone camera test" })).json();
+  check("Studio creates a video plan", plan.ok === true && Number(plan.id) > 0, JSON.stringify(plan));
+  check("…grounded in the channel's own data", (sent.studioPrompts ?? []).at(-1)?.includes("Breakout titles on this channel") && (sent.studioPrompts ?? []).at(-1)?.includes("Viewers keep asking about"));
+  const planPage = await (await get(`/studio?d=${plan.id}`)).text();
+  check("the plan page shows angles, scored titles, thumbnail, hook and outline",
+    planPage.includes("Night test") && planPage.includes("WHICH WINS?") && planPage.includes("Titles, scored for this channel") && planPage.includes("I spent a week shooting"));
+  const ranked = (await (await studio({ action: "score", channelId: ch.id, titles: ["my vlog", "5 budget phones tested at night: which camera wins?"] })).json()).scores;
+  check("Packaging Lab ranks the stronger title first", ranked?.[0]?.title.startsWith("5 budget") && ranked[0].score > ranked[1].score, JSON.stringify(ranked?.map((r) => [r.title, r.score])));
+  const improved = (await (await studio({ action: "rewrite", channelId: ch.id, title: "my vlog" })).json()).scores;
+  check("Packaging Lab suggests better titles, scored", improved?.length === 2 && improved.every((t) => typeof t.score === "number"));
+  check("Studio page opens", (await get("/studio?tab=lab")).status === 200);
+
   // Pulse Glance: the widget-style home-screen app
   const gl = await (await get("/glance")).text();
   check("Glance shows every channel with its mood, the dock and its own home-screen manifest",
