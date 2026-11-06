@@ -1,5 +1,5 @@
 import "server-only";
-import { cached } from "./cache";
+import { stored } from "./stored";
 import { sql } from "./db";
 import { channelAnalytics, audienceAnalytics } from "./analytics";
 import { median } from "./analytics-math";
@@ -15,7 +15,7 @@ export type OpenQuestion = {
 
 /** Top-level viewer questions from the last 6 months that the creator never replied to, most liked first. */
 export function unansweredQuestions(channelId: string, limit = 40): Promise<OpenQuestion[]> {
-  return cached(`questions:${channelId}:${limit}`, TTL, async () => {
+  return stored(`questions:${channelId}:${limit}`, TTL, async () => {
     const db = sql();
     // Step 1: the most-liked recent questions (uses the channel index).
     const candidates = (await db`
@@ -42,10 +42,10 @@ export type Health = ReturnType<typeof healthScore> & {
 };
 
 export function channelHealth(channelId: string): Promise<Health> {
-  return cached(`health:${channelId}`, TTL, () => computeHealth(channelId));
+  return stored(`health:${channelId}`, TTL, () => computeHealth(channelId));
 }
 
-async function computeHealth(channelId: string): Promise<Health> {
+export async function computeHealth(channelId: string): Promise<Health> {
   const db = sql();
   const [a, aud] = await Promise.all([channelAnalytics(channelId), audienceAnalytics(channelId)]);
   const [subs] = await db`
@@ -97,10 +97,10 @@ async function computeHealth(channelId: string): Promise<Health> {
 export type BrandRow = { name: string; videos: number; sponsored: number; mentions: number; mood: number | null; examples: { id: string; title: string }[] };
 
 export function brandTracker(channelId: string): Promise<BrandRow[]> {
-  return cached(`brands:${channelId}`, TTL, () => computeBrands(channelId));
+  return stored(`brands:${channelId}`, TTL, () => computeBrands(channelId));
 }
 
-async function computeBrands(channelId: string): Promise<BrandRow[]> {
+export async function computeBrands(channelId: string): Promise<BrandRow[]> {
   const db = sql();
   let rows: Record<string, unknown>[] = [];
   try {

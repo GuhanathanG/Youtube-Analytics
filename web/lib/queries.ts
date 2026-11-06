@@ -114,34 +114,34 @@ export type VideoRow = {
 
 export async function videos(channelId: string): Promise<VideoRow[]> {
   const db = sql();
+  await ensureSummary();
+  // Per-video totals come from video_summary (refreshed every few minutes by the engine), so the list
+  // doesn't recount every comment of the channel on each visit.
   return (await db`
     select v.id, v.channel_id, v.title, v.published_at, v.thumbnail_url, v.duration,
            v.view_count::float8 as view_count, v.like_count::float8 as like_count,
            v.comment_count::int as comments_on_youtube, v.comments_disabled, v.comments_backfilled,
-           coalesce(c.n, 0)::int as comments_stored, coalesce(c.pos, 0)::int as positive,
-           coalesce(c.neu, 0)::int as neutral, coalesce(c.neg, 0)::int as negative, c.avg_s::float8 as avg_sentiment
-    from videos v
-    left join (select video_id, count(*) n,
-                      sum(case when sentiment = 'positive' then 1 else 0 end) pos,
-                      sum(case when sentiment = 'neutral' then 1 else 0 end) neu,
-                      sum(case when sentiment = 'negative' then 1 else 0 end) neg,
-                      avg(sentiment_value) avg_s
-               from comments where channel_id = ${channelId} group by video_id) c on c.video_id = v.id
+           coalesce(s.comments, 0)::int as comments_stored, coalesce(s.positive, 0)::int as positive,
+           coalesce(s.neutral, 0)::int as neutral, coalesce(s.negative, 0)::int as negative, s.avg_sentiment::float8 as avg_sentiment
+    from videos v left join video_summary s on s.video_id = v.id
     where v.channel_id = ${channelId}
     order by v.published_at desc nulls last`) as unknown as VideoRow[];
 }
 
+/** One video, counted live (only this video's comments, using the video index). */
 export async function video(id: string): Promise<VideoRow | null> {
   const db = sql();
-  const [v] = await db`select channel_id from videos where id = ${id}`;
-  if (!v) return null;
-  const list = await videos(v.channel_id as string);
-  const row = list.find((x) => x.id === id) ?? null;
-  if (row) {
-    const [ch] = await db`select title from channels where id = ${v.channel_id}`;
-    row.channel_title = (ch?.title as string) ?? "";
-  }
-  return row;
+  const [row] = await db`
+    select v.id, v.channel_id, v.title, v.published_at, v.thumbnail_url, v.duration,
+           v.view_count::float8 as view_count, v.like_count::float8 as like_count,
+           v.comment_count::int as comments_on_youtube, v.comments_disabled, v.comments_backfilled, ch.title as channel_title,
+           c.n::int as comments_stored, c.pos::int as positive, c.neu::int as neutral, c.neg::int as negative, c.avg_s::float8 as avg_sentiment
+    from videos v join channels ch on ch.id = v.channel_id,
+      lateral (select count(*) n, count(*) filter (where sentiment = 'positive') pos, count(*) filter (where sentiment = 'neutral') neu,
+                      count(*) filter (where sentiment = 'negative') neg, avg(sentiment_value) avg_s
+               from comments where video_id = v.id) c
+    where v.id = ${id}`;
+  return (row as unknown as VideoRow) ?? null;
 }
 
 /* ------------------------------------------------------------------ comment aggregates */

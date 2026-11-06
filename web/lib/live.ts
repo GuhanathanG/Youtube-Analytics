@@ -7,6 +7,7 @@ import { checkAlerts, sendWeeklyReports } from "./alerts";
 import { pollLiveChats, saveLiveInfo, summariseEndedChats } from "./livechat";
 import { writeDueMemory } from "./memory";
 import { refreshDueSummaries } from "./summary";
+import { warmChannel } from "./panels";
 import { kickBackgroundJob } from "./github";
 import { addInstagramNow, ensureInstagram, instagramTick, looksLikeInstagram } from "./instagram";
 import { quotaDay } from "./queries";
@@ -39,6 +40,7 @@ export type TickResult = {
   summaries?: number;
   job?: string;
   unstuck?: number;
+  warmed?: number;
   instagram?: { collected: number; started: number; newComments: number; newPosts: number; note?: string };
   at: string;
 };
@@ -327,6 +329,16 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
   const db = sql();
   const interval = Math.max(30, Number(process.env.LIVE_INTERVAL_SECONDS ?? 60) || 60);
 
+  // The 2-minute timer runs the engine. An open tab only steps in when the timer has stopped
+  // (no run for 6+ minutes); otherwise it just shows the last result. Fewer heavy runs = faster pages.
+  if (source === "browser") {
+    const [st] = await db`select last_cron_at from live_state where id = 1`;
+    const cronAt = st?.last_cron_at ? new Date(String(st.last_cron_at).replace(" ", "T") + "Z").getTime() : 0;
+    if (Date.now() - cronAt < Number(process.env.BROWSER_TICK_AFTER_MINUTES ?? 6) * 60_000) {
+      return (await lastTick()) ?? { status: "skipped", ...empty };
+    }
+  }
+
   // Only one tick at a time across all open tabs/devices.
   const claimed = await db`
     update live_state set last_tick_at = (now() at time zone 'utc')
@@ -443,6 +455,17 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
 
     // 3a. Pre-calculated totals for the dashboards (one or two channels per run, each every few minutes).
     if (timeLeft()) result.summaries = await refreshDueSummaries(timeLeft).catch((e) => { console.log("[summary]", e instanceof Error ? e.message : e); return 0; });
+
+    // 3a+. Heavy page sections worked out in advance, one channel per run (rotating), at most ~8 s,
+    //      so opening a channel or analytics page only reads saved results.
+    if (timeLeft()) {
+      const chans = await db`select id from channels where active order by id`;
+      if (chans.length) {
+        const c = chans[Math.floor(Date.now() / 120_000) % chans.length];
+        const until = Date.now() + Number(process.env.WARM_SECONDS ?? 8) * 1000;
+        result.warmed = await warmChannel(c.id as string, () => timeLeft() && Date.now() < until).catch(() => 0);
+      }
+    }
 
     // 3b. Live chat of streams/premieres that are live right now (5 units per read).
     if (timeLeft()) result.liveChat = await pollLiveChats(timeLeft);

@@ -1,5 +1,5 @@
 import "server-only";
-import { sql, ensureRls } from "./db";
+import { sql, ensureRls, ensureIndex } from "./db";
 import { archivedTotals } from "./archive";
 
 /**
@@ -25,6 +25,11 @@ export async function ensureSummary() {
     avg_sentiment double precision, saved_hour integer not null default 0, ai_hour integer not null default 0, sentiment_hour integer not null default 0,
     comments_24h integer not null default 0, last_fetch timestamp, languages text, emotions text)`;
   await ensureRls("channel_summary");
+  // Per-video totals, refreshed with the channel's summary (pages and the AI briefing check read these).
+  await db`create table if not exists video_summary (video_id text primary key, channel_id text not null, comments integer not null,
+    positive integer not null, neutral integer not null, negative integer not null, avg_sentiment double precision)`;
+  await ensureIndex("ix_video_summary_channel", "create index if not exists ix_video_summary_channel on video_summary (channel_id)");
+  await ensureRls("video_summary");
   ready = true;
 }
 
@@ -46,6 +51,12 @@ export async function refreshSummary(channelId: string) {
     from comments where channel_id = ${channelId} and analyzed_at is not null group by 1 order by 2 desc limit 12`;
   const emos = await db`select emotion, count(*)::int as comments from comments
     where channel_id = ${channelId} and emotion is not null group by 1 order by 2 desc limit 16`;
+  await db`insert into video_summary (video_id, channel_id, comments, positive, neutral, negative, avg_sentiment)
+    select video_id, ${channelId}, count(*)::int, count(*) filter (where sentiment = 'positive')::int,
+      count(*) filter (where sentiment = 'neutral')::int, count(*) filter (where sentiment = 'negative')::int, avg(sentiment_value)::float8
+    from comments where channel_id = ${channelId} group by video_id
+    on conflict (video_id) do update set comments = excluded.comments, positive = excluded.positive, neutral = excluded.neutral,
+      negative = excluded.negative, avg_sentiment = excluded.avg_sentiment`;
   // Comments moved to the archive still count (their totals are kept in archive_stats).
   const ar = await archivedTotals(channelId);
   if (ar && ar.comments) {

@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "./db";
+import { ensureSummary } from "./summary";
 import { aiSlots, chatJson } from "./ai";
 
 /**
@@ -103,11 +104,12 @@ export async function writeDueIdeas(deadline: number): Promise<number> {
 /** Write up to `max` due briefings before `deadline`. Returns how many were written. */
 export async function writeDueInsights(deadline: number, max = 2): Promise<number> {
   if (!aiSlots().length) return 0;
+  await ensureSummary();
   const db = sql();
   let written = 0;
 
   const dueVideos = await db`
-    with counts as (select video_id, count(*)::int n from comments group by video_id having count(*) >= ${MIN_COMMENTS}),
+    with counts as (select video_id, comments as n from video_summary where comments >= ${MIN_COMMENTS}),
          last as (select distinct on (target_id) target_id, comment_count from insights where scope = 'video' order by target_id, created_at desc)
     select v.id, v.title, v.published_at, v.view_count, v.like_count, c.n
     from counts c join videos v on v.id = c.video_id join channels ch on ch.id = v.channel_id

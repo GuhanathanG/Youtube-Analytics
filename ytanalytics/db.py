@@ -326,6 +326,45 @@ def init_db(engine: Engine) -> None:
         conn.execute(text("INSERT INTO schema_meta (key, value) VALUES ('layout', :v)"), {"v": fingerprint})
 
 
+# Indexes on the big comments table, built CONCURRENTLY (no locks: reads and writes carry on while
+# they build). Checked on every run with one catalog query; built only when missing.
+EXTRA_INDEXES = {
+    # "What should the AI read next": newest unread first (matches ORDER BY published_at DESC NULLS LAST).
+    "ix_comments_ai_next": "ON comments (published_at DESC NULLS LAST) WHERE ai_at IS NULL",
+    # Same for the sentiment model's queue.
+    "ix_comments_analyze_next": "ON comments (published_at DESC) WHERE analyzed_at IS NULL",
+    # Replies of a comment (the creator-reply rate, conversations).
+    "ix_comments_parent": "ON comments (parent_id, author_channel_id) WHERE parent_id IS NOT NULL",
+    # Commenter pages and loyal-viewer counts.
+    "ix_comments_author": "ON comments (channel_id, author_channel_id)",
+}
+
+
+def ensure_extra_indexes(engine: Engine) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    import logging
+
+    from sqlalchemy import text
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT indexname, (SELECT indisvalid FROM pg_index WHERE indexrelid = "
+                                 "(quote_ident(schemaname) || '.' || quote_ident(indexname))::regclass) AS valid "
+                                 "FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'comments'")).all()
+    have = {r[0]: r[1] for r in rows}
+    for name, spec in EXTRA_INDEXES.items():
+        if have.get(name) is True:
+            continue
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                if name in have:  # a build that was interrupted leaves an unusable index behind
+                    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {name}"))
+                conn.execute(text(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {name} {spec}"))
+            logging.getLogger(__name__).info("Built index %s", name)
+        except Exception as e:  # never stop the job over an index; the next run tries again
+            logging.getLogger(__name__).warning("Index %s not built yet: %s", name, str(e).splitlines()[0])
+
+
 RETIRED_INDEXES = ["ix_comments_video_id", "ix_comments_parent_id", "ix_comments_language",
                    "ix_comments_sentiment", "ix_comments_emotion"]
 

@@ -1,5 +1,5 @@
 import "server-only";
-import { cached } from "./cache";
+import { stored } from "./stored";
 import { sql } from "./db";
 import {
   LENGTH_BUCKETS, TITLE_FEATURES, durationSeconds, forecastViews, isShort, median, titleWords,
@@ -53,10 +53,10 @@ function dayHour(iso: string, tz: string): { day: number; hour: number } {
 }
 
 export function channelAnalytics(channelId: string): Promise<ChannelAnalytics> {
-  return cached(`analytics:${channelId}`, TTL, () => computeChannel(channelId));
+  return stored(`analytics:${channelId}`, TTL, () => computeChannel(channelId));
 }
 
-async function computeChannel(channelId: string): Promise<ChannelAnalytics> {
+export async function computeChannel(channelId: string): Promise<ChannelAnalytics> {
   const db = sql();
   const rows = await db`
     select id, title, thumbnail_url, published_at, duration,
@@ -167,10 +167,10 @@ export type AudienceAnalytics = {
 };
 
 export function audienceAnalytics(channelId: string): Promise<AudienceAnalytics> {
-  return cached(`audience:${channelId}`, TTL, () => computeAudience(channelId));
+  return stored(`audience:${channelId}`, TTL, () => computeAudience(channelId));
 }
 
-async function computeAudience(channelId: string): Promise<AudienceAnalytics> {
+export async function computeAudience(channelId: string): Promise<AudienceAnalytics> {
   const db = sql();
   const perVideo = await db`
     with c as (

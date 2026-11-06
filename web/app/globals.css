@@ -172,3 +172,8 @@ input, select, textarea {
   .glow-text { background: none !important; -webkit-text-fill-color: #111827 !important; color: #111827 !important; }
   a { color: inherit !important; text-decoration: none !important; }
 }
+
+/* Reveal: a light fade-up (CSS only) */
+@keyframes reveal-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.reveal { animation: reveal-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) { .reveal { animation: none; } }
