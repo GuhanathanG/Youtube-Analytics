@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "./db";
-import { cached } from "./cache";
+import { cached, within } from "./cache";
 import { ensureSummary, summaries } from "./summary";
 import { archiveConfigured, searchArchive } from "./archive";
 
@@ -200,6 +200,18 @@ export async function languageCounts(f: Filters) {
   if (f.channelId && summaryOnly(f)) {
     const x = (await summaries()).get(f.channelId);
     if (x) return x.languages.map((l) => ({ code: l.code, name: languageName(l.code), comments: l.comments, avg: l.avg }));
+  }
+  if (!f.channelId && summaryOnly(f) && !f.hideSpam) {
+    const all = await summaries();
+    if (all.size) {
+      const m = new Map<string, { comments: number; sum: number }>();
+      for (const x of all.values()) for (const l of x.languages) {
+        const e = m.get(l.code) ?? { comments: 0, sum: 0 };
+        e.comments += l.comments; e.sum += (l.avg ?? 0) * l.comments; m.set(l.code, e);
+      }
+      return [...m.entries()].sort((a, b) => b[1].comments - a[1].comments)
+        .map(([code, e]) => ({ code, name: languageName(code), comments: e.comments, avg: e.comments ? e.sum / e.comments : null }));
+    }
   }
   const db = sql();
   const rows = await db`
@@ -408,7 +420,8 @@ async function progressUncached(): Promise<Progress[]> {
                from videos group by channel_id) v on v.channel_id = ch.id
     left join channel_summary c on c.channel_id = ch.id
     where ch.active order by ch.title`) as unknown as Progress[];
-  const extra = await cached("job-extras", 10 * 60_000, jobExtras).catch(() => null);
+  // The slow-job numbers are optional: use them if ready within 3 s (they keep loading in the background).
+  const extra = await within(cached("job-extras", 10 * 60_000, jobExtras), 3000, null);
   if (extra) for (const r of rows) Object.assign(r, extra.perChannel.get(r.channel_id) ?? {}, extra.rates);
   return rows;
 }
@@ -425,9 +438,9 @@ async function jobExtras() {
   const thumbs = await safe(db`select v.channel_id, count(*)::int as n from videos v join channels c on c.id = v.channel_id
     left join thumb_analysis t on t.video_id = v.id where c.active and v.thumbnail_url is not null and t.video_id is null group by 1`);
   const months = await safe(db`
-    with m as (select c.channel_id, to_char(date_trunc('month', c.published_at), 'YYYY-MM') as mon from comments c
-               where c.published_at >= date_trunc('month', (now() at time zone 'utc')) - interval '23 months'
-               group by 1, 2 having count(*) >= 20)
+    with m as (select v.channel_id, to_char(date_trunc('month', v.published_at), 'YYYY-MM') as mon from videos v
+               where v.published_at >= date_trunc('month', (now() at time zone 'utc')) - interval '23 months'
+               group by 1, 2 having sum(coalesce(v.comment_count, 0)) >= 20)
     select m.channel_id, count(*)::int as n from m
     where not exists (select 1 from insights i where i.scope = 'month' and i.target_id = m.channel_id || ':' || m.mon) group by 1`);
   for (const [rows, key] of [[watch, "videos_to_watch"], [thumbs, "thumbs_to_check"], [months, "months_to_remember"]] as const) {

@@ -65,9 +65,9 @@ export async function refreshSummary(channelId: string) {
 }
 
 /** Engine step: refresh the stalest channel summary if it's older than SUMMARY_EVERY_MINUTES (default 3). */
-export async function refreshDueSummaries(timeLeft: () => boolean, max = 2): Promise<number> {
+export async function refreshDueSummaries(timeLeft: () => boolean, max = 1): Promise<number> {
   await ensureSummary();
-  const every = Number(process.env.SUMMARY_EVERY_MINUTES ?? 3);
+  const every = Number(process.env.SUMMARY_EVERY_MINUTES ?? 10);
   const due = await sql()`select ch.id from channels ch left join channel_summary s on s.channel_id = ch.id
     where ch.active and (s.updated_at is null or s.updated_at < (now() at time zone 'utc') - make_interval(mins => ${every}))
     order by s.updated_at asc nulls first limit ${max}`;
