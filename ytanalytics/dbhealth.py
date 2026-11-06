@@ -50,3 +50,20 @@ def report(session: Session) -> None:
     _print("Indexes never used", _rows(session,
         "select relname as table, indexrelname as index, pg_size_pretty(pg_relation_size(indexrelid)) as size "
         "from pg_stat_user_indexes where idx_scan = 0 order by pg_relation_size(indexrelid) desc limit 10"))
+
+
+# Connections the website left hanging: the query finished long ago, but the connection still waits for
+# the next message inside an open transaction, so its tables stay "in use". A table change then waits
+# for it and every page queues behind that change. Safe to end: their requests are long gone.
+STUCK = ("datname = current_database() and pid <> pg_backend_pid() and ("
+         "(state = 'active' and wait_event = 'ClientRead' and now() - state_change > interval '2 minutes')"
+         " or (state = 'idle in transaction' and now() - state_change > interval '5 minutes')"
+         " or (wait_event_type = 'Lock' and now() - query_start > interval '30 seconds'"
+         "     and query ~* '^\\s*(alter|create index|drop index)'))")
+
+
+def unstick(session: Session) -> None:
+    rows = _rows(session, "select pid, state, wait_event, now() - state_change as stuck_for, left(query, 120) as query, "
+                          f"pg_terminate_backend(pid) as ended from pg_stat_activity where {STUCK}")
+    session.commit()
+    _print("Ended stuck connections", rows or [{"none": "nothing was stuck"}])

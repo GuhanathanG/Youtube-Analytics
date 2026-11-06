@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
   push:
     branches: ["claude/**"]
-    paths: [".github/workflows/db-health.yml", "ytanalytics/dbhealth.py", "ytanalytics/db.py"]
+    paths: [".github/workflows/db-health.yml", "ytanalytics/dbhealth.py", "ytanalytics/db.py", "ytanalytics/cli.py"]
 
 jobs:
   report:
@@ -23,4 +23,4 @@ jobs:
           cache: pip
           cache-dependency-path: requirements*.txt
       - run: pip install -r requirements.txt
-      - run: python -m ytanalytics db-health
+      - run: python -m ytanalytics db-health --unstick
