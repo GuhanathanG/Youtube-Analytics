@@ -268,7 +268,7 @@ class Syncer:
 
     # -- comments ------------------------------------------------------------------
     def _active_channel_ids(self) -> list[str]:
-        return list(self.s.scalars(select(Channel.id).where(Channel.active.is_(True))).all())
+        return list(self.s.scalars(select(Channel.id).where(Channel.active.is_(True), Channel.platform.is_(None))).all())
 
     def sync_new_comments(self) -> None:
         """Pick up comments posted since the last run."""
@@ -469,7 +469,7 @@ def run_sync(session: Session, settings: Settings, yt: YouTubeClient | None = No
     session.commit()
     try:
         syncer.process_channel_requests()
-        channels = list(session.scalars(select(Channel).where(Channel.active.is_(True))).all())
+        channels = list(session.scalars(select(Channel).where(Channel.active.is_(True), Channel.platform.is_(None))).all())
         syncer.refresh_channels(channels)
         for channel in channels:
             syncer.sync_uploads(channel)

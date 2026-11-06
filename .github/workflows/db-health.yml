@@ -1,0 +1,26 @@
+name: Database health
+
+# Read-only report of what makes the database slow (biggest tables, slowest queries, locks).
+# Run it from the Actions tab ("Run workflow"); it also runs on pushes to claude/ branches that change it.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: ["claude/**"]
+    paths: [".github/workflows/db-health.yml", "ytanalytics/dbhealth.py", "ytanalytics/db.py", "ytanalytics/cli.py"]
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements.txt
+      - run: python -m ytanalytics db-health --unstick

@@ -69,6 +69,8 @@ class Channel(Base):
     view_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     video_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # None = YouTube; "instagram" = an Instagram account (collected by the website engine via Apify).
+    platform: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Paging through the full upload history happens once, possibly across several runs.
     videos_backfilled: Mapped[bool] = mapped_column(Boolean, default=False)
     videos_page_token: Mapped[str | None] = mapped_column(String(200), nullable=True)
@@ -308,9 +310,17 @@ def init_db(engine: Engine) -> None:
     except Exception:  # table missing on a brand-new database
         pass
     Base.metadata.create_all(engine)
-    _add_missing_columns(engine)
-    _drop_retired_indexes(engine)
-    _lock_public_api(engine)
+    try:
+        _add_missing_columns(engine)
+        _drop_retired_indexes(engine)
+        _lock_public_api(engine)
+    except Exception as e:
+        if "lock timeout" not in str(e):
+            raise
+        # A table was busy. Skip for now (the website keeps working); the next run tries again.
+        import logging
+        logging.getLogger(__name__).warning("Table upgrade postponed (a table was busy): %s", str(e).splitlines()[0])
+        return
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM schema_meta WHERE key = 'layout'"))
         conn.execute(text("INSERT INTO schema_meta (key, value) VALUES ('layout', :v)"), {"v": fingerprint})
@@ -325,8 +335,11 @@ def _drop_retired_indexes(engine: Engine) -> None:
     from sqlalchemy import text
 
     with engine.begin() as conn:
+        have = set(conn.execute(text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public'")).scalars()) \
+            if engine.dialect.name == "postgresql" else set(RETIRED_INDEXES)
         for name in RETIRED_INDEXES:
-            conn.execute(text(f"DROP INDEX IF EXISTS {name}"))
+            if name in have:
+                conn.execute(text(f"DROP INDEX IF EXISTS {name}"))
 
 
 def _lock_public_api(engine: Engine) -> None:
@@ -337,9 +350,14 @@ def _lock_public_api(engine: Engine) -> None:
         return
     from sqlalchemy import text
 
-    with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            conn.execute(text(f'ALTER TABLE "{table.name}" ENABLE ROW LEVEL SECURITY'))
+    with engine.connect() as conn:  # look first: ALTER TABLE locks the table even when nothing changes
+        off = set(conn.execute(text("SELECT relname FROM pg_class WHERE relnamespace = 'public'::regnamespace "
+                                    "AND relkind = 'r' AND NOT relrowsecurity")).scalars())
+    for table in Base.metadata.sorted_tables:
+        if table.name in off:
+            with engine.begin() as conn:
+                conn.execute(text("SET LOCAL lock_timeout = '3s'"))
+                conn.execute(text(f'ALTER TABLE "{table.name}" ENABLE ROW LEVEL SECURITY'))
 
 
 def _add_missing_columns(engine: Engine) -> None:
@@ -347,12 +365,16 @@ def _add_missing_columns(engine: Engine) -> None:
     from sqlalchemy import inspect, text
 
     insp = inspect(engine)
-    with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            existing = {c["name"] for c in insp.get_columns(table.name)}
-            for col in table.columns:
-                if col.name not in existing:
-                    col_type = col.type.compile(dialect=engine.dialect)
+    for table in Base.metadata.sorted_tables:
+        existing = {c["name"] for c in insp.get_columns(table.name)}
+        for col in table.columns:
+            if col.name not in existing:
+                col_type = col.type.compile(dialect=engine.dialect)
+                with engine.begin() as conn:
+                    if engine.dialect.name == "postgresql":
+                        # ALTER TABLE needs the table to itself. If something is using it, waiting would make
+                        # every website query on that table queue behind us, so give up after 3 s (next run retries).
+                        conn.execute(text("SET LOCAL lock_timeout = '3s'"))
                     conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {col_type}'))
 
 

@@ -37,6 +37,7 @@ export type TickResult = {
   memory?: number;
   summaries?: number;
   job?: string;
+  unstuck?: number;
   at: string;
 };
 
@@ -301,6 +302,17 @@ async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<
   return results.reduce((a, b) => a + b, 0);
 }
 
+/* ------------------------------------------------------------------ auto-clean */
+export async function unstickConnections(): Promise<number> {
+  const rows = await sql()`select pid, left(query, 100) as query, pg_terminate_backend(pid) as ended from pg_stat_activity
+    where datname = current_database() and pid <> pg_backend_pid() and (
+      (state = 'active' and wait_event = 'ClientRead' and now() - state_change > interval '2 minutes')
+      or (wait_event_type = 'Lock' and now() - query_start > interval '30 seconds'
+          and query ~* '^\\s*(alter|create index|drop index)'))`;
+  for (const r of rows) console.log("[auto-clean] ended stuck connection:", r.query);
+  return rows.length;
+}
+
 /* ------------------------------------------------------------------ the live tick */
 /** One run of the engine. Called every minute by an open browser tab ("browser") and
  *  every couple of minutes by an external timer ("cron"), so it also runs with the site closed. */
@@ -331,6 +343,10 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
   const historyTimeLeft = () => Date.now() < deadline - 5000 - aiReserve;
   const result: TickResult = { status: "ok", ...empty, source };
   const fresh: string[] = [];
+
+  // 0. Auto-clean: end database connections left hanging for minutes (their pages gave up long ago).
+  //    They keep tables "in use", so any table change waits for them and every page queues behind it.
+  result.unstuck = await unstickConnections().catch(() => 0);
 
   try {
     // 1. Channels added from other places (e.g. queued while quota was used up).

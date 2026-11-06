@@ -48,6 +48,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("topics-due", help="print 1 if any channel's topic groups need rebuilding, else 0")
     ar = sub.add_parser("archive", help="move old analysed comments to the archive database (ARCHIVE_DATABASE_URL)")
     ar.add_argument("--until", type=float, default=None, help="stop by this unix time")
+    dh = sub.add_parser("db-health", help="report what makes the database slow")
+    dh.add_argument("--unstick", action="store_true", help="also end connections the website left hanging")
     sub.add_parser("pending", help="number of comments waiting for analysis")
     sub.add_parser("status", help="summary of what is stored")
     sub.add_parser("plan", help="print minutes for this run (GitHub Actions budget)")
@@ -65,7 +67,8 @@ def main(argv: list[str] | None = None) -> int:
         # At least ~20 seconds, so new comments are always picked up.
         settings.max_run_minutes = max(0.35, (args.until - time.time()) / 60)
     engine = make_engine(settings.database_url)
-    init_db(engine)
+    if args.cmd != "db-health":  # the health report only reads; never change tables for it
+        init_db(engine)
     if args.cmd in ("sync", "init-db"):
         from .db import guard_website_queries
         guard_website_queries(engine)
@@ -162,6 +165,12 @@ def main(argv: list[str] | None = None) -> int:
             from .budget import record_job
 
             record_job(session, args.started, args.status)
+        elif args.cmd == "db-health":
+            from .dbhealth import report, unstick
+
+            if args.unstick:
+                unstick(session)
+            report(session)
         elif args.cmd == "pending":
             from .sentiment import count_pending
 
