@@ -102,12 +102,12 @@ export function LivePill() {
   const label = !enabled ? "Live paused" : off ? "Live off" : busy ? "Checking…" : problem ? (last?.status === "quota" ? "Quota used up" : "Live · retrying") : `Live · ${since(last?.at, now) || "starting"}`;
   const dot = !enabled || off ? "bg-ink-3" : problem ? "bg-warn" : "bg-accent animate-[pulse-dot_2s_ease-out_infinite]";
   return (
-    <div className="ml-auto flex items-center gap-1.5">
+    <div className="flex shrink-0 items-center gap-1.5 sm:ml-auto">
       <button onClick={() => (enabled ? checkNow() : setEnabled(true))} title={last?.message ?? "Check YouTube for new comments now"}
         className="flex items-center gap-2 rounded-full border border-line bg-white/[0.03] px-3 py-1.5 text-[12.5px] text-ink-2 transition hover:border-accent/40 hover:text-ink">
         <span className={`h-2 w-2 rounded-full ${dot}`} />
         <span className="hidden sm:inline">{label}</span>
-        <span className="sm:hidden">{enabled && !off ? "Live" : "Off"}</span>
+        <span className="sr-only sm:hidden">{enabled && !off ? "Live" : "Off"}</span>
       </button>
       {enabled && !off && (
         <button onClick={() => setEnabled(false)} className="hidden rounded-full px-2 py-1 text-[11.5px] text-ink-3 hover:text-ink-2 sm:block" title="Pause live mode">pause</button>

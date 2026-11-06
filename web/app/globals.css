@@ -177,3 +177,13 @@ input, select, textarea {
 @keyframes reveal-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 .reveal { animation: reveal-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
 @media (prefers-reduced-motion: reduce) { .reveal { animation: none; } }
+
+/* iPhone notch / home bar (viewport-fit=cover) */
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { margin-bottom: env(safe-area-inset-bottom); }
+.safe-main { padding-bottom: calc(7rem + env(safe-area-inset-bottom)); }
+@media (min-width: 1024px) { .safe-main { padding-bottom: 4rem; } }
+
+/* Grid/flex children may shrink below their content (long words, links): no sideways scrolling on phones */
+.reveal { min-width: 0; }
+.panel { overflow-wrap: anywhere; }

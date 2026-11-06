@@ -14,7 +14,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   const all = await getChannels();
   const raw = (await searchParams).c;
   // Validate the shape only; compareChannels reads the database, so a channel added seconds ago (not yet in the 30 s cache) still counts.
-  let ids = [...new Set((Array.isArray(raw) ? raw : raw ? [raw] : []).filter((id) => /^UC[\w-]{22}$/.test(id)))].slice(0, 4);
+  let ids = [...new Set((Array.isArray(raw) ? raw : raw ? [raw] : []).filter((id) => /^(UC[\w-]{22}|ig_[a-z0-9._]{1,30})$/.test(id)))].slice(0, 4);
   if (!ids.length) ids = all.slice(0, 4).map((c) => c.id);
   let { rows, weekly, overlap } = await compareChannels(ids);
   if (rows.length < ids.length) { // drop ids that aren't tracked channels

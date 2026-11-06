@@ -15,7 +15,9 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "Pulse", statusBarStyle: "black-translucent" },
 };
 
-export const viewport: Viewport = { themeColor: "#05070d", colorScheme: "dark" };
+// viewportFit "cover": on iPhones the app fills the screen behind the notch and home bar; the
+// safe-* classes (globals.css) keep the top bar and bottom menu clear of them.
+export const viewport: Viewport = { themeColor: "#05070d", colorScheme: "dark", viewportFit: "cover" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

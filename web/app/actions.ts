@@ -84,6 +84,19 @@ export async function setFocus(channelId: string) {
   revalidatePath("/", "layout");
 }
 
+/** Manage → iPhone widget: make a new widget key (old widgets stop working). Returns the new script. */
+export async function rotateWidgetKey(): Promise<string> {
+  await requireSession();
+  const { rotateWidgetToken, scriptableScript } = await import("@/lib/widget");
+  const key = await rotateWidgetToken();
+  return scriptableScript(await siteUrl(), key);
+}
+
+async function siteUrl() {
+  const host = process.env.SITE_HOST ?? process.env.VERCEL_PROJECT_PRODUCTION_URL ?? (await headers()).get("host") ?? "localhost:3000";
+  return `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
+}
+
 export async function runFullSync(): Promise<{ ok: boolean; message: string }> {
   await requireSession();
   return startFullSync();

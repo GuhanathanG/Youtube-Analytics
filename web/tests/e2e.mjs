@@ -414,6 +414,20 @@ try {
   const mg = await (await get("/manage")).text();
   check("Manage shows the Instagram form and budget", mg.includes("Watch on Instagram") && mg.includes("Instagram budget"));
 
+  // iPhone widget: read-only numbers with its own key (shown on Manage), refused without it
+  const mgW = await (await get("/manage")).text();
+  check("Manage shows the iPhone widget setup", mgW.includes("iPhone widget") && mgW.includes("Copy widget script"));
+  check("widget feed refuses a missing or wrong key", (await fetch(`${BASE}/api/widget`)).status === 401
+    && (await fetch(`${BASE}/api/widget?key=${"x".repeat(32)}`)).status === 401);
+  const [{ value: wkey }] = await db`select value from app_secrets where name = 'widget_token'`;
+  const wd = await (await fetch(`${BASE}/api/widget?key=${encodeURIComponent(wkey)}`)).json();
+  check("widget feed returns each channel's numbers", wd.channels?.some((c) => c.title === "Live Creator" && typeof c.comments24h === "number" && c.positive >= 0),
+    JSON.stringify(wd).slice(0, 300));
+  check("widget feed has no comment text", !JSON.stringify(wd).includes("semma"));
+  check("the copied script contains this site's key", mgW.includes(wkey));
+  const wd1 = await (await fetch(`${BASE}/api/widget?key=${encodeURIComponent(wkey)}&c=${ch.id}`)).json();
+  check("widget can show one channel", wd1.channels?.length === 1 && wd1.channels[0].id === ch.id);
+
   // When YouTube's daily quota is used up, the AI still works through its backlog
   await db`update comments set ai_at = null, ai_model = null where text like 'old comment%'`;
   await db`insert into quota_usage (day, units) values (to_char((now() at time zone 'America/Los_Angeles'), 'YYYY-MM-DD'), 99999)
