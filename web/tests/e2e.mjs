@@ -51,7 +51,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100",
-    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0",
+    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0", RADAR_CACHE_SECONDS: "0",
     YOUTUBE_RSS_BASE: "http://localhost:4100", WEBSUB_HUB: "http://localhost:4100/subscribe", WEBSUB_CALLBACK_BASE: `http://localhost:${PORT}` },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true, // own process group, so the whole server tree can be stopped
@@ -474,6 +474,30 @@ try {
   const improved = (await (await studio({ action: "rewrite", channelId: ch.id, title: "my vlog" })).json()).scores;
   check("Packaging Lab suggests better titles, scored", improved?.length === 2 && improved.every((t) => typeof t.score === "number"));
   check("Studio page opens", (await get("/studio?tab=lab")).status === 200);
+
+  // Competitor radar: a competitor's breakout shows up on the Radar and as a next move
+  const rivalId = "UC" + "y".repeat(18) + "twoo";
+  check("Manage offers “Mark as competitor”", (await (await get("/manage")).text()).includes("Mark as competitor"));
+  await db`update channels set role = 'competitor' where id = ${rivalId}`;
+  for (let k = 0; k < 4; k++) {
+    await db`insert into videos (id, channel_id, title, comments_disabled, comments_backfilled, published_at, view_count)
+      values (${"rivalold" + k}, ${rivalId}, ${"Daily vlog episode " + k}, false, true, (now() at time zone 'utc') - make_interval(days => ${20 + k}), 1000)
+      on conflict (id) do nothing`;
+  }
+  await db`insert into videos (id, channel_id, title, comments_disabled, comments_backfilled, published_at, view_count)
+    values ('rivalhit01', ${rivalId}, 'Smartphone gimbal shootout: cinematic results', false, true, (now() at time zone 'utc') - interval '6 days', 9000),
+           ('rivalhit02', ${rivalId}, 'Gimbal tricks for cinematic phone video', false, true, (now() at time zone 'utc') - interval '9 days', 7000)
+    on conflict (id) do nothing`;
+  await db`delete from panel_cache where key like 'radar:%'`;
+  const rad = await (await fetch(`${BASE}/radar`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } })).text();
+  check("Radar compares you with your competitors", rad.includes("Second Creator") && rad.includes("Side by side") && rad.includes("(you)"));
+  check("Radar shows the competitor's breakout", rad.includes("Smartphone gimbal shootout") && /9\.0×|9×/.test(rad));
+  check("Radar finds topic gaps you haven't covered", rad.includes("gimbal") && rad.includes("cinematic"));
+  const cmdR = await (await fetch(`${BASE}/command`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } })).text();
+  check("a competitor's breakout becomes a next move", cmdR.includes("Your take on") && cmdR.includes("/studio?topic="));
+  const ovR = await (await fetch(`${BASE}/`, { headers: { cookie: `${cookie}; cp_focus=${rivalId}` } })).text();
+  check("a competitor is never the site's focus", !ovR.includes("Second Creator ·") );
+  await db`update channels set role = null where id = ${rivalId}`;
 
   // Pulse Glance: the widget-style home-screen app
   const gl = await (await get("/glance")).text();

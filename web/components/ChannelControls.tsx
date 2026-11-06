@@ -2,7 +2,7 @@
 
 import { Pause, Play, Plus, RefreshCw } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
-import { addChannel, runFullSync, setChannelActive, testAlertAction, addInstagram } from "@/app/actions";
+import { addChannel, runFullSync, setChannelActive, setChannelRole, testAlertAction, addInstagram } from "@/app/actions";
 
 export function AddChannelForm() {
   const [state, action, pending] = useActionState(addChannel, undefined);
@@ -53,6 +53,16 @@ export function FullSyncButton({ enabled }: { enabled: boolean }) {
       </button>
       {msg && <p className={`mt-2 text-[13px] ${msg.ok ? "text-accent" : "text-neg"}`}>{msg.message}</p>}
     </div>
+  );
+}
+
+export function CompetitorToggle({ id, competitor }: { id: string; competitor: boolean }) {
+  const [pending, start] = useTransition();
+  return (
+    <button disabled={pending} onClick={() => start(() => setChannelRole(id, !competitor))} title={competitor ? "Make it one of your channels again" : "Track as a competitor: videos and stats only"}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] transition disabled:opacity-50 ${competitor ? "border-accent-2/50 text-accent-2" : "border-line text-ink-2 hover:text-ink"}`}>
+      {competitor ? "Competitor ✓" : "Mark as competitor"}
+    </button>
   );
 }
 

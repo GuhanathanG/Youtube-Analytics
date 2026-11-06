@@ -8,6 +8,7 @@ import { channelAnalytics } from "./analytics";
 import { channelHealth, unansweredQuestions } from "./creator-insights";
 import { panel } from "./panels";
 import { buildMoves, type Move } from "./moves";
+import { radar } from "./radar";
 
 /**
  * Command Center data: the channel's next moves (rule-based, from everything the platform already
@@ -34,6 +35,7 @@ export async function nextMoves(channelId: string): Promise<{ moves: Move[]; hea
     within(panel("trend", channelId), 8000, { months: [], series: [], rising: [] }), within(panel("people", channelId), 8000, empty),
     within(panel("preds", channelId), 8000, []), within(uploadRhythm(channelId), 5000, { last: null, gap: null }),
   ]);
+  const rivals = await within(radar(channelId), 8000, null);
   const moves = buildMoves({
     channelId, questions,
     ideas: ((ideas?.data as { ideas?: unknown[] } | undefined)?.ideas ?? []) as { title?: string; why?: string; requests?: number; likes?: number }[],
@@ -42,6 +44,8 @@ export async function nextMoves(channelId: string): Promise<{ moves: Move[]; hea
     superfans: people.superfans, critics: people.critics,
     predictions: preds.map((p) => ({ video_id: p.video_id, title: p.title, age_hours: p.age_hours, index: p.index })),
     lastUploadDays: rhythm.last, typicalGapDays: rhythm.gap,
+    platform: channelId.startsWith("ig_") ? "instagram" : "youtube",
+    rivalBreakouts: (rivals?.breakouts ?? []).map((b) => ({ channel: b.channel, id: b.id, title: b.title, outlier: b.outlier })),
   });
   return { moves, health: health ? { score: health.score, grade: health.grade, parts: health.parts } : null };
 }

@@ -15,7 +15,7 @@ import { ago } from "@/lib/format";
 export const metadata = { title: "Studio" };
 export const maxDuration = 60;
 
-export default async function StudioPage({ searchParams }: { searchParams: Promise<{ d?: string; tab?: string }> }) {
+export default async function StudioPage({ searchParams }: { searchParams: Promise<{ d?: string; tab?: string; topic?: string }> }) {
   const sp = await searchParams;
   const chs = (await getChannels()).filter((c) => c.active);
   const focus = await focusChannel(chs.map((c) => c.id));
@@ -63,7 +63,7 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
         <div className="grid gap-4 xl:grid-cols-3">
           <div className="space-y-4 xl:col-span-2">
             <Reveal><Panel title="New video plan" subtitle="Angles, scored titles, thumbnail, hook, outline and tags">
-              <StudioForm channelId={ch.id} suggestions={suggestions} />
+              <StudioForm channelId={ch.id} suggestions={suggestions} initial={sp.topic?.slice(0, 300) ?? ""} />
             </Panel></Reveal>
             {draft && <DraftView d={draft} />}
           </div>

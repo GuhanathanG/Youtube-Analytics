@@ -63,6 +63,7 @@ async function ensureLiveTable() {
   await ensureIndex("ix_comments_ai_pending", "create index if not exists ix_comments_ai_pending on comments (published_at desc) where ai_at is null");
   await db`insert into live_state (id) values (1) on conflict do nothing`;
   await ensureInstagram(); // channels.platform (null = YouTube), used by the YouTube-only steps below
+  await ensureColumns("channels", [["role", "text"]]); // "competitor": videos and stats only, no comments
   tableReady = true;
 }
 
@@ -295,13 +296,13 @@ async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<
   await db`update videos set comments_backfilled = true, comment_count_checked = 0,
       latest_comment_at = coalesce(latest_comment_at, published_at, (now() at time zone 'utc'))
     where not comments_backfilled and not comments_disabled and comment_count = 0
-      and channel_id in (select id from channels where active and platform is null)`;
+      and channel_id in (select id from channels where active and platform is null and coalesce(role, '') <> 'competitor')`;
   const parallel = Math.max(1, Number(process.env.LIVE_BACKFILL_PARALLEL ?? 4));
   const perVideo = Math.max(1, Math.ceil(maxPages / parallel));
   const videos = await db`
     select v.id, v.channel_id, v.comments_page_token, v.comment_count, v.latest_comment_at, v.published_at
     from videos v join channels c on c.id = v.channel_id
-    where c.active and c.platform is null and not v.comments_backfilled and not v.comments_disabled
+    where c.active and c.platform is null and coalesce(c.role, '') <> 'competitor' and not v.comments_backfilled and not v.comments_disabled
     order by v.published_at desc nulls last limit ${parallel}`;
   const results = await Promise.all(videos.map((v) => backfillVideo(v, perVideo, timeLeft).catch((e) => {
     if (e instanceof QuotaExhausted) return 0;
@@ -491,7 +492,7 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 4. New comments wherever the count went up (newest videos first).
     const changed = await db`
       select v.id, v.channel_id, v.latest_comment_at from videos v join channels c on c.id = v.channel_id
-      where c.active and c.platform is null and not v.comments_disabled and v.comment_count > coalesce(v.comment_count_checked, -1)
+      where c.active and c.platform is null and coalesce(c.role, '') <> 'competitor' and not v.comments_disabled and v.comment_count > coalesce(v.comment_count_checked, -1)
         and (v.latest_comment_at is not null or v.published_at >= (now() at time zone 'utc') - interval '30 days')
       order by v.published_at desc nulls last limit 15`;
     // Three videos at a time: each fetch waits on YouTube, so doing them together is ~3x faster.

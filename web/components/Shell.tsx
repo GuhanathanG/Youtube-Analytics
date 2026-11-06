@@ -9,7 +9,7 @@ import { CommandPalette } from "./CommandPalette";
 import { LivePill } from "./LivePill";
 import { Logo } from "./Logo";
 
-type NavChannel = { id: string; title: string; thumb: string | null; active: boolean };
+type NavChannel = { id: string; title: string; thumb: string | null; active: boolean; rival?: boolean };
 
 const NAV = [
   { href: "/command", label: "Command", icon: Rocket },
@@ -18,6 +18,7 @@ const NAV = [
   { href: "/ask", label: "Ask AI", icon: Sparkles },
   { href: "/comments", label: "Comments", icon: MessageSquareText },
   { href: "/analytics", label: "Analytics", icon: ChartNoAxesCombined },
+  { href: "/radar", label: "Radar", icon: Radar },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/ideas", label: "Ideas", icon: Lightbulb },
   { href: "/manage", label: "Manage", icon: Settings2 },
@@ -30,7 +31,7 @@ const MOBILE_NAV = NAV.filter((n) => ["/command", "/", "/ask", "/comments"].incl
 function FocusSwitcher({ channels, focus }: { channels: NavChannel[]; focus: string | null }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const active = channels.filter((c) => c.active);
+  const active = channels.filter((c) => c.active && !c.rival); // competitors are on the Radar, not in the switcher
   if (active.length < 2) return null;
   return (
     <select aria-label="Channel shown across the site" value={focus ?? "all"} disabled={pending}
@@ -73,7 +74,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
                 <img src={c.thumb} alt="" className="h-6 w-6 rounded-full object-cover ring-1 ring-white/10" />
               ) : <span className="grid h-6 w-6 place-items-center rounded-full bg-white/10 text-[11px]">{c.title.slice(0, 1)}</span>}
               <span className="truncate">{c.title}</span>
-              {!c.active && <span className="ml-auto text-[10px] text-ink-3">paused</span>}
+              {!c.active ? <span className="ml-auto text-[10px] text-ink-3">paused</span> : c.rival ? <span className="ml-auto font-mono text-[9.5px] tracking-wider text-accent-2">RIVAL</span> : null}
             </Link>
           ))}
         </div>

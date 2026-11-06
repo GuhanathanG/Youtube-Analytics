@@ -96,3 +96,10 @@ assert.ok(scoreTitle("THIS IS ALL CAPS SHOUTING TITLE", tctx).fix.some((f) => f.
 assert.equal(scoreTitle("", tctx).score, 0);
 assert.deepEqual(demandWords(["please make camera test", "camera test video please", "battery life?", "battery backup"]).slice(0, 3).sort(),
   ["battery", "camera", "test"]);
+
+// Competitor breakouts become a move; Instagram wording
+const rivalMoves = buildMoves({ ...base, rivalBreakouts: [{ channel: "Rival", id: "rv1", title: "Phone camera shootout", outlier: 3.2 }] });
+assert.ok(rivalMoves.some((m) => m.id === "rival-rv1" && m.href.startsWith("/studio?topic=")));
+const igMoves = buildMoves({ ...base, platform: "instagram", lastUploadDays: 20, typicalGapDays: 4,
+  formats: { shorts: { count: 5, medianOutlier: 3 }, long: { count: 5, medianOutlier: 1 } } });
+assert.ok(igMoves.some((m) => m.title === "Time for the next post") && !igMoves.some((m) => m.id === "format"));

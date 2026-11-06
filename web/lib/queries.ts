@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, ensureColumns } from "./db";
 import { cached, within } from "./cache";
 import { ensureSummary, summaries } from "./summary";
 import { archiveConfigured, searchArchive } from "./archive";
@@ -74,7 +74,7 @@ async function kpisUncached(): Promise<Kpis> {
 export type ChannelRow = {
   id: string; title: string; handle: string | null; thumbnail_url: string | null; description: string | null;
   subscriber_count: number | null; view_count: number | null; video_count: number | null; active: boolean;
-  last_synced_at: string | null; videos_stored: number; videos_backfilled: number; comments: number;
+  last_synced_at: string | null; videos_stored: number; videos_backfilled: number; comments: number; role?: string | null;
   positive: number; neutral: number; negative: number; avg_sentiment: number | null;
 };
 
@@ -82,11 +82,13 @@ export async function channels(): Promise<ChannelRow[]> {
   return cached("channels", Number(process.env.LIST_CACHE_SECONDS ?? 30) * 1000, channelsUncached);
 }
 
+let roleReady = false;
 async function channelsUncached(): Promise<ChannelRow[]> {
   const db = sql();
   await ensureSummary();
+  if (!roleReady) { await ensureColumns("channels", [["role", "text"]]); roleReady = true; }
   return (await db`
-    select ch.id, ch.title, ch.handle, ch.thumbnail_url, ch.description,
+    select ch.id, ch.title, ch.handle, ch.thumbnail_url, ch.description, ch.role,
            ch.subscriber_count::float8 as subscriber_count, ch.view_count::float8 as view_count,
            ch.video_count::int as video_count, ch.active, ch.last_synced_at,
            coalesce(v.n, 0)::int as videos_stored, coalesce(v.done, 0)::int as videos_backfilled,

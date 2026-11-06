@@ -30,6 +30,8 @@ export type MoveInputs = {
   predictions: { video_id: string; title: string; age_hours: number; index: number | null }[];
   lastUploadDays: number | null;
   typicalGapDays: number | null;
+  platform?: "youtube" | "instagram";
+  rivalBreakouts?: { channel: string; id: string; title: string; outlier: number }[];
 };
 
 const enc = encodeURIComponent;
@@ -39,6 +41,8 @@ const x = (v: number) => `${v >= 10 ? v.toFixed(0) : v.toFixed(1)}×`;
 export function buildMoves(i: MoveInputs, limit = 8): Move[] {
   const m: Move[] = [];
   const c = enc(i.channelId);
+  const ig = i.platform === "instagram";
+  const item = ig ? "post" : "video", items = ig ? "posts" : "videos", titles = ig ? "Captions" : "Titles";
 
   // Audience asks — the most direct signal of what to do next.
   if (i.questions.length) {
@@ -60,23 +64,25 @@ export function buildMoves(i: MoveInputs, limit = 8): Move[] {
   // Momentum on recent videos.
   const hot = i.predictions.filter((p) => p.index !== null && p.index >= 1.5 && p.age_hours <= 72).sort((a, b) => (b.index ?? 0) - (a.index ?? 0))[0];
   if (hot) m.push({ id: `push-${hot.video_id}`, kind: "growth", title: `Push “${short(hot.title, 50)}” now`,
-    why: "It's beating its expected views. Share it while it's rising: community post, a Shorts clip, a pinned comment.",
+    why: ig ? "It's beating its usual reach. Share it to your story and reply to its comments while it's rising."
+      : "It's beating its expected views. Share it while it's rising: community post, a Shorts clip, a pinned comment.",
     evidence: [`${x(hot.index!)} the usual pace at ${Math.round(hot.age_hours)} h`], impact: 3, effort: 1, href: `/videos/${enc(hot.video_id)}`, cta: "Open video" });
   const cold = i.predictions.filter((p) => p.index !== null && p.index <= 0.6 && p.age_hours >= 12 && p.age_hours <= 96).sort((a, b) => (a.index ?? 0) - (b.index ?? 0))[0];
   if (cold) m.push({ id: `rescue-${cold.video_id}`, kind: "packaging", title: `Rescue “${short(cold.title, 50)}”`,
-    why: "It's well below its expected views. A clearer title or a new thumbnail in the first days often turns it around.",
+    why: ig ? "It's well below its usual reach. Share it to your story or pin a comment that invites replies."
+      : "It's well below its expected views. A clearer title or a new thumbnail in the first days often turns it around.",
     evidence: [`${x(cold.index!)} the usual pace at ${Math.round(cold.age_hours)} h`], impact: 2, effort: 1, href: `/videos/${enc(cold.video_id)}`, cta: "Open video" });
 
   // Packaging and format patterns.
   const lift = i.titleFeatures.filter((f) => f.lift !== null && f.lift >= 1.25 && f.with >= 3 && f.without >= 3).sort((a, b) => (b.lift ?? 0) - (a.lift ?? 0))[0];
-  if (lift) m.push({ id: `title-${lift.label}`, kind: "packaging", title: `Titles: use “${lift.label}”`,
-    why: "On this channel, titles with this pattern clearly out-perform the rest.",
-    evidence: [`${x(lift.lift!)} views vs titles without it`, `${lift.with} videos with it`], impact: 2, effort: 1, href: `/analytics?c=${c}`, cta: "Title analysis" });
+  if (lift) m.push({ id: `title-${lift.label}`, kind: "packaging", title: `${titles}: use “${lift.label}”`,
+    why: `On this account, ${titles.toLowerCase()} with this pattern clearly out-perform the rest.`,
+    evidence: [`${x(lift.lift!)} views vs ${titles.toLowerCase()} without it`, `${lift.with} videos with it`], impact: 2, effort: 1, href: `/analytics?c=${c}`, cta: "Title analysis" });
   const breakout = i.topVideos.find((v) => (v.outlier ?? 0) >= 2.5 && v.ageDays <= 120);
   if (breakout) m.push({ id: `repeat-${breakout.id}`, kind: "content", title: `Follow up “${short(breakout.title, 50)}”`,
     why: "A breakout shows demand. A sequel, part 2 or a related angle usually rides the same interest.",
     evidence: [`${x(breakout.outlier!)} the channel's usual views`], impact: 3, effort: 3, href: `/videos/${enc(breakout.id)}`, cta: "See what worked" });
-  if (i.formats && i.formats.shorts.count >= 3 && i.formats.long.count >= 3 && i.formats.shorts.medianOutlier && i.formats.long.medianOutlier) {
+  if (!ig && i.formats && i.formats.shorts.count >= 3 && i.formats.long.count >= 3 && i.formats.shorts.medianOutlier && i.formats.long.medianOutlier) {
     const s = i.formats.shorts.medianOutlier, l = i.formats.long.medianOutlier;
     if (s / l >= 1.4 || l / s >= 1.4) {
       const better = s > l ? "Shorts" : "long videos";
@@ -87,7 +93,7 @@ export function buildMoves(i: MoveInputs, limit = 8): Move[] {
   }
   const len = i.lengths.filter((l) => l.count >= 3 && l.outlier !== null).sort((a, b) => (b.outlier ?? 0) - (a.outlier ?? 0))[0];
   if (len && (len.outlier ?? 0) >= 1.3) m.push({ id: "length", kind: "content", title: `Sweet spot: ${len.label}`,
-    why: "Videos of this length do best for this audience.", evidence: [`${x(len.outlier!)} typical views across ${len.count} videos`],
+    why: `${ig ? "Reels" : "Videos"} of this length do best for this audience.`, evidence: [`${x(len.outlier!)} typical views across ${len.count} ${items}`],
     impact: 1, effort: 2, href: `/analytics?c=${c}`, cta: "Length analysis" });
 
   // Timing.
@@ -97,9 +103,9 @@ export function buildMoves(i: MoveInputs, limit = 8): Move[] {
       evidence: [`${x(i.heatmapBest.outlier)} views across ${i.heatmapBest.count} uploads`], impact: 2, effort: 1, href: `/analytics?c=${c}`, cta: "Upload heatmap" });
   }
   if (i.lastUploadDays !== null && i.typicalGapDays !== null && i.typicalGapDays > 0 && i.lastUploadDays > Math.max(3, i.typicalGapDays * 1.6)) {
-    m.push({ id: "cadence", kind: "fix", title: "Time for the next upload",
-      why: "It's been longer than usual since the last video; regular uploads keep the audience coming back.",
-      evidence: [`${Math.round(i.lastUploadDays)} days since the last upload`, `usual gap: ${Math.round(i.typicalGapDays)} days`], impact: 2, effort: 3, href: `/channels/${c}`, cta: "Channel" });
+    m.push({ id: "cadence", kind: "fix", title: `Time for the next ${item}`,
+      why: `It's been longer than usual since the last ${item}; posting regularly keeps the audience coming back.`,
+      evidence: [`${Math.round(i.lastUploadDays)} days since the last ${item}`, `usual gap: ${Math.round(i.typicalGapDays)} days`], impact: 2, effort: 3, href: `/channels/${c}`, cta: "Channel" });
   }
 
   // Conversation trends.
@@ -123,6 +129,13 @@ export function buildMoves(i: MoveInputs, limit = 8): Move[] {
       why: tip[weak.key] ?? "This is the weakest part of the channel's health score.", evidence: [`${weak.label}: ${Math.round(weak.score)}/100 · ${weak.detail}`],
       impact: 2, effort: 2, href: `/analytics?c=${c}`, cta: "Health score" });
   }
+
+  // Competitors: a breakout on a rival channel shows demand you can meet with your own angle.
+  const rival = (i.rivalBreakouts ?? []).find((b) => b.outlier >= 2.5);
+  if (rival) m.push({ id: `rival-${rival.id}`, kind: "content", title: `Your take on “${short(rival.title, 48)}”`,
+    why: `${rival.channel}'s ${item} took off. A fresh angle on the same topic usually finds the same demand.`,
+    evidence: [`${x(rival.outlier)} ${rival.channel}'s usual views`], impact: 2, effort: 3,
+    href: `/studio?topic=${enc(rival.title)}`, cta: "Plan it in Studio" });
 
   // Community.
   if (i.superfans.length >= 3) m.push({ id: "superfans", kind: "community", title: `Thank your top ${Math.min(5, i.superfans.length)} superfans`,

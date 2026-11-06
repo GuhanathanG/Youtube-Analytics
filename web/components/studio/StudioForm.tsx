@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 /** Topic in, plan out. Suggestions come from what viewers ask for and the channel's breakouts. */
-export function StudioForm({ channelId, suggestions }: { channelId: string; suggestions: string[] }) {
+export function StudioForm({ channelId, suggestions, initial = "" }: { channelId: string; suggestions: string[]; initial?: string }) {
   const router = useRouter();
-  const [topic, setTopic] = useState("");
+  const [topic, setTopic] = useState(initial);
   const [msg, setMsg] = useState("");
   const [pending, start] = useTransition();
   const go = () => start(async () => {
