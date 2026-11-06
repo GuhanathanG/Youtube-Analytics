@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import type { CommentRow } from "./queries";
+import { archivedByAuthor } from "./archive";
 
 /**
  * One commenter: every comment they wrote on the watched channels, with their stats.
@@ -21,7 +22,9 @@ export async function personStats(authorId: string, channelId: string | null): P
       count(*) filter (where c.is_question)::int as questions, count(*) filter (where c.is_suggestion)::int as requests,
       count(distinct c.video_id)::int as videos
     from comments c where ${scope}`;
-  if (!s || !(s.comments as number)) return null;
+  const archived = await archivedByAuthor(authorId, channelId, "newest", 0);
+  if (!s || !((s.comments as number) + archived.count)) return null;
+  s.comments = (s.comments as number) + archived.count;
   const [channels, languages, emotions] = await Promise.all([
     db`select ch.id, ch.title, count(*)::int as comments, avg(c.sentiment_value)::float8 as avg_sentiment
        from comments c join channels ch on ch.id = c.channel_id where ${scope} group by ch.id, ch.title order by 3 desc`,
@@ -32,6 +35,14 @@ export async function personStats(authorId: string, channelId: string | null): P
 }
 
 export async function personComments(authorId: string, channelId: string | null, order: "newest" | "most_liked", page: number, perPage = 50): Promise<CommentRow[]> {
+  const live = await personLive(authorId, channelId, order, page * perPage);
+  const { rows: old } = await archivedByAuthor(authorId, channelId, order, page * perPage);
+  if (!old.length) return live.slice((page - 1) * perPage);
+  const key = (c: CommentRow) => (order === "most_liked" ? c.like_count : Date.parse(String(c.published_at ?? 0)));
+  return [...live, ...(old as unknown as CommentRow[])].sort((a, b) => key(b) - key(a)).slice((page - 1) * perPage, page * perPage);
+}
+
+async function personLive(authorId: string, channelId: string | null, order: "newest" | "most_liked", limit: number): Promise<CommentRow[]> {
   const db = sql();
   const scope = channelId ? db`c.channel_id = ${channelId} and c.author_channel_id = ${authorId}` : db`c.author_channel_id = ${authorId}`;
   return (await db`
@@ -42,5 +53,5 @@ export async function personComments(authorId: string, channelId: string | null,
     from comments c join videos v on v.id = c.video_id join channels ch on ch.id = c.channel_id
     where ${scope}
     order by ${order === "most_liked" ? db`c.like_count desc, c.published_at desc` : db`c.published_at desc nulls last`}
-    limit ${perPage} offset ${Math.max(0, page - 1) * perPage}`) as unknown as CommentRow[];
+    limit ${limit}`) as unknown as CommentRow[];
 }

@@ -18,6 +18,10 @@ const cookie = `cp_session=${EXP}.${crypto.createHmac("sha256", PASSWORD).update
 const expired = Math.floor(Date.now() / 1000) - 60;
 const expiredCookie = `cp_session=${expired}.${crypto.createHmac("sha256", PASSWORD).update(`creator-pulse-session-v2.${expired}`).digest("hex")}`;
 const db = postgres(DB, { max: 1 });
+// A second database plays the comment archive (like a free Neon database in production).
+const ARCHIVE_DB = DB.replace(/\/([^/?]+)(\?|$)/, "/$1_archive$2");
+await db.unsafe(`drop database if exists "${new URL(ARCHIVE_DB).pathname.slice(1)}"`);
+await db.unsafe(`create database "${new URL(ARCHIVE_DB).pathname.slice(1)}"`);
 let failures = 0;
 
 function check(name, ok, detail = "") {
@@ -42,7 +46,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
-    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0",
+    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB,
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100" },
   stdio: ["ignore", "inherit", "inherit"],
@@ -374,6 +378,25 @@ try {
   const q = await (await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`)).json();
   check("with YouTube quota used up, the engine reports it and the AI keeps going", q.status === "quota" && (q.aiBacklog ?? 0) > 0, JSON.stringify(q));
   await db`update quota_usage set units = 0`;
+
+  // Archiving: old, read comments move to the archive database; totals stay; Ask AI still finds them
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`); // fresh channel totals
+  const [archBefore] = await db`select coalesce(sum(comments), 0)::int as n from channel_summary`;
+  const { spawnSync } = await import("node:child_process");
+  const py = spawnSync("python", ["-m", "ytanalytics", "archive"], { cwd: "..", encoding: "utf8",
+    env: { ...process.env, DATABASE_URL: DB, ARCHIVE_DATABASE_URL: ARCHIVE_DB, ARCHIVE_FORCE: "1", ARCHIVE_AFTER_DAYS: "0" } });
+  const moved = Number((/"archived": (\d+)/.exec(py.stdout ?? "") ?? [])[1] ?? 0);
+  check("old, already-read comments are moved to the archive database", moved > 0, (py.stdout + py.stderr).slice(-300));
+  const [{ n: liveAudio }] = await db`select count(*)::int as n from comments where text = 'audio is bad' and ai_at is not null and like_count < 25`;
+  check("moved comments are gone from the main database", liveAudio === 0);
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  const [archAfter] = await db`select coalesce(sum(comments), 0)::int as n from channel_summary`;
+  check("channel totals still include archived comments", archAfter.n === archBefore.n, JSON.stringify({ before: archBefore.n, after: archAfter.n, moved }));
+  const askArch = await fetch(`${BASE}/api/ask`, { method: "POST", headers: { cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ question: "What do viewers say about the audio?", channelId: ch.id }) });
+  check("Ask AI still finds archived comments", askArch.status === 200 && (sent.askPrompts ?? []).at(-1)?.includes("audio is bad"));
 
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma",

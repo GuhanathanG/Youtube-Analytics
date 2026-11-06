@@ -1,7 +1,8 @@
 import "server-only";
 import { sql } from "./db";
-import { cached } from "./cache";
+import { cached, within } from "./cache";
 import { ensureSummary, summaries } from "./summary";
+import { archiveConfigured, searchArchive } from "./archive";
 
 import { ASPECT_LABELS, EMOTIONS, languageName } from "./queries-shared";
 export { ASPECT_LABELS, EMOTIONS, LANGUAGE_NAMES, languageName } from "./queries-shared";
@@ -148,6 +149,15 @@ export type DailyRow = { day: string; positive: number; neutral: number; negativ
 
 export async function dailySentiment(f: Filters): Promise<DailyRow[]> {
   const db = sql();
+  // Archived days (counts kept in archive_stats) are added when the filter is only channel and/or date.
+  let archived: Record<string, unknown>[] = [];
+  if (!f.videoId && !f.sentiment && !f.language && !f.emotion && !f.flag && !f.search && !f.topLevelOnly) {
+    archived = await db`select to_char(day, 'YYYY-MM-DD') as day, sum(positive)::int as positive, sum(neutral)::int as neutral,
+        sum(negative)::int as negative, sum(comments - positive - neutral - negative)::int as pending
+      from archive_stats where ${f.channelId ? db`channel_id = ${f.channelId}` : db`true`}
+        and ${f.since ? db`day >= ${f.since.toISOString().slice(0, 10)}::date` : db`true`}
+      group by 1`.catch(() => []);
+  }
   const rows = await db`
     select to_char(date(c.published_at), 'YYYY-MM-DD') as day,
            sum(case when c.sentiment = 'positive' then 1 else 0 end)::int as positive,
@@ -156,7 +166,14 @@ export async function dailySentiment(f: Filters): Promise<DailyRow[]> {
            sum(case when c.sentiment is null then 1 else 0 end)::int as pending
     from comments c where ${where(f)} and c.published_at is not null
     group by 1 order by 1`;
-  return rows as unknown as DailyRow[];
+  if (!archived.length) return rows as unknown as DailyRow[];
+  const byDay = new Map<string, DailyRow>();
+  for (const r of [...rows, ...archived] as unknown as DailyRow[]) {
+    const d = byDay.get(r.day) ?? { ...r, positive: 0, neutral: 0, negative: 0, pending: 0 };
+    d.positive += r.positive; d.neutral += r.neutral; d.negative += r.negative; d.pending += r.pending;
+    byDay.set(r.day, d);
+  }
+  return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1));
 }
 
 export type Mix = { positive: number; neutral: number; negative: number; pending: number };
@@ -183,6 +200,18 @@ export async function languageCounts(f: Filters) {
   if (f.channelId && summaryOnly(f)) {
     const x = (await summaries()).get(f.channelId);
     if (x) return x.languages.map((l) => ({ code: l.code, name: languageName(l.code), comments: l.comments, avg: l.avg }));
+  }
+  if (!f.channelId && summaryOnly(f) && !f.hideSpam) {
+    const all = await summaries();
+    if (all.size) {
+      const m = new Map<string, { comments: number; sum: number }>();
+      for (const x of all.values()) for (const l of x.languages) {
+        const e = m.get(l.code) ?? { comments: 0, sum: 0 };
+        e.comments += l.comments; e.sum += (l.avg ?? 0) * l.comments; m.set(l.code, e);
+      }
+      return [...m.entries()].sort((a, b) => b[1].comments - a[1].comments)
+        .map(([code, e]) => ({ code, name: languageName(code), comments: e.comments, avg: e.comments ? e.sum / e.comments : null }));
+    }
   }
   const db = sql();
   const rows = await db`
@@ -238,7 +267,7 @@ export async function comments(f: Filters, order: CommentOrder = "newest", limit
     most_positive: db`c.sentiment_value desc`,
   }[order];
   const extra = order === "most_negative" || order === "most_positive" ? db`and c.sentiment_value is not null` : db``;
-  return (await db`
+  const live = (await db`
     select c.id, c.video_id, v.title as video_title, ch.title as channel_title, c.channel_id, c.author_channel_id, c.published_at, c.author_name,
            c.text, c.translation, c.like_count, c.reply_count, c.sentiment, c.sentiment_value::float8 as sentiment_value,
            c.sentiment_source, c.emotion, c.language, c.is_question, c.is_suggestion, c.is_spam,
@@ -247,6 +276,13 @@ export async function comments(f: Filters, order: CommentOrder = "newest", limit
     where ${where(f)} ${extra}
     order by ${orderSql}
     limit ${Math.min(limit, 5000)}`) as unknown as CommentRow[];
+  // A text search also looks in the comment archive (old comments moved out of the main database).
+  if (!f.search || !archiveConfigured() || f.videoId || f.sentiment || f.language || f.emotion || f.flag) return live;
+  const old = (await searchArchive([f.search], f.channelId ?? null, Math.min(limit, 200))) as unknown as CommentRow[];
+  if (!old.length) return live;
+  const key = (c: CommentRow) => (order === "most_liked" ? c.like_count : Date.parse(String(c.published_at ?? 0)) * (order === "oldest" ? -1 : 1));
+  const seen = new Set(live.map((c) => c.id));
+  return [...live, ...old.filter((c) => !seen.has(c.id))].sort((a, b) => key(b) - key(a)).slice(0, Math.min(limit, 5000));
 }
 
 /* ------------------------------------------------------------------ growth, insights, ops */
@@ -384,7 +420,8 @@ async function progressUncached(): Promise<Progress[]> {
                from videos group by channel_id) v on v.channel_id = ch.id
     left join channel_summary c on c.channel_id = ch.id
     where ch.active order by ch.title`) as unknown as Progress[];
-  const extra = await cached("job-extras", 10 * 60_000, jobExtras).catch(() => null);
+  // The slow-job numbers are optional: use them if ready within 3 s (they keep loading in the background).
+  const extra = await within(cached("job-extras", 10 * 60_000, jobExtras), 3000, null);
   if (extra) for (const r of rows) Object.assign(r, extra.perChannel.get(r.channel_id) ?? {}, extra.rates);
   return rows;
 }
@@ -401,9 +438,9 @@ async function jobExtras() {
   const thumbs = await safe(db`select v.channel_id, count(*)::int as n from videos v join channels c on c.id = v.channel_id
     left join thumb_analysis t on t.video_id = v.id where c.active and v.thumbnail_url is not null and t.video_id is null group by 1`);
   const months = await safe(db`
-    with m as (select c.channel_id, to_char(date_trunc('month', c.published_at), 'YYYY-MM') as mon from comments c
-               where c.published_at >= date_trunc('month', (now() at time zone 'utc')) - interval '23 months'
-               group by 1, 2 having count(*) >= 20)
+    with m as (select v.channel_id, to_char(date_trunc('month', v.published_at), 'YYYY-MM') as mon from videos v
+               where v.published_at >= date_trunc('month', (now() at time zone 'utc')) - interval '23 months'
+               group by 1, 2 having sum(coalesce(v.comment_count, 0)) >= 20)
     select m.channel_id, count(*)::int as n from m
     where not exists (select 1 from insights i where i.scope = 'month' and i.target_id = m.channel_id || ':' || m.mon) group by 1`);
   for (const [rows, key] of [[watch, "videos_to_watch"], [thumbs, "thumbs_to_check"], [months, "months_to_remember"]] as const) {

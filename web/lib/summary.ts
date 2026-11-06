@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "./db";
+import { archivedTotals } from "./archive";
 
 /**
  * Pre-calculated totals per channel (comment counts, sentiment mix, AI progress, languages,
@@ -45,6 +46,15 @@ export async function refreshSummary(channelId: string) {
     from comments where channel_id = ${channelId} and analyzed_at is not null group by 1 order by 2 desc limit 12`;
   const emos = await db`select emotion, count(*)::int as comments from comments
     where channel_id = ${channelId} and emotion is not null group by 1 order by 2 desc limit 16`;
+  // Comments moved to the archive still count (their totals are kept in archive_stats).
+  const ar = await archivedTotals(channelId);
+  if (ar && ar.comments) {
+    const liveN = Number(r.comments) || 0;
+    const liveAvg = r.avg_sentiment === null ? null : Number(r.avg_sentiment);
+    const n = (liveAvg === null ? 0 : liveN) + ar.sentiment_n;
+    r.avg_sentiment = n ? (((liveAvg ?? 0) * (liveAvg === null ? 0 : liveN)) + ar.sentiment_sum) / n : null;
+    for (const k of ["comments", "positive", "neutral", "negative", "analyzed", "ai_read"] as const) r[k] = (Number(r[k]) || 0) + ar[k];
+  }
   await db`insert into channel_summary ${db({ channel_id: channelId, updated_at: new Date().toISOString().slice(0, 19).replace("T", " "),
       ...r, languages: JSON.stringify(langs), emotions: JSON.stringify(emos) } as Record<string, unknown>)}
     on conflict (channel_id) do update set updated_at = excluded.updated_at, comments = excluded.comments, analyzed = excluded.analyzed,
@@ -55,9 +65,9 @@ export async function refreshSummary(channelId: string) {
 }
 
 /** Engine step: refresh the stalest channel summary if it's older than SUMMARY_EVERY_MINUTES (default 3). */
-export async function refreshDueSummaries(timeLeft: () => boolean, max = 2): Promise<number> {
+export async function refreshDueSummaries(timeLeft: () => boolean, max = 1): Promise<number> {
   await ensureSummary();
-  const every = Number(process.env.SUMMARY_EVERY_MINUTES ?? 3);
+  const every = Number(process.env.SUMMARY_EVERY_MINUTES ?? 10);
   const due = await sql()`select ch.id from channels ch left join channel_summary s on s.channel_id = ch.id
     where ch.active and (s.updated_at is null or s.updated_at < (now() at time zone 'utc') - make_interval(mins => ${every}))
     order by s.updated_at asc nulls first limit ${max}`;

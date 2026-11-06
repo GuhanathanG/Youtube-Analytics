@@ -48,10 +48,11 @@ async function save(scope: string, id: string, total: number, data: Record<strin
 function dueMonths(): Promise<Row[]> {
   return cached("memory-due", Number(process.env.MEMORY_DUE_CACHE_SECONDS ?? 1800) * 1000, async () => (await sql()`
     with m as (
-      select c.channel_id, to_char(date_trunc('month', c.published_at), 'YYYY-MM') as mon, count(*)::int as n
-      from comments c join channels ch on ch.id = c.channel_id
-      where ch.active and c.published_at >= date_trunc('month', (now() at time zone 'utc')) - interval '23 months'
-      group by 1, 2 having count(*) >= 20),
+      -- Months are found from the small videos table (comment counts from YouTube), not by scanning every comment.
+      select v.channel_id, to_char(date_trunc('month', v.published_at), 'YYYY-MM') as mon, sum(coalesce(v.comment_count, 0))::int as n
+      from videos v join channels ch on ch.id = v.channel_id
+      where ch.active and v.published_at >= date_trunc('month', (now() at time zone 'utc')) - interval '23 months'
+      group by 1, 2 having sum(coalesce(v.comment_count, 0)) >= 20),
     last as (select distinct on (target_id) target_id, comment_count, created_at from insights
              where scope = 'month' order by target_id, created_at desc)
     select m.channel_id, m.mon, m.n, l.comment_count as prev from m left join last l on l.target_id = m.channel_id || ':' || m.mon
