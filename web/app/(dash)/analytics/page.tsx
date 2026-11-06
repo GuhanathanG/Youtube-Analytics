@@ -6,6 +6,8 @@ import { Empty, PageHeader, Panel, Tag } from "@/components/ui";
 import { audienceAnalytics, channelAnalytics, channelTopics, type VideoPerf } from "@/lib/analytics";
 import { BrandsPanel, HealthCard } from "@/components/CreatorPanels";
 import { brandTracker, channelHealth } from "@/lib/creator-insights";
+import { thumbnailsFor } from "@/lib/thumbnails";
+import { THUMB_FEATURES, featureLift } from "@/lib/analytics-math";
 import { compact, score } from "@/lib/format";
 import { channels as getChannels } from "@/lib/queries";
 
@@ -43,6 +45,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   }
   const [a, aud, topics, health, brands] = await Promise.all([channelAnalytics(ch.id), audienceAnalytics(ch.id), channelTopics(ch.id),
     channelHealth(ch.id), brandTracker(ch.id).catch(() => [])]);
+  const thumbs = await thumbnailsFor(ch.id);
+  const thumbItems = a.videos.filter((v) => v.outlier !== null && thumbs.has(v.id)).map((v) => ({ outlier: v.outlier!, data: thumbs.get(v.id)! }));
+  const thumbLift = featureLift(thumbItems, THUMB_FEATURES);
   const { shorts, long } = a.formats;
   const maxPeople = Math.max(1, ...aud.perVideo.map((v) => v.commenters));
   const maxMonth = Math.max(1, ...aud.monthly.map((m) => m.commenters));
@@ -163,6 +168,24 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           </Panel>
         </Reveal>
       </div>
+
+      <Reveal className="mt-4">
+        <Panel title="Thumbnail styles" subtitle={`What the AI sees in thumbnails vs results (${thumbItems.length} thumbnails analysed; needs 3+ each way)`}>
+          {thumbLift.length ? (
+            <ul className="grid gap-x-8 gap-y-2.5 md:grid-cols-2">
+              {thumbLift.map((f) => (
+                <li key={f.label} className="flex items-center gap-3 text-[13.5px]">
+                  <span className="min-w-0 flex-1 truncate text-ink-2">{f.label} <span className="text-ink-3">({f.with})</span></span>
+                  <span className="tabular text-ink-3">{times(f.withOutlier)} vs {times(f.withoutOutlier)}</span>
+                  <span className={`tabular w-14 text-right font-medium ${(f.lift ?? 1) >= 1.15 ? "text-accent" : (f.lift ?? 1) <= 0.87 ? "text-neg" : "text-ink-2"}`}>
+                    {(f.lift ?? 1) >= 1 ? "+" : "−"}{Math.abs(Math.round(((f.lift ?? 1) - 1) * 100))}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : <Empty>Thumbnails are analysed by the AI every 2 hours (25 at a time, on the video-analysis timer). Results appear once enough are done.</Empty>}
+        </Panel>
+      </Reveal>
 
       <Reveal className="mt-4">
         <Panel title="Video length" subtitle="Typical result by length">

@@ -42,7 +42,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
-    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0",
+    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100" },
   stdio: ["ignore", "inherit", "inherit"],
@@ -234,6 +234,30 @@ try {
     anH.includes("Channel health") && /Excellent|Healthy|Fair|Needs attention/.test(anH) && anH.includes("PhoneX"));
   const cmpH = await (await get(`/compare?c=${ch.id}&c=${"UC" + "y".repeat(18) + "twoo"}`)).text();
   check("compare shows each channel's health score", cmpH.includes("Health score"));
+
+  // Thumbnail analysis (on the video-analysis timer), weekly report, share links
+  await db`update videos set thumbnail_url = 'http://localhost:4100/thumbs/' || id || '/hqdefault.jpg' where channel_id = ${ch.id}`;
+  const vaThumbs = await (await fetch(`${BASE}/api/video-analysis?key=e2e-cron-secret-0123456789`)).json();
+  check("thumbnails are analysed by the AI on the video-analysis timer", (vaThumbs.thumbnails ?? 0) >= 3, JSON.stringify(vaThumbs));
+  check("video page shows the thumbnail check", (await (await get("/videos/livevid0001")).text()).includes("Thumbnail check"));
+  check("weekly report sent to Telegram with a link to the full report",
+    sent.telegram.some((m) => String(m.text).includes("Weekly report · Live Creator") && String(m.text).includes("Health")),
+    JSON.stringify(sent.telegram.map((m) => String(m.text).slice(0, 40))));
+  const rep = await get(`/report/${ch.id}`);
+  const repHtml = await rep.text();
+  check("printable weekly report page works (signed in)", rep.status === 200 && repHtml.includes("Weekly report") && repHtml.includes("Save as PDF"));
+  check("report page needs sign-in", (await get(`/report/${ch.id}`, false)).status === 307);
+  await get("/manage"); // creates the share table
+  await db`insert into share_links (token, channel_id) values ('e2eShareToken0123456789', ${ch.id}), ('e2eRevokedToken012345678', ${ch.id})`;
+  await db`update share_links set revoked = true where token = 'e2eRevokedToken012345678'`;
+  const shared = await fetch(`${BASE}/share/e2eShareToken0123456789`, { redirect: "manual" });
+  const sharedHtml = await shared.text();
+  check("share link opens a read-only report without a password", shared.status === 200 && sharedHtml.includes("Live Creator") && sharedHtml.includes("Read-only view"));
+  check("shared report has no links into the private site", !/href="\/(videos|channels|manage|comments)/.test(sharedHtml));
+  check("revoked or made-up share links don't open", (await fetch(`${BASE}/share/e2eRevokedToken012345678`)).status === 404
+    && (await fetch(`${BASE}/share/AAAAAAAAAAAAAAAAAAAAAAAA`)).status === 404);
+  const [views] = await db`select views from share_links where token = 'e2eShareToken0123456789'`;
+  check("share link views are counted", views.views === 1);
 
   // Smarter checking: an old video not checked for a day is re-checked; a 3-day-old one checked 5 min ago is left alone.
   await db`update videos set stats_updated_at = (now() at time zone 'utc') - interval '25 hours' where id = 'livevid0000'`;

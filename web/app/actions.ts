@@ -10,6 +10,7 @@ import { clearCache } from "@/lib/cache";
 import { sql } from "@/lib/db";
 import { startFullSync } from "@/lib/github";
 import { addChannelNow } from "@/lib/live";
+import { createShareLink, revokeShareLink } from "@/lib/share";
 
 async function requireSession() {
   const store = await cookies();
@@ -84,4 +85,19 @@ export async function testAlertAction() {
   await requireSession();
   const { sendTestAlert } = await import("@/lib/alerts");
   return sendTestAlert();
+}
+
+export async function createShareAction(form: FormData) {
+  await requireSession();
+  const channelId = String(form.get("channel") ?? "");
+  const days = Number(form.get("days") ?? 30);
+  if (!/^UC[\w-]{22}$/.test(channelId)) return;
+  await createShareLink(channelId, Number.isFinite(days) && days > 0 ? Math.min(days, 365) : null);
+  revalidatePath("/manage");
+}
+
+export async function revokeShareAction(form: FormData) {
+  await requireSession();
+  await revokeShareLink(String(form.get("token") ?? ""));
+  revalidatePath("/manage");
 }

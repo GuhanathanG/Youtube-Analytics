@@ -14,5 +14,5 @@ export async function proxy(request: NextRequest) {
 export const config = {
   // Everything except the login page, Next.js internals and static files.
   // /api/cron and /api/video-analysis check their own secret key or session (timers aren't signed-in browsers).
-  matcher: ["/((?!login(?:/|$)|api/cron(?:/|$)|api/video-analysis(?:/|$)|_next/static/|_next/image|favicon\\.ico$|icon\\.svg$).*)"],
+  matcher: ["/((?!login(?:/|$)|api/cron(?:/|$)|api/video-analysis(?:/|$)|share/|_next/static/|_next/image|favicon\\.ico$|icon\\.svg$).*)"],
 };

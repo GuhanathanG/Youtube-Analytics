@@ -53,6 +53,8 @@ export default async function ChannelPage({ params, searchParams }:
                 <a href={`https://www.youtube.com/channel/${c.id}`} target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-accent">{c.handle ?? c.id}<ExternalLink size={13} /></a>
                 {!c.active && <Tag tone="warn">paused</Tag>}
+                <Link href={`/analytics?c=${encodeURIComponent(c.id)}`} className="rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-ink-2 hover:border-accent/50 hover:text-ink">Analytics</Link>
+                <Link href={`/report/${encodeURIComponent(c.id)}`} className="rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-ink-2 hover:border-accent/50 hover:text-ink">Weekly report / PDF</Link>
               </div>
             </div>
             <div className="w-full sm:w-72"><MixBar mix={mix} /></div>
