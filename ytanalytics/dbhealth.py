@@ -57,7 +57,6 @@ def report(session: Session) -> None:
 # for it and every page queues behind that change. Safe to end: their requests are long gone.
 STUCK = ("datname = current_database() and pid <> pg_backend_pid() and ("
          "(state = 'active' and wait_event = 'ClientRead' and now() - state_change > interval '2 minutes')"
-         " or (state = 'idle in transaction' and now() - state_change > interval '5 minutes')"
          " or (wait_event_type = 'Lock' and now() - query_start > interval '30 seconds'"
          "     and query ~* '^\\s*(alter|create index|drop index)'))")
 
