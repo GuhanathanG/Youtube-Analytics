@@ -1,0 +1,20 @@
+#cloud-config
+# Creator Pulse server preparation (paste into Oracle's "Initialization script" when creating the VM).
+# It only prepares the machine: updates, Docker, Git, a swap file and the web ports.
+# The app itself is installed later by the "Deploy to server" GitHub workflow.
+package_update: true
+package_upgrade: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - git
+  - netfilter-persistent
+  - iptables-persistent
+runcmd:
+  # 4 GB swap: room for builds and the local AI models
+  - [bash, -c, "fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab"]
+  # Oracle's Ubuntu image blocks everything except SSH: open web ports 80 and 443
+  - [bash, -c, "iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT && iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT && netfilter-persistent save"]
+  - [bash, -c, "systemctl enable --now docker && usermod -aG docker ubuntu"]
+  - [bash, -c, "mkdir -p /opt/pulse && chown ubuntu:ubuntu /opt/pulse"]
+  - [bash, -c, "echo 'Creator Pulse server prepared' > /opt/pulse/READY"]
