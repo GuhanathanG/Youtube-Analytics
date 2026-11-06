@@ -3,6 +3,8 @@ import { channelUrl, isInstagram } from "@/lib/platform";
 import { within } from "@/lib/cache";
 import { Suspense } from "react";
 import { panel } from "@/lib/panels";
+import { ownerReport } from "@/lib/owner";
+import { OwnerPanel } from "@/components/OwnerPanel";
 import Link from "next/link";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { creatorMemory } from "@/lib/memory";
@@ -85,13 +87,15 @@ function SectionSkeleton({ rows }: { rows: number }) {
 }
 
 async function Signals({ id, range: key }: { id: string; range: string }) {
-  const [insight, daily, langs, emos, aspects, memory] = await Promise.all([
+  const [insight, daily, langs, emos, aspects, memory, owner] = await Promise.all([
     within(latestInsight("channel", id), 8000, null), within(panel("daily", id, key), 12_000, []),
     within(panel("langs", id, key), 12_000, []), within(panel("emos", id, key), 12_000, []),
     within(panel("aspects", id, key), 12_000, []), within(creatorMemory(id), 10000, { profile: null, months: [] }),
+    within(ownerReport(id), 5000, null),
   ]);
   return (
     <>
+      {owner && <Reveal className="mt-6"><OwnerPanel r={owner} /></Reveal>}
       <Reveal delay={0.1} className="mt-6"><InsightPanel insight={insight} scope="channel" /></Reveal>
       <Reveal delay={0.1} className="mt-6"><MemoryPanel profile={memory.profile} months={memory.months} /></Reveal>
 

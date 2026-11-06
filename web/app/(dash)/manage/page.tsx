@@ -18,6 +18,8 @@ import { listShareLinks } from "@/lib/share";
 import { instagramStatus } from "@/lib/instagram";
 import { scriptableScript, widgetToken } from "@/lib/widget";
 import { WidgetSetup } from "@/components/WidgetSetup";
+import { ConnectChannel } from "@/components/ConnectChannel";
+import { connections, ownerConfigured } from "@/lib/owner";
 import { headers } from "next/headers";
 import { within } from "@/lib/cache";
 
@@ -41,7 +43,8 @@ function Meter({ label, used, total, unit }: { label: string; used: number; tota
   );
 }
 
-export default async function ManagePage() {
+export default async function ManagePage({ searchParams }: { searchParams: Promise<{ connected?: string; connect_error?: string }> }) {
+  const sp = await searchParams;
   const [chs, reqs, k, minutes, usage, runs] = await Promise.all([
     getChannels(), channelRequests(), kpis(), actionsMinutesThisMonth(), llmUsageToday(), lastRuns(12),
   ]);
@@ -52,6 +55,7 @@ export default async function ManagePage() {
   const storage = await storageStatus().catch(() => null);
   const analyses = await recentAnalyses(8).catch(() => []);
   const ig = await within(instagramStatus(), 6000, null);
+  const conns = await within(connections(), 5000, []);
   const host = process.env.SITE_HOST ?? process.env.VERCEL_PROJECT_PRODUCTION_URL ?? (await headers()).get("host") ?? "localhost:3000";
   const widgetKey = await within(widgetToken(), 6000, null);
   const widgetScript = widgetKey ? scriptableScript(`${host.startsWith("localhost") ? "http" : "https"}://${host}`, widgetKey) : null;
@@ -120,6 +124,12 @@ export default async function ManagePage() {
       <Reveal className="mt-4">
         <Panel title="Share a read-only report" subtitle="Anyone with the link sees one channel's report (no password, nothing else). Turn links off any time.">
           <ShareLinks channels={chs.map((c) => ({ id: c.id, title: c.title }))} links={await listShareLinks().catch(() => [])} site={process.env.SITE_URL ?? ""} />
+        </Panel>
+      </Reveal>
+
+      <Reveal className="mt-4">
+        <Panel title="Connect your channel" subtitle="Private YouTube Analytics for channels you own">
+          <ConnectChannel configured={ownerConfigured()} connections={conns} notice={{ ok: sp.connected?.slice(0, 120), error: sp.connect_error?.slice(0, 300) }} />
         </Panel>
       </Reveal>
 

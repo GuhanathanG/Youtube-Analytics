@@ -51,7 +51,8 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100",
-    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0", RADAR_CACHE_SECONDS: "0",
+    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0", RADAR_CACHE_SECONDS: "0", GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "test-secret",
+    GOOGLE_AUTH_URL: "http://localhost:4100/o/oauth2/auth", GOOGLE_TOKEN_URL: "http://localhost:4100/token", YT_ANALYTICS_BASE: "http://localhost:4100/yta/v2",
     YOUTUBE_RSS_BASE: "http://localhost:4100", WEBSUB_HUB: "http://localhost:4100/subscribe", WEBSUB_CALLBACK_BASE: `http://localhost:${PORT}` },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true, // own process group, so the whole server tree can be stopped
@@ -498,6 +499,27 @@ try {
   const ovR = await (await fetch(`${BASE}/`, { headers: { cookie: `${cookie}; cp_focus=${rivalId}` } })).text();
   check("a competitor is never the site's focus", !ovR.includes("Second Creator ·") );
   await db`update channels set role = null where id = ${rivalId}`;
+
+  // Connect your channel: Google sign-in (read-only) unlocks private analytics, stored encrypted
+  const startRes = await fetch(`${BASE}/api/oauth/google/start`, { headers: { cookie }, redirect: "manual" });
+  const loc = startRes.headers.get("location") ?? "";
+  const stateCookie = (startRes.headers.get("set-cookie") ?? "").match(/cp_oauth_state=([^;]+)/)?.[1];
+  const state = new URL(loc).searchParams.get("state");
+  check("Connect sends the owner to Google with read-only scopes and a state value", startRes.status === 307 && loc.startsWith("http://localhost:4100/o/oauth2/auth")
+    && loc.includes("client_id=test-client") && loc.includes("yt-analytics.readonly") && !!state && stateCookie === state, loc.slice(0, 160));
+  const forgedSignIn = await fetch(`${BASE}/api/oauth/google/callback?code=goodcode&state=forged`, { headers: { cookie: `${cookie}; cp_oauth_state=${stateCookie}` }, redirect: "manual" });
+  check("a sign-in that didn't start here is refused", (forgedSignIn.headers.get("location") ?? "").includes("connect_error"));
+  const signIn = await fetch(`${BASE}/api/oauth/google/callback?code=goodcode&state=${state}`, { headers: { cookie: `${cookie}; cp_oauth_state=${stateCookie}` }, redirect: "manual" });
+  check("Google sign-in connects the channel", (signIn.headers.get("location") ?? "").includes("connected=Live%20Creator"), signIn.headers.get("location") ?? "");
+  const [auth] = await db`select token from channel_auth where channel_id = ${ch.id}`;
+  check("the Google key is stored encrypted", !!auth && !String(auth.token).includes("rt-secret-123"));
+  const chOwner = await (await get(`/channels/${ch.id}`)).text();
+  check("the channel page shows private analytics", chOwner.includes("Private analytics · connected") && chOwner.includes("Subscriptions feed") && chOwner.includes("41%") && chOwner.includes("Click-through"));
+  const vOwner = await (await get("/videos/livevid0001")).text();
+  check("the video page shows % watched and flags fast drop-off", vOwner.includes("PRIVATE ANALYTICS") && vOwner.includes("loses viewers faster"));
+  const cmdO = await (await fetch(`${BASE}/command`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } })).text();
+  check("private analytics become next moves", cmdO.includes("Fix the opening of") && cmdO.includes("Lift click-through") && cmdO.includes("Reach beyond your subscribers"));
+  check("Manage lists the connected channel", (await (await get("/manage")).text()).includes("numbers up to date"));
 
   // Pulse Glance: the widget-style home-screen app
   const gl = await (await get("/glance")).text();

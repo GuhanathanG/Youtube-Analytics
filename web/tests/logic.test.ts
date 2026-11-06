@@ -103,3 +103,10 @@ assert.ok(rivalMoves.some((m) => m.id === "rival-rv1" && m.href.startsWith("/stu
 const igMoves = buildMoves({ ...base, platform: "instagram", lastUploadDays: 20, typicalGapDays: 4,
   formats: { shorts: { count: 5, medianOutlier: 3 }, long: { count: 5, medianOutlier: 1 } } });
 assert.ok(igMoves.some((m) => m.title === "Time for the next post") && !igMoves.some((m) => m.id === "format"));
+
+// Private analytics (connected channel) become moves
+const ownMoves = buildMoves({ ...base, owner: { avgViewPct: 45, ctr: 2.8,
+  videos: [{ id: "v1", title: "Leaky video", views: 5000, avgViewPct: 22 }, { id: "v2", title: "Fine video", views: 4000, avgViewPct: 50 }],
+  trafficShare: [{ source: "SUBSCRIBER", label: "Subscriptions feed", share: 0.6 }] } });
+assert.ok(ownMoves.some((m) => m.id === "retention-v1") && !ownMoves.some((m) => m.id === "retention-v2"));
+assert.ok(ownMoves.some((m) => m.id === "ctr" && m.impact === 3) && ownMoves.some((m) => m.id === "reach"));

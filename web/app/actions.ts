@@ -97,6 +97,13 @@ async function siteUrl() {
   return `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
 }
 
+/** Manage → Connected channels: forget a channel's Google key and its private numbers. */
+export async function disconnectChannel(channelId: string) {
+  await requireSession();
+  await (await import("@/lib/owner")).disconnect(channelId);
+  revalidatePath("/manage");
+}
+
 export async function runFullSync(): Promise<{ ok: boolean; message: string }> {
   await requireSession();
   return startFullSync();
