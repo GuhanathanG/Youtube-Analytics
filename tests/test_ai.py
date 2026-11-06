@@ -340,3 +340,8 @@ def test_new_free_providers_from_env():
     assert all("reasoning_effort" not in s.extra for s in slots)
     # Cloudflare needs its account id too.
     assert slots_from_env({"CLOUDFLARE_API_KEY": "c"}) == []
+
+
+def test_public_repo_gives_the_ai_lane_half_of_each_run(session):
+    plan = plan_minutes(session, {"MONTHLY_MINUTES_BUDGET": "0", "MAX_WORK_MINUTES": "20"})
+    assert plan.ai == 10.0 and plan.sync == 7.0 and plan.analyze == 3.0

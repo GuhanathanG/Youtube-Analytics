@@ -2,10 +2,10 @@ name: Sync & analyze
 
 on:
   schedule:
-    # Every 2 hours at :07 (UTC). Private repos get 2,000 free minutes a month;
-    # the "plan" step below spreads them across the month automatically.
-    # Once the repo is public: use "7 * * * *", RUNS_PER_DAY "24", MONTHLY_MINUTES_BUDGET "0".
-    - cron: "7 */2 * * *"
+    # Every 30 minutes (UTC). Public repositories get unlimited free GitHub Actions minutes.
+    # IF THE REPOSITORY IS EVER MADE PRIVATE AGAIN (2,000 free minutes a month), first change this to
+    # "7 */2 * * *" and below set RUNS_PER_DAY "12", MONTHLY_MINUTES_BUDGET "1700", MAX_WORK_MINUTES "25".
+    - cron: "7,37 * * * *"
   workflow_dispatch: {}    # adds a "Run workflow" button in the Actions tab
 
 # Never run two syncs at the same time.
@@ -27,8 +27,9 @@ jobs:
       CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
-      RUNS_PER_DAY: "12"
-      MONTHLY_MINUTES_BUDGET: "1700"
+      RUNS_PER_DAY: "48"
+      MONTHLY_MINUTES_BUDGET: "0"     # 0 = no limit (public repository)
+      MAX_WORK_MINUTES: "20"          # runs start every 30 minutes, so each finishes well within that
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Start timer
@@ -81,7 +82,7 @@ jobs:
         continue-on-error: true  # optional extras; never block the online AI step
         run: |
           A=${{ steps.plan.outputs.analyze_until }}; B=${{ steps.plan.outputs.ai_until }}
-          python -m ytanalytics local-ai --until $(( (A + B) / 2 ))
+          python -m ytanalytics local-ai --until $(( A + (B - A) / 4 ))
 
       - name: AI deep analysis and insights (free Gemini / Mistral / Groq)
         run: python -m ytanalytics ai --until ${{ steps.plan.outputs.ai_until }}
