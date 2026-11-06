@@ -219,6 +219,16 @@ try {
   check("compare shows both channels and their shared audience", cmp.includes("Second Creator") && cmp.includes("Shared audience") && /\b1(<!-- -->)? people/.test(cmp),
     `second channel shown: ${cmp.includes("Second Creator")}; panel: ${(cmp.match(/Shared audience.{0,600}/) ?? ["none"])[0].replace(/<[^>]+>/g, " ").slice(0, 200)}`);
 
+  // Smarter checking: an old video not checked for a day is re-checked; a 3-day-old one checked 5 min ago is left alone.
+  await db`update videos set stats_updated_at = (now() at time zone 'utc') - interval '25 hours' where id = 'livevid0000'`;
+  await db`update videos set stats_updated_at = (now() at time zone 'utc') - interval '5 minutes' where id = 'livevid0001'`;
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  const [oldV] = await db`select extract(epoch from ((now() at time zone 'utc') - stats_updated_at))::int as age from videos where id = 'livevid0000'`;
+  const [midV] = await db`select extract(epoch from ((now() at time zone 'utc') - stats_updated_at))::int as age from videos where id = 'livevid0001'`;
+  check("old video re-checked after a day; recently checked video skipped (saves quota)", oldV.age < 120 && midV.age >= 240,
+    JSON.stringify({ old: oldV.age, mid: midV.age }));
+
   // Advanced analytics: performance, timing, titles, audience and topics
   await db`insert into topics (channel_id, created_at, rank, label, keywords, size, share, sentiment, negative_pct, recent, trend_pct, weekly, examples)
     values (${ch.id}, now(), 0, 'Audio quality complaints', 'audio, sound, mic', 40, 0.3, -0.6, 85, 25, 140,

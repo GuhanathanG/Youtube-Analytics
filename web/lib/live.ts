@@ -383,12 +383,18 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
       }
     }
 
-    // 3. Fresh stats for recent videos (1 unit per 50 videos) to see which got new comments.
+    // 3. Fresh stats (1 quota unit per 50 videos) to see which videos got new comments. Checked more
+    //    often the newer the video: under 2 days every run, under 2 weeks every 15 min, under 3 months
+    //    every 2 hours, anything older once a day — so late comments on old videos are caught too.
     const recent = await db`
       select v.id, v.channel_id from videos v join channels c on c.id = v.channel_id
-      where c.active and not v.comments_disabled
-        and v.published_at >= (now() at time zone 'utc') - make_interval(days => ${Number(process.env.LIVE_WINDOW_DAYS ?? 14)})
-      order by v.published_at desc limit 100`;
+      where c.active and not v.comments_disabled and (
+        v.stats_updated_at is null or v.published_at is null
+        or (v.published_at >= (now() at time zone 'utc') - interval '2 days')
+        or (v.published_at >= (now() at time zone 'utc') - interval '14 days' and v.stats_updated_at < (now() at time zone 'utc') - interval '15 minutes')
+        or (v.published_at >= (now() at time zone 'utc') - interval '90 days' and v.stats_updated_at < (now() at time zone 'utc') - interval '2 hours')
+        or v.stats_updated_at < (now() at time zone 'utc') - interval '24 hours')
+      order by v.published_at desc nulls last limit ${Number(process.env.LIVE_STATS_PER_RUN ?? 200)}`;
     const byChannel = new Map(recent.map((r) => [r.id as string, r.channel_id as string]));
     if (recent.length) {
       const groups = new Map<string, VideoItem[]>();
@@ -397,11 +403,11 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
         groups.set(ch, [...(groups.get(ch) ?? []), v]);
       }
       for (const [ch, items] of groups) await saveVideos(ch, items);
-      // Views over time for recent videos (every 30 min at most) — feeds the performance prediction.
+      // Views over time for videos under 30 days old (every 30 min at most): feeds growth and forecasts.
       await db`
         insert into video_snapshots (video_id, taken_at, view_count, like_count, comment_count)
         select v.id, (now() at time zone 'utc'), v.view_count, v.like_count, v.comment_count from videos v
-        where v.id in ${db([...byChannel.keys()])}
+        where v.id in ${db([...byChannel.keys()])} and v.published_at >= (now() at time zone 'utc') - interval '30 days'
           and not exists (select 1 from video_snapshots s where s.video_id = v.id
                           and s.taken_at >= (now() at time zone 'utc') - interval '30 minutes')`;
     }
@@ -412,10 +418,14 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
       where c.active and not v.comments_disabled and v.comment_count > coalesce(v.comment_count_checked, -1)
         and (v.latest_comment_at is not null or v.published_at >= (now() at time zone 'utc') - interval '30 days')
       order by v.published_at desc nulls last limit 15`;
-    for (const v of changed) {
-      if (!timeLeft()) break;
-      fresh.push(...(await fetchNewComments(v as never)));
-    }
+    // Three videos at a time: each fetch waits on YouTube, so doing them together is ~3x faster.
+    let nextChanged = 0;
+    await Promise.all(Array.from({ length: 3 }, async () => {
+      while (nextChanged < changed.length && timeLeft()) {
+        const v = changed[nextChanged++];
+        fresh.push(...(await fetchNewComments(v as never)));
+      }
+    }));
     result.newComments = fresh.length;
 
     // 5. Fill in comment history a few pages at a time (the background job does the same, faster).

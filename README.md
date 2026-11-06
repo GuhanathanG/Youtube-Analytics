@@ -259,12 +259,11 @@ The first run downloads each channel's video list and starts on past comments, b
 | GitHub Actions | **Private repo: 2,000 min/month.** Public repo: unlimited | See the note below. |
 | Streamlit Cloud | Free | The app sleeps when nobody visits for a while. Click "wake up" and it's back in about 30 seconds. |
 
-**GitHub minutes:** this repository is **private**, so GitHub gives 2,000 free minutes a month. Every run records how long it took, and the next run divides the minutes left by the runs left this month. Quiet runs finish early and save time for busy ones, so the month never runs out. While a big channel's history is still downloading, it simply takes more runs.
+**GitHub minutes (private repositories only):** a private repository gets 2,000 free minutes a month. Every run records how long it took, and the next run divides the minutes left by the runs left this month. Quiet runs finish early and save time for busy ones, so the month never runs out. While a big channel's history is still downloading, it simply takes more runs.
 
-**When you make the repository public**, minutes become unlimited. Edit `.github/workflows/sync.yml`:
-- change `"7 */2 * * *"` to `"7 * * * *"` (every hour)
-- set `RUNS_PER_DAY: "24"`
-- set `MONTHLY_MINUTES_BUDGET: "0"` (no limit)
+**This repository is public**, so GitHub minutes are unlimited: the background job runs every 30 minutes and half of each run is an "AI lane" for big batches. If you ever make it private again, edit `.github/workflows/sync.yml` **first**:
+- change `"7,37 * * * *"` to `"7 */2 * * *"` (every 2 hours)
+- set `RUNS_PER_DAY: "12"`, `MONTHLY_MINUTES_BUDGET: "1700"` and `MAX_WORK_MINUTES: "25"`
 
 **Free AI limits:** each free AI service allows a set number of requests per day, and the exact numbers depend on your account. To make them go further:
 - **Short reactions skip the AI.** "first!", "❤️🔥", "semma bro" and the like are labelled by simple rules (`ytanalytics/quick_labels.py`, `web/lib/quick-labels.ts`). Anything with a word the rules don't know still goes to the AI.

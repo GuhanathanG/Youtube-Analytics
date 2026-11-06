@@ -83,10 +83,13 @@ def plan_minutes(session: Session, env: dict | None = None, now: datetime | None
         work = (budget - used) / runs_left - overhead
         work = max(1.5, min(max_work, work))  # always leave room to catch new comments
 
+    # With unlimited minutes (public repository) runs come every 30 minutes, so each run has little
+    # new to download and the AI lane gets the biggest share; otherwise YouTube downloads come first.
+    shares = (0.35, 0.15, 0.50) if budget <= 0 else (0.45, 0.25, 0.30)
     return Plan(
-        sync=round(max(1.0, work * 0.45), 1),
-        analyze=round(max(0.5, work * 0.25), 1),
-        ai=round(max(0.5, work * 0.30), 1),
+        sync=round(max(1.0, work * shares[0]), 1),
+        analyze=round(max(0.5, work * shares[1]), 1),
+        ai=round(max(0.5, work * shares[2]), 1),
         used_this_month=used,
         budget=budget,
         runs_left=runs_left,
