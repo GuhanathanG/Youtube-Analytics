@@ -12,7 +12,7 @@ export function AddChannelForm() {
         <input name="query" required aria-label="Channel to watch" placeholder="@creator, channel link, or any video link"
           className="h-12 flex-1 rounded-xl border border-line-2 bg-white/[0.03] px-4 text-[15px] text-ink outline-none transition placeholder:text-ink-3 focus:border-accent/60" />
         <button disabled={pending}
-          className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-accent to-accent-2 px-5 text-[14.5px] font-semibold text-[#05070d] shadow-[0_8px_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110 disabled:opacity-60">
+          className="flex h-12 items-center justify-center gap-2 rounded-full bg-ink px-6 text-[14px] font-medium text-[#0c0c0d] transition hover:bg-accent disabled:opacity-60">
           <Plus size={17} />{pending ? "Fetching from YouTube…" : "Watch channel"}
         </button>
       </div>
@@ -31,7 +31,7 @@ export function AddInstagramForm({ configured }: { configured: boolean }) {
         <input name="query" required disabled={!configured} aria-label="Instagram account to watch" placeholder="@username or instagram.com/username"
           className="h-12 flex-1 rounded-xl border border-line-2 bg-white/[0.03] px-4 text-[15px] text-ink outline-none transition placeholder:text-ink-3 focus:border-accent/60 disabled:opacity-50" />
         <button disabled={pending || !configured}
-          className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#f58529] via-[#dd2a7b] to-[#8134af] px-5 text-[14.5px] font-semibold text-white transition hover:brightness-110 disabled:opacity-60">
+          className="flex h-12 items-center justify-center gap-2 rounded-full bg-ink px-6 text-[14px] font-medium text-[#0c0c0d] transition hover:bg-accent disabled:opacity-60">
           <Plus size={17} />{pending ? "Starting…" : "Watch on Instagram"}
         </button>
       </div>

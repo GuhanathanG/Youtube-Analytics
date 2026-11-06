@@ -127,7 +127,7 @@ export function ChatView({ threads, threadId, messages: initial, channels, threa
       {showHistory && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Saved conversations">
           <button aria-label="Close" className="absolute inset-0 bg-black/60" onClick={() => setShowHistory(false)} />
-          <div className="absolute inset-y-0 left-0 w-[85%] max-w-xs overflow-y-auto border-r border-line-2 bg-[#0a0e1a] p-4">
+          <div className="absolute inset-y-0 left-0 w-[85%] max-w-xs overflow-y-auto border-r border-line-2 bg-[#141416] p-4">
             <div className="mb-3 flex items-center justify-between"><span className="label">Conversations</span>
               <button aria-label="Close conversations" onClick={() => setShowHistory(false)}><X size={18} className="text-ink-3" /></button></div>
             {sidebar}
@@ -178,14 +178,14 @@ export function ChatView({ threads, threadId, messages: initial, channels, threa
               placeholder={threadId ? "Ask a follow-up…" : "Ask anything about the comments… e.g. What do people say about the audio?"}
               className="min-h-[52px] flex-1 resize-none bg-transparent px-2 py-2 text-[15px] text-ink outline-none placeholder:text-ink-3" />
             <button disabled={pending || question.trim().length < 2} aria-label="Send"
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-r from-accent to-accent-2 text-[#05070d] transition hover:brightness-110 disabled:opacity-40">
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-ink text-[#0c0c0d] transition hover:brightness-110 disabled:opacity-40">
               <ArrowUp size={18} />
             </button>
           </div>
           {!threadId && (
             <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-line px-2 pt-2.5">
               <select aria-label="Which channel" value={channel} onChange={(e) => setChannel(e.target.value)}
-                className="h-8 rounded-lg border border-line bg-[#0a0e1a] px-2 text-[12.5px] text-ink-2 outline-none">
+                className="h-8 rounded-lg border border-line bg-[#141416] px-2 text-[12.5px] text-ink-2 outline-none">
                 <option value="">All channels</option>
                 {channels.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
               </select>

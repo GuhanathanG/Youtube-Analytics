@@ -16,7 +16,7 @@ export function Heatmap({ days, blocks, cells }: { days: string[]; blocks: strin
   const color = (c: Cell) => {
     if (!c.count || c.outlier === null) return "rgba(255,255,255,0.03)";
     const t = Math.max(-1, Math.min(1, Math.log2(c.outlier))); // ½× … 2×
-    return t >= 0 ? `rgba(34,211,238,${0.12 + 0.6 * t})` : `rgba(230,103,103,${0.12 + 0.5 * -t})`;
+    return t >= 0 ? `rgba(200,169,126,${0.12 + 0.6 * t})` : `rgba(230,103,103,${0.12 + 0.5 * -t})`;
   };
   return (
     <div className="overflow-x-auto">
@@ -43,7 +43,7 @@ export function Heatmap({ days, blocks, cells }: { days: string[]; blocks: strin
 }
 
 /** Tiny line chart of weekly counts. */
-export function Sparkline({ values, color = "#22d3ee", width = 120, height = 28 }: { values: number[]; color?: string; width?: number; height?: number }) {
+export function Sparkline({ values, color = "#c8a97e", width = 120, height = 28 }: { values: number[]; color?: string; width?: number; height?: number }) {
   if (values.length < 2) return <span className="text-[11px] text-ink-3">–</span>;
   const max = Math.max(...values, 1);
   const pts = values.map((v, i) => `${(i / (values.length - 1)) * width},${height - 2 - (v / max) * (height - 4)}`).join(" ");
@@ -55,7 +55,7 @@ export function Sparkline({ values, color = "#22d3ee", width = 120, height = 28 
 }
 
 /** Two-part horizontal bar (e.g. new vs returning commenters). */
-export function SplitBar({ a, b, aColor = "#22d3ee", bColor = "#8b7cf6", max }: { a: number; b: number; aColor?: string; bColor?: string; max: number }) {
+export function SplitBar({ a, b, aColor = "#c8a97e", bColor = "#9c8467", max }: { a: number; b: number; aColor?: string; bColor?: string; max: number }) {
   const w = (x: number) => `${max ? (x / max) * 100 : 0}%`;
   return (
     <div className="flex h-2 w-full overflow-hidden rounded-full bg-white/5">
@@ -77,7 +77,7 @@ export function MiniStat({ label, value, hint }: { label: string; value: string;
   return (
     <div className="rounded-xl border border-line bg-white/[0.02] p-3.5">
       <div className="label">{label}</div>
-      <div className="mt-1 font-[family-name:var(--font-display)] text-xl font-semibold tabular text-ink">{value}</div>
+      <div className="mt-1 text-xl font-light tabular text-ink">{value}</div>
       {hint && <div className="mt-0.5 text-[12px] text-ink-3">{hint}</div>}
     </div>
   );

@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Instrument_Serif, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { RegisterSW } from "@/components/RegisterSW";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
-const grotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-grotesk", display: "swap" });
+const serif = Instrument_Serif({ subsets: ["latin"], weight: "400", style: ["normal", "italic"], variable: "--font-serif-face", display: "swap" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-face", display: "swap" });
 
 export const metadata: Metadata = {
@@ -17,15 +17,15 @@ export const metadata: Metadata = {
 
 // viewportFit "cover": on iPhones the app fills the screen behind the notch and home bar; the
 // safe-* classes (globals.css) keep the top bar and bottom menu clear of them.
-export const viewport: Viewport = { themeColor: "#05070d", colorScheme: "dark", viewportFit: "cover" };
+export const viewport: Viewport = { themeColor: "#0c0c0d", colorScheme: "dark", viewportFit: "cover" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${grotesk.variable} ${mono.variable}`}>
+    <html lang="en" className={`${inter.variable} ${serif.variable} ${mono.variable}`}>
       <body>
         <div className="backdrop" aria-hidden>
-          <div className="blob" style={{ left: "-15%", top: "-25%", background: "#22d3ee" }} />
-          <div className="blob" style={{ right: "-20%", top: "10%", background: "#8b7cf6", animationDelay: "-9s" }} />
+          <div className="blob" style={{ left: "-15%", top: "-25%", background: "#c8a97e" }} />
+          <div className="blob" style={{ right: "-20%", top: "10%", background: "#9c8467", animationDelay: "-9s" }} />
         </div>
         {children}
         <RegisterSW />

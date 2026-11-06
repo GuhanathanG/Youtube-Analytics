@@ -6,9 +6,9 @@ export function Panel({ children, className = "", title, subtitle, action }:
   return (
     <section className={`panel min-w-0 p-5 sm:p-6 ${className}`}>
       {(title || action) && (
-        <header className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <header className="mb-5 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
           <div className="min-w-0 flex-1 basis-48">
-            {title && <h2 className="font-[family-name:var(--font-display)] text-[15px] font-semibold tracking-tight text-ink">{title}</h2>}
+            {title && <h2 className="text-[15px] font-medium tracking-tight text-ink">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-[13px] text-ink-3">{subtitle}</p>}
           </div>
           {action}
@@ -24,11 +24,10 @@ export function Stat({ label, value, format = "compact", hint, accent = false, s
   return (
     <div className="panel relative overflow-hidden p-5">
       <div className="label">{label}</div>
-      <div className={`mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight ${accent ? "glow-text" : "text-ink"}`}>
+      <div className={`mt-3 text-[32px] font-light leading-none tracking-tight tabular ${accent ? "text-accent" : "text-ink"}`}>
         <CountUp value={value} format={format} suffix={suffix} />
       </div>
-      {hint && <div className="mt-1 text-[12.5px] text-ink-3">{hint}</div>}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+      {hint && <div className="mt-2 text-[12.5px] text-ink-3">{hint}</div>}
     </div>
   );
 }
@@ -63,10 +62,10 @@ export function Empty({ children }: { children: ReactNode }) {
 
 export function PageHeader({ eyebrow, title, children }: { eyebrow?: string; title: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:mb-8">
+    <div className="mb-8 flex flex-col gap-3 sm:mb-10">
       {eyebrow && <div className="label">{eyebrow}</div>}
-      <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{title}</h1>
-      {children}
+      <h1 className="font-serif-display text-[40px] leading-[1.05] text-ink sm:text-[52px]">{title}</h1>
+      {children && <div className="mt-1">{children}</div>}
     </div>
   );
 }

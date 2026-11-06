@@ -24,7 +24,7 @@ export function GrowthChart({ data, dataKey, name, height = 200 }:
         <YAxis tick={{ fill: AXIS, fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={compact} domain={["auto", "auto"]} width={52} />
         <Tooltip content={<GlassTooltip valueFormat={(v) => new Intl.NumberFormat("en").format(v)} />} cursor={{ stroke: "rgba(255,255,255,0.2)" }} />
         <Area type="monotone" dataKey={dataKey} name={name} stroke={ACCENT} strokeWidth={2} fill={`url(#${id})`}
-          dot={false} activeDot={{ r: 4, stroke: "#05070d", strokeWidth: 2 }} />
+          dot={false} activeDot={{ r: 4, stroke: "#0c0c0d", strokeWidth: 2 }} />
       </AreaChart>
     </ResponsiveContainer>
   );

@@ -50,7 +50,7 @@ export default async function ChannelPage({ params, searchParams }:
             ) : <div className="grid h-20 w-20 place-items-center rounded-2xl bg-gradient-to-br from-accent/30 to-accent-2/30 text-2xl font-semibold">{c.title.slice(0, 1)}</div>}
             <div className="min-w-0 flex-1">
               <div className="label">{isInstagram(c.id) ? "Instagram account" : "Channel"}</div>
-              <h1 className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight sm:text-4xl">{c.title}</h1>
+              <h1 className="mt-1 font-serif-display text-[40px] leading-tight sm:text-[48px]">{c.title}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <a href={channelUrl(c.id, c.handle)} target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-accent">{c.handle ?? c.id}<ExternalLink size={13} /></a>
@@ -100,7 +100,7 @@ async function Signals({ id, range: key }: { id: string; range: string }) {
       <Reveal delay={0.1} className="mt-6"><MemoryPanel profile={memory.profile} months={memory.months} /></Reveal>
 
       <div className="mt-6 flex items-center justify-between">
-        <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">Audience signals</h2>
+        <h2 className="text-lg font-medium">Audience signals</h2>
         <RangeTabs current={key} basePath={`/channels/${id}`} />
       </div>
 
@@ -122,7 +122,7 @@ async function Signals({ id, range: key }: { id: string; range: string }) {
         </Reveal>
         <Reveal delay={0.15}>
           <Panel title="Emotions" subtitle="Excluding neutral">
-            <BarList color="#8b7cf6" rows={emos.filter((e) => e.emotion !== "neutral").map((e) => ({ label: `${e.icon} ${e.emotion}`, value: e.comments }))}
+            <BarList color="#9c8467" rows={emos.filter((e) => e.emotion !== "neutral").map((e) => ({ label: `${e.icon} ${e.emotion}`, value: e.comments }))}
               empty="Appears after the AI has read comments." />
           </Panel>
         </Reveal>

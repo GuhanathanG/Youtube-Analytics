@@ -17,7 +17,7 @@ export function LoginForm({ next }: { next: string }) {
       </label>
       {state?.error && <p className="text-[13px] text-neg" role="alert">{state.error}</p>}
       <button disabled={pending}
-        className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-accent to-accent-2 text-[15px] font-semibold text-[#05070d] shadow-[0_8px_30px_-8px_rgba(34,211,238,0.6)] transition hover:brightness-110 disabled:opacity-60">
+        className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-ink text-[15px] font-semibold text-[#0c0c0d] shadow-[0_8px_30px_-8px_rgba(200,169,126,0.6)] transition hover:brightness-110 disabled:opacity-60">
         {pending ? "Checking…" : "Enter"} <ArrowRight size={17} className="transition group-hover:translate-x-0.5" />
       </button>
     </form>

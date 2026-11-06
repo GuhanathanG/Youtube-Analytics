@@ -80,13 +80,13 @@ const fmt = (n) => n == null ? "–" : n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n
 const color = (s) => s == null ? new Color("#9aa4b2") : s > 15 ? new Color("#34d399") : s < -15 ? new Color("#f87171") : new Color("#fbbf24");
 
 const w = new ListWidget();
-w.backgroundColor = new Color("#05070d");
+w.backgroundColor = new Color("#0c0c0d");
 w.url = SITE;
 w.refreshAfterDate = new Date(Date.now() + 15 * 60 * 1000);
 try {
   const data = await load();
   const head = w.addText("PULSE");
-  head.font = Font.boldSystemFont(10); head.textColor = new Color("#22d3ee");
+  head.font = Font.boldSystemFont(10); head.textColor = new Color("#c8a97e");
   w.addSpacer(4);
   const family = config.widgetFamily || "medium";
   const show = data.channels.slice(0, family === "small" ? 1 : family === "large" ? 5 : 2);

@@ -5,7 +5,7 @@ import { AXIS, GRID } from "./colors";
 import { GlassTooltip } from "./Tooltip";
 
 // Fixed categorical order (never cycled): a channel keeps its colour whatever else is selected.
-export const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500"];
+export const SERIES = ["#8db39a", "#d95926", "#199e70", "#c98500"];
 
 export function CompareChart({ data, channels }: { data: Record<string, string | number | null>[]; channels: { id: string; title: string }[] }) {
   return (
@@ -20,7 +20,7 @@ export function CompareChart({ data, channels }: { data: Record<string, string |
         <Legend wrapperStyle={{ fontSize: 12, color: "#b4bccd" }} />
         {channels.map((c, i) => (
           <Line key={c.id} type="monotone" dataKey={c.id} name={c.title} stroke={SERIES[i % SERIES.length]} strokeWidth={2}
-            dot={false} activeDot={{ r: 4, stroke: "#05070d", strokeWidth: 2 }} connectNulls />
+            dot={false} activeDot={{ r: 4, stroke: "#0c0c0d", strokeWidth: 2 }} connectNulls />
         ))}
       </LineChart>
     </ResponsiveContainer>

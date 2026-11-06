@@ -63,7 +63,7 @@ export default async function PersonPage({ params, searchParams }: {
       </div>
 
       <div className="mb-3 mt-6 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">All comments <span className="text-ink-3">({compact(stats.comments)})</span></h2>
+        <h2 className="text-lg font-medium">All comments <span className="text-ink-3">({compact(stats.comments)})</span></h2>
         <div className="flex gap-1.5 text-[13px]">
           {(["newest", "most_liked"] as const).map((o) => (
             <Link key={o} href={qs({ sort: o, page: 1 })} className={`rounded-lg border px-3 py-1.5 ${order === o ? "border-accent/50 bg-accent/10 text-ink" : "border-line text-ink-3 hover:text-ink-2"}`}>
