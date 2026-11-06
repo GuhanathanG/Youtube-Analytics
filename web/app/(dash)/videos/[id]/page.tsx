@@ -10,7 +10,8 @@ import { CommentCard } from "@/components/CommentCard";
 import { InsightPanel } from "@/components/InsightPanel";
 import { PredictionBadge } from "@/components/FeaturePanels";
 import { predictions } from "@/lib/features";
-import { AIWatchPanel, DetailsPanel, MomentsPanel, PerformancePanel } from "@/components/VideoAnalysis";
+import { AIWatchPanel, DetailsPanel, MomentsPanel, PerformancePanel, ThumbnailPanel } from "@/components/VideoAnalysis";
+import { thumbnailsFor } from "@/lib/thumbnails";
 import { videoAdvanced } from "@/lib/analytics";
 import { commentMoments, durationSeconds, getAnalysis, performance } from "@/lib/video";
 import { Reveal } from "@/components/Reveal";
@@ -53,6 +54,7 @@ export default async function VideoPage({ params, searchParams }:
     performance(id).catch(() => null), getAnalysis(id).catch(() => null), commentMoments(id, durS).catch(() => ({ moments: [], histogram: [] })),
     videoAdvanced(id, v.channel_id).catch(() => null),
   ]);
+  const thumb = (await thumbnailsFor(v.channel_id)).get(id);
   const chapters = ((analysis?.data?.chapters as { start: string; title: string }[] | undefined) ?? []);
 
   return (
@@ -84,6 +86,7 @@ export default async function VideoPage({ params, searchParams }:
       </Reveal>
 
       {perf && <Reveal delay={0.05} className="mt-6"><PerformancePanel perf={perf} adv={adv} /></Reveal>}
+      {thumb && <Reveal delay={0.05} className="mt-4"><ThumbnailPanel t={thumb} /></Reveal>}
       <Reveal delay={0.1} className="mt-4"><AIWatchPanel videoId={id} analysis={analysis} hasKey={!!process.env.GEMINI_API_KEY} /></Reveal>
       <Reveal delay={0.1} className="mt-4"><MomentsPanel videoId={id} durationS={durS} moments={momentData.moments} histogram={momentData.histogram} chapters={chapters} /></Reveal>
       <Reveal delay={0.1} className="mt-4"><InsightPanel insight={insight} scope="video" /></Reveal>

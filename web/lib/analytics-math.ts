@@ -67,3 +67,29 @@ export function weekOf(d: Date): string {
   x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7));
   return x.toISOString().slice(0, 10);
 }
+
+/** Thumbnail features compared with the outlier score (same idea as title styles). */
+export type ThumbLike = { faces?: number; face_emotion?: string; text_words?: number; brightness?: string; contrast?: string; readability?: string; elements?: string[]; clickbait?: number };
+export const THUMB_FEATURES: { label: string; test: (t: ThumbLike) => boolean }[] = [
+  { label: "Shows a face", test: (t) => (t.faces ?? 0) > 0 },
+  { label: "Two or more faces", test: (t) => (t.faces ?? 0) >= 2 },
+  { label: "Excited or shocked face", test: (t) => ["surprised", "shocked", "happy"].includes(t.face_emotion ?? "") },
+  { label: "Has text", test: (t) => (t.text_words ?? 0) > 0 },
+  { label: "3 words or fewer", test: (t) => (t.text_words ?? 0) > 0 && (t.text_words ?? 0) <= 3 },
+  { label: "More than 5 words", test: (t) => (t.text_words ?? 0) > 5 },
+  { label: "Bright", test: (t) => t.brightness === "bright" },
+  { label: "High contrast", test: (t) => t.contrast === "high" },
+  { label: "Hard to read on a phone", test: (t) => t.readability === "poor" },
+  { label: "Arrows or circles", test: (t) => (t.elements ?? []).some((e) => /arrow|circle/i.test(e)) },
+  { label: "Sensational (clickbait 7+)", test: (t) => (t.clickbait ?? 0) >= 7 },
+];
+
+export function featureLift<T>(items: { outlier: number; data: T }[], features: { label: string; test: (t: T) => boolean }[], minEach = 3) {
+  return features.map((f) => {
+    const w = items.filter((i) => f.test(i.data)).map((i) => i.outlier);
+    const wo = items.filter((i) => !f.test(i.data)).map((i) => i.outlier);
+    const wm = median(w), wom = median(wo);
+    return { label: f.label, with: w.length, without: wo.length, withOutlier: wm, withoutOutlier: wom,
+      lift: w.length >= minEach && wo.length >= minEach && wm !== null && wom ? wm / wom : null };
+  }).filter((f) => f.lift !== null).sort((a, b) => (b.lift ?? 0) - (a.lift ?? 0));
+}

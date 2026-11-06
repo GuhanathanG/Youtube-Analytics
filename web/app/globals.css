@@ -159,3 +159,16 @@ input, select, textarea {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Printing / "Save as PDF" (weekly report, shared report): dark ink on white paper. */
+@media print {
+  :root {
+    --color-ink: #111827; --color-ink-2: #374151; --color-ink-3: #6b7280;
+    --color-line: #e5e7eb; --color-line-2: #d1d5db; --color-bg: #ffffff;
+  }
+  html, body { background: #ffffff !important; }
+  .backdrop, .no-print { display: none !important; }
+  .panel { background: #ffffff !important; border: 1px solid #e5e7eb !important; box-shadow: none !important; backdrop-filter: none !important; break-inside: avoid; }
+  .glow-text { background: none !important; -webkit-text-fill-color: #111827 !important; color: #111827 !important; }
+  a { color: inherit !important; text-decoration: none !important; }
+}

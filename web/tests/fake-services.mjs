@@ -60,12 +60,23 @@ export function startFake(port = 4100) {
     if (p.includes("/actions/workflows/sync.yml/runs")) {
       return send({ workflow_runs: [{ status: "completed", conclusion: "success", created_at: new Date().toISOString(), html_url: "https://github.com/x/runs/1", event: "schedule" }] });
     }
+    if (p.startsWith("/thumbs/")) { // tiny JPEG-like bytes for thumbnail analysis
+      res.writeHead(200, { "Content-Type": "image/jpeg" }); return res.end(Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
+    }
     if (p.startsWith("/votes")) return send({ id: u.searchParams.get("videoId"), likes: 50, dislikes: 42, viewCount: 1000 });
     if (p.includes(":generateContent")) {
       let body = "";
       req.on("data", (c) => (body += c));
       req.on("end", () => {
         const parsed = JSON.parse(body);
+        const img = parsed.contents?.[0]?.parts?.[0]?.inline_data;
+        if (img) { // thumbnail analysis
+          sent.thumbnails = (sent.thumbnails ?? 0) + 1;
+          const thumb = { faces: 1, face_emotion: "surprised", text: "BEST PHONE?", text_words: 2, main_colors: ["yellow", "black"],
+            brightness: "bright", contrast: "high", subject: "man holding a phone", elements: ["arrow"], style: "reaction with big text",
+            readability: "good", clickbait: 6 };
+          return send({ candidates: [{ content: { parts: [{ text: JSON.stringify(thumb) }] } }], usageMetadata: { totalTokenCount: 300 } });
+        }
         const uri = parsed.contents?.[0]?.parts?.[0]?.file_data?.file_uri ?? "";
         if (!uri.includes("youtube.com/watch")) return send({ error: { message: "no video" } }, 400);
         const analysis = { summary: "A hands-on review of a budget phone, comparing camera and battery.", format: "review", languages: ["Tamil", "English"],

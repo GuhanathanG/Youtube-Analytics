@@ -114,3 +114,38 @@ export async function sendTestAlert(): Promise<{ ok: boolean; message: string }>
   const ok = await sendTelegram("✅ Creator Pulse alerts are connected.");
   return ok ? { ok, message: "Test message sent. Check Telegram." } : { ok, message: "Telegram refused the message. Check the bot token and chat id." };
 }
+
+/**
+ * 4. Weekly report: every Monday from 03:00 UTC (8:30 AM in India) one Telegram message per channel
+ * with the week's numbers and a link to the full printable report. Sent once per week (unique key).
+ */
+export async function sendWeeklyReports(now = new Date()): Promise<number> {
+  if (process.env.WEEKLY_REPORT_ANY_DAY !== "1" && (now.getUTCDay() !== 1 || now.getUTCHours() < 3)) return 0; // (any day: tests only)
+  await ensureTable();
+  const { channelHealth, unansweredQuestions } = await import("./creator-insights");
+  const { channelAnalytics, channelTopics } = await import("./analytics");
+  const week = now.toISOString().slice(0, 10);
+  const chans = await sql()`select id, title from channels where active`;
+  let sent = 0;
+  for (const c of chans) {
+    const [done] = await sql()`select 1 from alerts where key = ${`weekly:${c.id}:${week}`}`;
+    if (done) continue;
+    const [h, a, topics, qs] = await Promise.all([channelHealth(c.id as string), channelAnalytics(c.id as string),
+      channelTopics(c.id as string), unansweredQuestions(c.id as string, 1).catch(() => [])]);
+    const [prev, last] = h.weekly.slice(-2);
+    const pct = (x?: number, y?: number) => (x !== undefined && y ? `${x >= y ? "+" : ""}${Math.round(((x - y) / y) * 100)}%` : "");
+    const best = a.videos.filter((v) => v.outlier !== null && v.ageDays <= 10).sort((x, y) => y.outlier! - x.outlier!)[0];
+    const rising = topics.filter((t) => (t.trend_pct ?? 0) >= 10)[0];
+    const lines = [
+      `Health ${h.score ?? "–"}/100 (${h.grade})`,
+      `Comments last week: ${(last?.comments ?? 0).toLocaleString("en")} ${pct(last?.comments, prev?.comments)}`.trim(),
+      last?.mood != null ? `Mood: ${Math.round(last.mood * 100)}${prev?.mood != null ? ` (${last.mood >= prev.mood ? "▲" : "▼"}${Math.abs(Math.round((last.mood - prev.mood) * 100))})` : ""}` : "",
+      `Uploads: ${last?.uploads ?? 0}`,
+      best ? `Best recent video: “${best.title.slice(0, 70)}” (${best.outlier!.toFixed(1)}× usual)` : "",
+      rising ? `Rising topic: ${rising.label} ▲${Math.round(rising.trend_pct!)}%` : "",
+      qs[0] ? `Top unanswered question: “${qs[0].text.slice(0, 100)}”` : "",
+    ].filter(Boolean);
+    if (await raise("weekly", `weekly:${c.id}:${week}`, `📊 Weekly report · ${c.title}`, lines.join("\n"), `/report/${c.id}`)) sent++;
+  }
+  return sent;
+}

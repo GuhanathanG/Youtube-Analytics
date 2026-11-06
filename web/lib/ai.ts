@@ -39,6 +39,13 @@ async function discoverGemini() {
   }
 }
 
+/** Gemini text models this key can use (discovered, else the configured/default list). */
+export async function geminiModelList(): Promise<string[]> {
+  await discoverGemini();
+  if (process.env.GEMINI_MODELS) return process.env.GEMINI_MODELS.split(",").map((m) => m.trim()).filter(Boolean);
+  return geminiFound?.models.length ? geminiFound.models : PROVIDERS.gemini.models.split(",");
+}
+
 export function aiSlots(): Slot[] {
   const env = process.env;
   const order = (env.AI_PROVIDER_ORDER ?? "gemini,mistral,groq,cloudflare,openrouter").split(",").map((s) => s.trim());

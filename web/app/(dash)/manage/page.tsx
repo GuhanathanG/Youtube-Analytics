@@ -11,6 +11,8 @@ import { Empty, PageHeader, Panel, Tag } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
 import { actionsMinutesThisMonth, channelRequests, channels as getChannels, kpis, lastRuns, llmUsageToday, progress } from "@/lib/queries";
 import { ProgressPanel } from "@/components/ProgressPanel";
+import { ShareLinks } from "@/components/ShareLinks";
+import { listShareLinks } from "@/lib/share";
 
 export const metadata = { title: "Manage" };
 
@@ -97,7 +99,13 @@ export default async function ManagePage() {
       </Reveal>
 
       <Reveal className="mt-4">
-        <Panel title="Alerts on Telegram" subtitle="New uploads, negative spikes and viral comments, sent to your phone (free)">
+        <Panel title="Share a read-only report" subtitle="Anyone with the link sees one channel's report (no password, nothing else). Turn links off any time.">
+          <ShareLinks channels={chs.map((c) => ({ id: c.id, title: c.title }))} links={await listShareLinks().catch(() => [])} site={process.env.SITE_URL ?? ""} />
+        </Panel>
+      </Reveal>
+
+      <Reveal className="mt-4">
+        <Panel title="Alerts on Telegram" subtitle="New uploads, negative spikes, viral comments and a weekly report every Monday morning, sent to your phone (free)">
           {telegramConfigured() ? <TestAlertButton /> : (
             <p className="text-[13px] text-ink-2">Not connected. Add <span className="font-mono">TELEGRAM_BOT_TOKEN</span> and <span className="font-mono">TELEGRAM_CHAT_ID</span> in Vercel (README → “Alerts on Telegram”). Alerts still show on the Overview page.</p>
           )}

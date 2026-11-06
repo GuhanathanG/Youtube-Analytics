@@ -1,6 +1,7 @@
 import { Clapperboard, ExternalLink, Info } from "lucide-react";
 import type { Moment, Performance, VideoAnalysis } from "@/lib/video";
 import type { VideoAdvanced } from "@/lib/analytics";
+import type { ThumbData } from "@/lib/thumbnails";
 import { OutlierBadge, times } from "./AnalyticsParts";
 import { ago, compact } from "@/lib/format";
 import { AnalyseButton } from "./AnalyseButton";
@@ -221,6 +222,21 @@ export function MomentsPanel({ videoId, durationS, moments, histogram, chapters 
           </ol>
         </>
       )}
+    </Panel>
+  );
+}
+
+/** What the AI sees in this video's thumbnail. */
+export function ThumbnailPanel({ t }: { t: ThumbData }) {
+  return (
+    <Panel title="Thumbnail check" subtitle="What the AI sees in the thumbnail">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Tile label="Faces" value={String(t.faces ?? 0)} sub={t.faces ? `looks ${t.face_emotion ?? "–"}` : "no face"} />
+        <Tile label="Text" value={`${t.text_words ?? 0} words`} sub={t.text ? `“${t.text.slice(0, 60)}”` : "no text"} note={t.readability ? `readability on a phone: ${t.readability}` : undefined} />
+        <Tile label="Look" value={t.brightness ?? "–"} sub={`${t.contrast ?? "–"} contrast`} note={(t.main_colors ?? []).join(", ")} />
+        <Tile label="Clickbait" value={`${t.clickbait ?? "–"}/10`} sub={t.style} />
+      </div>
+      {t.subject && <p className="mt-3 text-[13px] text-ink-2">Shows: {t.subject}{(t.elements ?? []).length ? ` · ${(t.elements ?? []).join(", ")}` : ""}</p>}
     </Panel>
   );
 }

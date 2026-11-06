@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { quickLabel } from "../lib/quick-labels.ts";
 import { pickGeminiModels } from "../lib/gemini-models.ts";
 import { healthScore, normalizeBrand } from "../lib/health-math.ts";
-import { TITLE_FEATURES, durationSeconds, forecastViews, isShort, median, titleWords, weekOf } from "../lib/analytics-math.ts";
+import { THUMB_FEATURES, featureLift, TITLE_FEATURES, durationSeconds, forecastViews, isShort, median, titleWords, weekOf } from "../lib/analytics-math.ts";
 
 // Rule labels (same cases as tests/test_ai.py::test_quick_labels)
 assert.equal(quickLabel("first!!")?.sentiment, "neutral");
@@ -51,5 +51,12 @@ assert.equal(healthScore({ subscriberGrowthPct: null, likeRate: null, commentRat
 // Brand names
 assert.equal(normalizeBrand("Samsung Galaxy S26 (shown on desk)."), "Samsung Galaxy S26");
 assert.equal(normalizeBrand("the host"), null); assert.equal(normalizeBrand("x"), null);
+
+// Thumbnail features vs outlier score: faces do 2x better here
+const items = [...Array(4)].map(() => ({ outlier: 2, data: { faces: 1, text_words: 2 } }))
+  .concat([...Array(4)].map(() => ({ outlier: 1, data: { faces: 0, text_words: 2 } })));
+const face = featureLift(items, THUMB_FEATURES).find((f) => f.label === "Shows a face")!;
+assert.equal(face.lift, 2); assert.equal(face.with, 4);
+assert.ok(!featureLift(items, THUMB_FEATURES).some((f) => f.label === "Has text")); // no "without" group -> not shown
 
 console.log("logic unit tests: all passed");
