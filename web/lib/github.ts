@@ -35,6 +35,7 @@ export async function startFullSync(): Promise<{ ok: boolean; message: string }>
 /** Start the background job when GitHub's own scheduler has skipped it (it often delays or drops runs). */
 export async function kickBackgroundJob(maxGapMinutes = Number(process.env.JOB_MAX_GAP_MINUTES ?? 35)): Promise<string> {
   if (!githubConfigured()) return "no GITHUB_TOKEN";
+  if ((await alwaysOnWorker().catch(() => null))?.alive) return "always-on server working";
   const runs = await recentRuns(3);
   if (!runs) return "couldn't read runs";
   if (runs.some((r) => r.status === "in_progress" || r.status === "queued")) return "running";
@@ -42,6 +43,16 @@ export async function kickBackgroundJob(maxGapMinutes = Number(process.env.JOB_M
   if (Date.now() - last < maxGapMinutes * 60_000) return "recent";
   const res = await startFullSync();
   return res.ok ? "started" : `not started: ${res.message}`;
+}
+
+/** The always-on worker (Hugging Face Space) reports a heartbeat after every step; fresh = working. */
+export async function alwaysOnWorker(): Promise<{ alive: boolean; at: string | null; cycles: number; info: string | null } | null> {
+  const { sql } = await import("./db");
+  const [t] = await sql()`select to_regclass('public.worker_heartbeat') as t`;
+  if (!t?.t) return null;
+  const [r] = await sql()`select at, cycles, info, at > (now() at time zone 'utc') - interval '30 minutes' as alive
+    from worker_heartbeat order by at desc limit 1`;
+  return r ? { alive: !!r.alive, at: r.at as string, cycles: Number(r.cycles), info: (r.info as string) ?? null } : null;
 }
 
 export type RunInfo = { status: string; conclusion: string | null; created_at: string; html_url: string; event: string };

@@ -50,27 +50,37 @@ jobs:
       - name: Install packages
         run: pip install -r requirements.txt
 
+      - name: Stand aside if the always-on server (Hugging Face Space) is working
+        id: alive
+        run: |
+          a=$(python -m ytanalytics worker-alive --minutes 30)
+          echo "alive=$a" >> "$GITHUB_OUTPUT"
+          [ "$a" = "1" ] && echo "The always-on server reported in the last 30 minutes: nothing to do here." || true
+
       - name: Plan this run's minutes
+        if: steps.alive.outputs.alive != '1'
         id: plan
         run: python -m ytanalytics plan | tee -a "$GITHUB_OUTPUT"
 
       - name: Fetch channels, videos and comments from YouTube
+        if: steps.alive.outputs.alive != '1'
         run: python -m ytanalytics sync --until ${{ steps.plan.outputs.sync_until }}
 
       - name: Count comments waiting for analysis
+        if: steps.alive.outputs.alive != '1'
         id: pending
         run: |
           echo "count=$(python -m ytanalytics pending)" >> "$GITHUB_OUTPUT"
           echo "topics=$(python -m ytanalytics topics-due)" >> "$GITHUB_OUTPUT"
 
       - name: Install sentiment model packages
-        if: steps.pending.outputs.count != '0' || steps.pending.outputs.topics == '1'
+        if: steps.alive.outputs.alive != '1' && (steps.pending.outputs.count != '0' || steps.pending.outputs.topics == '1')
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements-ai.txt
 
       - name: Cache the AI models
-        if: steps.pending.outputs.count != '0' || steps.pending.outputs.topics == '1'
+        if: steps.alive.outputs.alive != '1' && (steps.pending.outputs.count != '0' || steps.pending.outputs.topics == '1')
         uses: actions/cache@v5
         with:
           path: ~/.cache/huggingface
@@ -78,21 +88,22 @@ jobs:
           restore-keys: hf-${{ env.SENTIMENT_MODEL }}
 
       - name: Sentiment and language for every new comment
-        if: steps.pending.outputs.count != '0'
+        if: steps.alive.outputs.alive != '1' && (steps.pending.outputs.count != '0')
         run: python -m ytanalytics analyze --until ${{ steps.plan.outputs.analyze_until }}
 
       - name: Free local AI - emotions, questions, topic groups
-        if: steps.pending.outputs.count != '0' || steps.pending.outputs.topics == '1'
+        if: steps.alive.outputs.alive != '1' && (steps.pending.outputs.count != '0' || steps.pending.outputs.topics == '1')
         continue-on-error: true  # optional extras; never block the online AI step
         run: |
           A=${{ steps.plan.outputs.analyze_until }}; B=${{ steps.plan.outputs.ai_until }}
           python -m ytanalytics local-ai --until $(( A + (B - A) / 4 ))
 
       - name: AI deep analysis and insights (free Gemini / Mistral / Groq)
+        if: steps.alive.outputs.alive != '1'
         run: python -m ytanalytics ai --until ${{ steps.plan.outputs.ai_until }}
 
       - name: Archive old analysed comments (only when the main database is getting full)
-        if: env.ARCHIVE_DATABASE_URL != ''
+        if: steps.alive.outputs.alive != '1' && (env.ARCHIVE_DATABASE_URL != '')
         continue-on-error: true
         run: python -m ytanalytics archive --until $(( $(date +%s) + 300 ))
 
