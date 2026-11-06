@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from ytanalytics.ai import AIRunner, latest_insight
 from ytanalytics.budget import plan_minutes, record_job
+from ytanalytics.db import utcnow  # noqa: E402
 from ytanalytics.db import (
     Base, Channel, Comment, Insight, LlmUsage, RunLog, Video, init_db, make_engine, make_session_factory,
 )
@@ -167,19 +168,23 @@ def seed(session, n=30):
 
 def test_enrich_comments_labels_and_flags(session):
     seed(session)
-    runner = AIRunner(session, FakeRouter(), batch_size=8)
+    router = FakeRouter()
+    runner = AIRunner(session, router, batch_size=8)
     assert runner.enrich_comments() > 0
     rows = {c.text: c for c in session.scalars(select(Comment))}
+    # Short reactions are labelled by rules, without spending AI requests.
     assert rows["semma video bro"].sentiment == "positive"
     assert rows["semma video bro"].language == "ta-Latn"
-    assert rows["semma video bro"].sentiment_source == "ai"
+    assert rows["semma video bro"].sentiment_source == "rules" and rows["great"].ai_model == "rules"
+    assert runner.stats["rules"] == 9
     assert rows["mokka padam"].sentiment == "negative" and rows["mokka padam"].translation == "boring film"
     assert rows["audio is bad"].aspects == "audio:neg"
     assert rows["make part 2?"].is_question and rows["make part 2?"].is_suggestion
     assert rows["free money click"].is_spam
-    assert rows["great"].aspects is None  # unknown aspect names are dropped
-    assert rows["skipme"].ai_model == "skipped" and rows["skipme"].sentiment is None
-    assert session.scalar(select(func.count()).select_from(Comment).where(Comment.ai_at.is_(None))) == 0
+    # A comment the model skipped stays unread, so a later batch retries it.
+    assert rows["skipme"].ai_at is None and rows["skipme"].sentiment is None
+    assert session.scalar(select(func.count()).select_from(Comment).where(Comment.ai_at.is_(None))) == 4
+    assert not any("semma video bro" in u for _, u in router.prompts)  # never sent to the AI
 
     # Local model must not overwrite AI labels afterwards.
     class Clf:
@@ -193,25 +198,25 @@ def test_enrich_comments_labels_and_flags(session):
     assert session.get(Comment, "c0").sentiment == "positive"
 
 
-def test_enrich_prioritises_uncertain_and_romanized(session):
-    seed(session, n=14)
-    for c in session.scalars(select(Comment)):
-        c.sentiment_score = 0.95
-        c.language = "en"
-    session.get(Comment, "c0").language = "ta-Latn"
-    session.get(Comment, "c5").sentiment_score = 0.4
+def test_enrich_reads_most_important_first(session):
+    seed(session, n=14)  # like_count = i, all published long ago
+    session.add(Comment(id="fresh", video_id="v1", channel_id="UC1", text="brand new opinion", like_count=0,
+                        published_at=utcnow() - timedelta(hours=1)))
     session.commit()
     router = FakeRouter()
-    AIRunner(session, router, batch_size=2).enrich_comments(max_batches=1)
-    first_batch = router.prompts[0][1]
-    assert "semma video bro" in first_batch and "great" in first_batch
+    AIRunner(session, router, batch_size=3).enrich_comments(max_batches=1)
+    first_batch = router.prompts[0][1].split("Comments:")[1]
+    # Last 2 days first, then the most liked (c13 "skipme", c11 "free money click"); rule-labelled ones never sent.
+    assert first_batch.index("brand new opinion") < first_batch.index("skipme") < first_batch.index("free money click")
+    assert "great" not in first_batch and "semma" not in first_batch
 
 
 def test_enrich_stops_cleanly_when_models_used_up(session):
     seed(session)
     runner = AIRunner(session, FakeRouter(fail_after=1), batch_size=5)
     runner.enrich_comments()
-    assert session.scalar(select(func.count()).select_from(Comment).where(Comment.ai_at.is_not(None))) == 5
+    by_model = dict(session.execute(select(Comment.ai_model, func.count()).group_by(Comment.ai_model)).all())
+    assert by_model["rules"] == 9 and 1 <= by_model["gemini/fake"] <= 5 and runner.stats["stopped"] == 1
 
 
 def test_insights_written_once_until_enough_new_comments(session):
@@ -301,3 +306,37 @@ def test_openrouter_is_a_third_free_provider():
     assert orr[0].base_url == "https://openrouter.ai/api/v1/"
     assert "reasoning_effort" not in orr[0].extra
     assert slots[0].provider == "gemini"  # free Gemini first, OpenRouter last
+
+
+def test_quick_labels():
+    from ytanalytics.quick_labels import quick_label
+    assert quick_label("first!!")["sentiment"] == "neutral"
+    q = quick_label("Semma anna 🔥🔥")
+    assert q["sentiment"] == "positive" and q["emotion"] == "admiration" and q["lang"] == "ta-Latn"
+    assert quick_label("❤️❤️❤️")["emotion"] == "love"
+    assert quick_label("😭😭")["sentiment"] == "negative"
+    assert quick_label("superrrr bro")["sentiment"] == "positive"
+    assert quick_label("bahut accha bhai")["lang"] == "hi-Latn"
+    for needs_ai in ["mokka padam", "nice?", "super but audio is bad", "😂😭", "check my channel @x", "", "bro",
+                     "this video is about the new phone and its camera"]:
+        assert quick_label(needs_ai) is None, needs_ai
+
+
+def test_gemini_models_are_discovered_not_guessed():
+    from ytanalytics.llm import pick_gemini_models
+    listed = [{"name": f"models/{n}", "supportedGenerationMethods": m} for n, m in [
+        ("gemini-3.5-flash", ["generateContent"]), ("gemini-3.5-flash-lite", ["generateContent"]),
+        ("gemini-3.5-flash-image", ["generateContent"]), ("text-embedding-005", ["embedContent"]),
+        ("gemini-3.5-pro", ["generateContent"]), ("gemini-3.6-flash-lite-preview", ["generateContent"]),
+        ("gemini-3.5-flash-tts", ["generateContent"])]]
+    assert pick_gemini_models(listed) == ["gemini-3.5-flash-lite", "gemini-3.6-flash-lite-preview", "gemini-3.5-flash"]
+
+
+def test_new_free_providers_from_env():
+    from ytanalytics.llm import slots_from_env
+    slots = slots_from_env({"MISTRAL_API_KEY": "m", "CLOUDFLARE_API_KEY": "c", "CLOUDFLARE_ACCOUNT_ID": "acc1"})
+    assert [s.key for s in slots] == ["mistral/mistral-small-latest", "cloudflare/@cf/openai/gpt-oss-20b"]
+    assert slots[1].base_url == "https://api.cloudflare.com/client/v4/accounts/acc1/ai/v1/"
+    assert all("reasoning_effort" not in s.extra for s in slots)
+    # Cloudflare needs its account id too.
+    assert slots_from_env({"CLOUDFLARE_API_KEY": "c"}) == []

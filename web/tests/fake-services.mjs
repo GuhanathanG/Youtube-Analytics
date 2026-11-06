@@ -39,7 +39,7 @@ function page(list, token, size) {
   return { items: list.slice(start, start + size), nextPageToken: start + size < list.length ? String(start + size) : undefined };
 }
 
-export const sent = { telegram: [] };
+export const sent = { telegram: [], aiPrompts: [] };
 
 export function startFake(port = 4100) {
   const server = http.createServer((req, res) => {
@@ -98,6 +98,7 @@ export function startFake(port = 4100) {
           return send({ choices: [{ message: { content: JSON.stringify({ summary: "Viewers love the Tanglish banter.", liked: ["host"], complaints: ["audio"], requests: ["part 3"], topics: [{ name: "praise", share_pct: 60, sentiment: "positive" }] }) } }], usage: { total_tokens: 900 } });
         }
         const msg = parsed.messages[1].content;
+        sent.aiPrompts.push(msg);
         const results = msg.split("\n").filter((l) => /^\d+\. \[V/.test(l)).map((l) => {
           const i = Number(l.split(".")[0]); const t = l.toLowerCase(); const neg = /bad|worst|mokka/.test(t);
           return { i, sentiment: neg ? "negative" : "positive", score: neg ? -0.8 : 0.85, emotion: neg ? "disappointment" : "excitement",

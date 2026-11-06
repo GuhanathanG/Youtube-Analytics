@@ -70,6 +70,19 @@ The tables are created automatically on the first run. You can browse the raw da
 2. Copy the key (it starts with `sk-or-`). Add it as `OPENROUTER_API_KEY` in GitHub Secrets **and** in Vercel.
    Free accounts get 50 requests a day across OpenRouter's `:free` models, which is about 1,250 extra comments a day.
 
+**Mistral (recommended: the biggest free allowance, about 1 billion tokens a month):**
+1. Go to <https://console.mistral.ai/>, sign up and verify your phone number. No credit card needed.
+2. Choose the free **Experiment** plan when asked.
+3. Open **API Keys → Create new key** and copy it.
+4. Add it as `MISTRAL_API_KEY` in GitHub Secrets **and** in Vercel.
+   On the free plan Mistral may use what you send to train its models; here that's only public YouTube comments.
+
+**Cloudflare Workers AI (optional, about 4,000 comments a day):**
+1. Sign up at <https://dash.cloudflare.com/> (free plan).
+2. Copy your **Account ID** (on the right side of the account home page).
+3. Go to **My Profile → API Tokens → Create Token**, use the **Workers AI** template, and copy the token.
+4. Add `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_KEY` (the token) in GitHub Secrets **and** in Vercel.
+
 **Groq (backup AI, used when Gemini's free daily limit runs out):**
 1. Go to <https://console.groq.com/>, sign up, and open **API Keys → Create API Key**.
 2. Copy the key.
@@ -86,6 +99,7 @@ Both are free and need no credit card.
    - Name `DATABASE_URL`, value: the string from step 2
    - Name `GEMINI_API_KEY`, value: the Gemini key from step 3
    - Name `GROQ_API_KEY`, value: the Groq key from step 3
+   - Optional, same way: `MISTRAL_API_KEY`, `OPENROUTER_API_KEY`, `CLOUDFLARE_API_KEY` and `CLOUDFLARE_ACCOUNT_ID`
 3. Open the **Actions** tab. If GitHub asks, click **I understand my workflows, go ahead and enable them**.
 
 > GitHub only runs scheduled (hourly) workflows from the repository's **default branch** (`main`). Make sure this code is merged into `main`.
@@ -229,6 +243,7 @@ The first run downloads each channel's video list and starts on past comments, b
 | **Channel deep-dive** | AI insights (summary, trend, audience, best and weakest videos, content ideas), what viewers praise and criticise, emotions, growth, comment languages, and every video with its sentiment |
 | **Video deep-dive** | AI summary, topics, praise and criticism, emotions, and tabs for most liked, positive, negative, questions and requests |
 | **Comment explorer** | Filter by channel, video, sentiment, emotion, type (question/request/spam), language or keyword; see the English translation; download as CSV |
+| **Analytics** | **Video performance:** outlier score (views vs the channel's usual for the same format), breakout videos and underperformers, Shorts vs long videos, first-24-hour growth. **Best time and format:** upload day/time heatmap, title styles and words that work, video length. **Audience:** new vs returning commenters, loyal viewers, creator reply rate, languages over time. **Topics:** comments grouped into themes automatically, with mood and rising/falling trends |
 | **Manage channels** | Add, pause or resume channels; free-tier usage (GitHub minutes, YouTube quota, AI models); recent runs |
 
 **Sentiment score** runs from −100 (every comment negative) to +100 (every comment positive). It is the average of each comment's positive probability minus its negative probability.
@@ -251,7 +266,12 @@ The first run downloads each channel's video list and starts on past comments, b
 - set `RUNS_PER_DAY: "24"`
 - set `MONTHLY_MINUTES_BUDGET: "0"` (no limit)
 
-**Free AI limits:** Gemini and Groq each allow a set number of requests per day, and the exact numbers depend on your account. The app sends about 40 comments per request. It spends the AI on the comments that matter most first: Tanglish/Hinglish, uncertain comments and new comments. When every model's daily limit is used up, the AI step stops and continues after midnight US Pacific time. You can see today's AI usage under **Manage channels → Free-tier usage**.
+**Free AI limits:** each free AI service allows a set number of requests per day, and the exact numbers depend on your account. To make them go further:
+- **Short reactions skip the AI.** "first!", "❤️🔥", "semma bro" and the like are labelled by simple rules (`ytanalytics/quick_labels.py`, `web/lib/quick-labels.ts`). Anything with a word the rules don't know still goes to the AI.
+- **Big batches.** The background job sends 100 comments per request (`AI_BATCH_SIZE`) and the website 50 (`AI_BATCH`).
+- **Most important first:** comments from the last 2 days, then the most liked and longest, then Tanglish/Hinglish and ones the local model was unsure about.
+- **Gemini models are discovered,** not hard-coded: the app asks Google which models your key can use.
+- **Free local AI on GitHub** (no limit): a multilingual emotion model, question/request patterns, and a topic grouping model run inside the background job. The online AI later replaces these labels with richer ones. When every model's daily limit is used up, the AI step stops and continues after midnight US Pacific time. You can see today's AI usage under **Manage channels → Free-tier usage**.
 
 ---
 

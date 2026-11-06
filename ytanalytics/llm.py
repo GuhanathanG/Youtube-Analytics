@@ -50,10 +50,53 @@ PROVIDERS = {
                "gemini-2.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash-lite,gemini-3.8-flash", 200, 7.0),
     "groq": ("https://api.groq.com/openai/v1/", "GROQ",
              "openai/gpt-oss-20b,openai/gpt-oss-120b", 900, 30.0),
+    # Mistral's free "Experiment" plan: about 1 request/second and ~1B tokens/month (phone verification only).
+    "mistral": ("https://api.mistral.ai/v1/", "MISTRAL", "mistral-small-latest", 20000, 1.5),
+    # Cloudflare Workers AI: 10,000 free "neurons" a day (~40 big batches with gpt-oss-20b).
+    # Needs CLOUDFLARE_ACCOUNT_ID as well as CLOUDFLARE_API_KEY.
+    "cloudflare": ("https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1/", "CLOUDFLARE",
+                   "@cf/openai/gpt-oss-20b", 40, 2.0),
     # OpenRouter's ":free" models: 50 requests/day per account (shared by all its free models).
     "openrouter": ("https://openrouter.ai/api/v1/", "OPENROUTER",
                    "google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free,nvidia/nemotron-3.5-lightning:free", 50, 4.0),
 }
+
+DEFAULT_ORDER = "gemini,mistral,groq,cloudflare,openrouter"
+
+
+def discover_gemini_models(api_key: str, http: requests.Session | None = None) -> list[str]:
+    """Ask Google which text models this key can use, instead of guessing names that may have
+    been retired. Flash-Lite first (most free requests), then Flash. Empty list on any error."""
+    try:
+        resp = (http or requests).get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": api_key, "pageSize": 200}, timeout=15)
+        if resp.status_code != 200:
+            return []
+        models = resp.json().get("models") or []
+    except (requests.RequestException, ValueError):
+        return []
+    return pick_gemini_models(models)
+
+
+_SKIP = ("image", "tts", "audio", "live", "embedding", "vision", "thinking", "robotics", "computer-use", "omni")
+
+
+def pick_gemini_models(models: list[dict]) -> list[str]:
+    names = []
+    for m in models:
+        name = str(m.get("name", "")).removeprefix("models/")
+        methods = m.get("supportedGenerationMethods") or []
+        if "generateContent" not in methods or not name.startswith("gemini-") or "flash" not in name:
+            continue
+        if any(w in name for w in _SKIP):
+            continue
+        names.append(name)
+
+    def rank(n: str):
+        version = re.search(r"gemini-(\d+(?:\.\d+)?)", n)
+        return (0 if "lite" in n else 1, "preview" in n or "exp" in n, -float(version.group(1)) if version else 0, n)
+    return sorted(set(names), key=rank)[:5]
 
 
 def reasoning_for(provider: str, model: str) -> str:
@@ -61,25 +104,27 @@ def reasoning_for(provider: str, model: str) -> str:
     comments doesn't need it. Gemini 2.5 can switch it off; Gemini 3 only down to minimal."""
     if provider == "gemini":
         return "none" if model.startswith("gemini-2.5") else "minimal"
-    if provider == "openrouter":
-        return ""  # set per model upstream; don't send the parameter
+    if provider in ("openrouter", "mistral", "cloudflare"):
+        return ""  # not part of these APIs; don't send the parameter
     return "low"
 
 
 REQUEST_TIMEOUT = float(os.environ.get("AI_REQUEST_TIMEOUT", "45"))
 
 
-def slots_from_env(env: dict | None = None) -> list[ModelSlot]:
+def slots_from_env(env: dict | None = None, discover: bool = False) -> list[ModelSlot]:
     """Build the ordered list of models from environment variables / secrets.
 
     GEMINI_API_KEY, GROQ_API_KEY            - enable a provider
     GEMINI_MODELS, GROQ_MODELS              - comma-separated, tried in order
     GEMINI_DAILY_REQUESTS, GROQ_DAILY_REQUESTS
     GEMINI_SECONDS_BETWEEN, GROQ_SECONDS_BETWEEN
-    AI_PROVIDER_ORDER                       - default "gemini,groq"
+    MISTRAL_API_KEY, CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID, OPENROUTER_API_KEY
+    AI_PROVIDER_ORDER                       - default DEFAULT_ORDER
+    discover=True asks Google which Gemini models the key can use (when GEMINI_MODELS isn't set).
     """
     env = env if env is not None else os.environ
-    order = [p.strip() for p in env.get("AI_PROVIDER_ORDER", "gemini,groq,openrouter").split(",") if p.strip()]
+    order = [p.strip() for p in env.get("AI_PROVIDER_ORDER", DEFAULT_ORDER).split(",") if p.strip()]
     slots: list[ModelSlot] = []
     for name in order:
         if name not in PROVIDERS:
@@ -88,6 +133,13 @@ def slots_from_env(env: dict | None = None) -> list[ModelSlot]:
         key = env.get(f"{prefix}_API_KEY", "").strip()
         if not key:
             continue
+        if "{account}" in base_url:
+            account = env.get(f"{prefix}_ACCOUNT_ID", "").strip()
+            if not account:
+                continue
+            base_url = base_url.replace("{account}", account)
+        if name == "gemini" and not env.get("GEMINI_MODELS") and discover:
+            models = ",".join(discover_gemini_models(key)) or models
         for model in [m.strip() for m in env.get(f"{prefix}_MODELS", models).split(",") if m.strip()]:
             effort = reasoning_for(name, model)
             extra = {"reasoning_effort": effort} if effort else {}

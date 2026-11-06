@@ -1,5 +1,7 @@
 import { Clapperboard, ExternalLink, Info } from "lucide-react";
 import type { Moment, Performance, VideoAnalysis } from "@/lib/video";
+import type { VideoAdvanced } from "@/lib/analytics";
+import { OutlierBadge, times } from "./AnalyticsParts";
 import { ago, compact } from "@/lib/format";
 import { AnalyseButton } from "./AnalyseButton";
 import { Empty, Panel, Tag } from "./ui";
@@ -21,7 +23,31 @@ function Tile({ label, value, sub, note }: { label: string; value: string; sub?:
 
 const rank = (p: number | null) => (p == null ? undefined : p >= 90 ? `top ${100 - p || 1}% of this channel's videos` : `beats ${p}% of this channel's videos`);
 
-export function PerformancePanel({ perf }: { perf: Performance }) {
+function AdvancedRow({ adv }: { adv: VideoAdvanced }) {
+  const early = adv.views24 !== null && adv.median24 ? adv.views24 / adv.median24 : null;
+  return (
+    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+      <div className="rounded-xl border border-line bg-white/[0.02] p-4">
+        <div className="label">Outlier score</div>
+        <div className="mt-1.5 flex items-center gap-2"><span className="font-[family-name:var(--font-display)] text-2xl font-semibold tabular text-ink">{times(adv.outlier)}</span><OutlierBadge value={adv.outlier} /></div>
+        <div className="mt-1 text-[12.5px] text-ink-2">{adv.outlier === null ? "Shown once the video is 3 days old" : `vs a typical ${adv.format.toLowerCase()} here (${compact(adv.typicalViews)} views)`}</div>
+      </div>
+      <div className="rounded-xl border border-line bg-white/[0.02] p-4">
+        <div className="label">First 24 hours</div>
+        <div className="mt-1.5 font-[family-name:var(--font-display)] text-2xl font-semibold tabular text-ink">{adv.views24 !== null ? compact(adv.views24) : "–"}</div>
+        <div className="mt-1 text-[12.5px] text-ink-2">{early !== null ? `${times(early)} the channel's usual ${compact(adv.median24)}` : "Needs a snapshot from around 24 h after upload"}</div>
+      </div>
+      <div className="rounded-xl border border-line bg-white/[0.02] p-4">
+        <div className="label">View forecast</div>
+        <div className="mt-1.5 font-[family-name:var(--font-display)] text-2xl font-semibold tabular text-ink">{adv.forecast ? compact(adv.forecast.d30) : "–"}</div>
+        <div className="mt-1 text-[12.5px] text-ink-2">{adv.forecast ? `by day 30 · ${compact(adv.forecast.d7)} a week from now` : adv.ageDays >= 30 ? "Forecasts are for videos under 30 days old" : "Needs a few more hours of tracking"}</div>
+        <div className="mt-1 text-[11.5px] text-ink-3">Rough trend from this video&apos;s own view history</div>
+      </div>
+    </div>
+  );
+}
+
+export function PerformancePanel({ perf, adv }: { perf: Performance; adv?: VideoAdvanced | null }) {
   return (
     <Panel title="Performance" subtitle="Compared with this channel's other videos (older than 3 days)">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -35,6 +61,7 @@ export function PerformancePanel({ perf }: { perf: Performance }) {
           sub={perf.dislike_ratio != null ? `${pct(perf.dislike_ratio)} of all ratings` : "no estimate available"}
           note="Community estimate from Return YouTube Dislike; YouTube hides real dislikes" />
       </div>
+      {adv && <AdvancedRow adv={adv} />}
       <p className="mt-3 flex items-start gap-2 text-[12px] text-ink-3"><Info size={13} className="mt-0.5 shrink-0" />
         Shares, watch time and audience retention are only visible to the channel's owner, so YouTube doesn't provide them for other creators' videos.</p>
     </Panel>

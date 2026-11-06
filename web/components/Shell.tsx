@@ -1,6 +1,6 @@
 "use client";
 
-import { GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, MessageSquareText, Search, Settings2, Sparkles } from "lucide-react";
+import { ChartNoAxesCombined, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, MessageSquareText, Search, Settings2, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -15,6 +15,7 @@ const NAV = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/ask", label: "Ask AI", icon: Sparkles },
   { href: "/comments", label: "Comments", icon: MessageSquareText },
+  { href: "/analytics", label: "Analytics", icon: ChartNoAxesCombined },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/ideas", label: "Ideas", icon: Lightbulb },
   { href: "/manage", label: "Manage", icon: Settings2 },
