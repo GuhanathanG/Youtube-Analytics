@@ -42,7 +42,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
-    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0",
+    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100" },
   stdio: ["ignore", "inherit", "inherit"],
