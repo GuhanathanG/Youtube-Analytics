@@ -1,4 +1,5 @@
 import { ChevronLeft } from "lucide-react";
+import { isInstagram, postUrl } from "@/lib/platform";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AspectChart } from "@/components/charts/AspectChart";
@@ -69,17 +70,26 @@ export default async function VideoPage({ params, searchParams }:
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
           <div className="panel overflow-hidden p-1.5">
             <div className="aspect-video overflow-hidden rounded-[14px] bg-black">
-              <iframe className="h-full w-full" src={`https://www.youtube-nocookie.com/embed/${id}`} title={v.title}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen loading="lazy" />
+              {isInstagram(id) ? (
+                <a href={postUrl(id)} target="_blank" rel="noreferrer" className="block h-full w-full">
+                  {v.thumbnail_url
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={v.thumbnail_url} alt="" className="h-full w-full object-contain" referrerPolicy="no-referrer" />
+                    : <div className="grid h-full place-items-center text-ink-2">Open on Instagram</div>}
+                </a>
+              ) : (
+                <iframe className="h-full w-full" src={`https://www.youtube-nocookie.com/embed/${id}`} title={v.title}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen loading="lazy" />
+              )}
             </div>
           </div>
           <div className="flex flex-col justify-center">
-            <div className="label">Video · {date(v.published_at)} {v.duration && `· ${duration(v.duration)}`}</div>
+            <div className="label">{isInstagram(id) ? "Instagram post" : "Video"} · {date(v.published_at)} {v.duration && `· ${duration(v.duration)}`}</div>
             <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">{v.title}</h1>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <Stat label="Views" value={v.view_count ?? 0} accent />
               <Stat label="Likes" value={v.like_count ?? 0} />
-              <Stat label="Comments" value={v.comments_stored} hint={`${(v.comments_on_youtube ?? 0).toLocaleString("en")} on YouTube`} />
+              <Stat label="Comments" value={v.comments_stored} hint={`${(v.comments_on_youtube ?? 0).toLocaleString("en")} on ${isInstagram(id) ? "Instagram" : "YouTube"}`} />
               <Stat label="Sentiment" value={Math.round((v.avg_sentiment ?? 0) * 100)} format="signed" hint="−100 … +100" />
             </div>
             <div className="mt-5"><MixBar mix={mix} /></div>
@@ -91,8 +101,8 @@ export default async function VideoPage({ params, searchParams }:
       {chat && <Reveal className="mt-6"><LiveChatPanel s={chat} /></Reveal>}
       {perf && <Reveal delay={0.05} className="mt-6"><PerformancePanel perf={perf} adv={adv} /></Reveal>}
       {thumb && <Reveal delay={0.05} className="mt-4"><ThumbnailPanel t={thumb} /></Reveal>}
-      <Reveal delay={0.1} className="mt-4"><AIWatchPanel videoId={id} analysis={analysis} hasKey={!!process.env.GEMINI_API_KEY} /></Reveal>
-      <Reveal delay={0.1} className="mt-4"><MomentsPanel videoId={id} durationS={durS} moments={momentData.moments} histogram={momentData.histogram} chapters={chapters} /></Reveal>
+      {!isInstagram(id) && <Reveal delay={0.1} className="mt-4"><AIWatchPanel videoId={id} analysis={analysis} hasKey={!!process.env.GEMINI_API_KEY} /></Reveal>}
+      {!isInstagram(id) && <Reveal delay={0.1} className="mt-4"><MomentsPanel videoId={id} durationS={durS} moments={momentData.moments} histogram={momentData.histogram} chapters={chapters} /></Reveal>}
       <Reveal delay={0.1} className="mt-4"><InsightPanel insight={insight} scope="video" /></Reveal>
       {perf && <Reveal delay={0.1} className="mt-4"><DetailsPanel perf={perf} /></Reveal>}
 

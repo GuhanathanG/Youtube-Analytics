@@ -39,7 +39,9 @@ const fake = await startFake(4100);
 await db`delete from comments where channel_id like '%live'`;
 await db`delete from videos where channel_id like '%live'`;
 await db`delete from channels where id like '%live'`;
-await db`delete from channel_requests where query = '@livecreator'`;
+await db`delete from channel_requests where query = '@livecreator' or query like 'ig:%'`;
+await db`delete from channels where id like 'ig\\_%'`;
+await db.unsafe("delete from ig_runs").catch(() => {});
 await db`insert into channel_requests (query, status, created_at) values ('@livecreator', 'pending', now())`;
 
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
@@ -48,7 +50,8 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
-    GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100" },
+    GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100",
+    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0" },
   stdio: ["ignore", "inherit", "inherit"],
   detached: true, // own process group, so the whole server tree can be stopped
 });
@@ -370,6 +373,33 @@ try {
   const vpAdv = await (await get("/videos/livevid0001")).text();
   check("video page shows outlier score, first 24 hours and forecast", vpAdv.includes("Outlier score") && vpAdv.includes("First 24 hours") && vpAdv.includes("View forecast"));
 
+  // Instagram (via a stand-in Apify): add an account, get profile + posts, then comments read by the AI
+  await db`insert into channel_requests (query, status, created_at) values ('ig:pulsecreator', 'pending', now())`;
+  await db`insert into channel_requests (query, status, created_at) values ('ig:nobody_here', 'pending', now())`;
+  const ig1 = await tick();
+  const [igc] = await db`select title, platform, subscriber_count::int as f, video_count::int as posts from channels where id = 'ig_pulsecreator'`;
+  check("Instagram account added with its profile (followers, name)", igc?.platform === "instagram" && igc.title === "Pulse Creator" && igc.f === 5000,
+    JSON.stringify({ igc, ig: ig1.instagram }));
+  const [{ n: igPosts }] = await db`select count(*)::int n from videos where channel_id = 'ig_pulsecreator'`;
+  check("its posts were stored", igPosts === 3, `${igPosts}`);
+  const [missing] = await db`select error from channel_requests where query = '@nobody_here' and status = 'error'`;
+  check("an Instagram account that doesn't exist is reported", String(missing?.error ?? "").includes("does not exist"), JSON.stringify(missing));
+  await tick(); // collects the comments run started by the previous check
+  const igCom = await db`select text, parent_id, ai_at, sentiment from comments where channel_id = 'ig_pulsecreator' order by id`;
+  check("Instagram comments and replies were stored", igCom.length === 7 && igCom.some((c) => c.parent_id === "ig_IGPOST0001c0"), `${igCom.length}`);
+  check("the AI read the Instagram comments", igCom.filter((c) => c.ai_at).length === 7, JSON.stringify(igCom.map((c) => c.sentiment)));
+  check("YouTube was never asked about Instagram posts", ![...(sent.ytVideoIds ?? []), ...(sent.ytThreadIds ?? [])].some((id) => String(id).startsWith("ig_")));
+  check("every Apify run has a spending cap", (sent.igCaps ?? []).length >= 3 && sent.igCaps.every((c) => Number(c.maxItems) > 0 && Number(c.maxTotalChargeUsd) > 0),
+    JSON.stringify(sent.igCaps));
+  const [{ spent }] = await db`select sum(cost_usd)::float8 as spent from ig_runs`;
+  check("Apify spending is recorded", spent > 0 && spent < 1, `${spent}`);
+  const igPage = await (await get("/channels/ig_pulsecreator")).text();
+  check("Instagram account page shows followers and an Instagram link", igPage.includes("Followers") && igPage.includes("instagram.com/pulsecreator"));
+  const igPost = await (await get("/videos/ig_IGPOST0001")).text();
+  check("Instagram post page shows the post and its comments", igPost.includes("Instagram post") && igPost.includes("instagram.com/p/IGPOST0001"));
+  const mg = await (await get("/manage")).text();
+  check("Manage shows the Instagram form and budget", mg.includes("Watch on Instagram") && mg.includes("Instagram budget"));
+
   // When YouTube's daily quota is used up, the AI still works through its backlog
   await db`update comments set ai_at = null, ai_model = null where text like 'old comment%'`;
   await db`insert into quota_usage (day, units) values (to_char((now() at time zone 'America/Los_Angeles'), 'YYYY-MM-DD'), 99999)
@@ -384,7 +414,7 @@ try {
   // Archiving: old, read comments move to the archive database; totals stay; Ask AI still finds them
   await db`update live_state set last_tick_at = null where id = 1`;
   await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`); // fresh channel totals
-  const [archBefore] = await db`select coalesce(sum(comments), 0)::int as n from channel_summary`;
+  const [archBefore] = await db`select coalesce(sum(comments), 0)::int as n from channel_summary where channel_id like '%live'`;
   const { spawnSync } = await import("node:child_process");
   const py = spawnSync("python", ["-m", "ytanalytics", "archive"], { cwd: "..", encoding: "utf8",
     env: { ...process.env, DATABASE_URL: DB, ARCHIVE_DATABASE_URL: ARCHIVE_DB, ARCHIVE_FORCE: "1", ARCHIVE_AFTER_DAYS: "0" } });
@@ -394,7 +424,7 @@ try {
   check("moved comments are gone from the main database", liveAudio === 0);
   await db`update live_state set last_tick_at = null where id = 1`;
   await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
-  const [archAfter] = await db`select coalesce(sum(comments), 0)::int as n from channel_summary`;
+  const [archAfter] = await db`select coalesce(sum(comments), 0)::int as n from channel_summary where channel_id like '%live'`;
   check("channel totals still include archived comments", archAfter.n === archBefore.n, JSON.stringify({ before: archBefore.n, after: archAfter.n, moved }));
   const askArch = await fetch(`${BASE}/api/ask`, { method: "POST", headers: { cookie, "Content-Type": "application/json" },
     body: JSON.stringify({ question: "What do viewers say about the audio?", channelId: ch.id }) });

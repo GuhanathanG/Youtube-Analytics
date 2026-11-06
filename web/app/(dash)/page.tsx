@@ -71,7 +71,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                     ) : <div className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-accent/30 to-accent-2/30 font-semibold">{c.title.slice(0, 1)}</div>}
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium text-ink">{c.title}</div>
-                      <div className="truncate text-[12.5px] text-ink-3">{c.handle ?? c.id} · {compact(c.subscriber_count)} subs</div>
+                      <div className="truncate text-[12.5px] text-ink-3">{c.handle ?? c.id} · {compact(c.subscriber_count)} {c.id.startsWith("ig_") ? "followers" : "subs"}</div>
                     </div>
                     <ArrowUpRight size={18} className="text-ink-3 transition group-hover:text-accent" />
                   </div>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { isInstagram, personUrl } from "@/lib/platform";
 import { notFound } from "next/navigation";
 import { ChevronLeft, ExternalLink } from "lucide-react";
 import { CommentCard } from "@/components/CommentCard";
@@ -36,7 +37,7 @@ export default async function PersonPage({ params, searchParams }: {
       {channelId && <Link href={`/channels/${channelId}`} className="mb-4 inline-flex items-center gap-1 text-[13px] text-ink-3 hover:text-accent"><ChevronLeft size={15} />Back to channel</Link>}
       <PageHeader eyebrow="Commenter" title={<>{stats.name ?? "Viewer"}</>}>
         <div className="flex flex-wrap items-center gap-3 text-[13.5px] text-ink-2">
-          <a href={`https://www.youtube.com/channel/${id}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-accent">YouTube profile<ExternalLink size={13} /></a>
+          {personUrl(id, stats.name) && <a href={personUrl(id, stats.name)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-accent">{isInstagram(id) ? "Instagram profile" : "YouTube profile"}<ExternalLink size={13} /></a>}
           <span className="text-ink-3">First seen {ago(stats.first_at)} · last {ago(stats.last_at)}</span>
           {channelId ? <Link href={qs({ c: null, page: 1 })} className="text-accent hover:underline">Show all channels</Link> : null}
         </div>

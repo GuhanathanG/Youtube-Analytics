@@ -4,11 +4,5 @@
  * other page being served by the same process at that moment. Log it instead.
  */
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const g = globalThis as { __pulseGuard?: boolean };
-  if (g.__pulseGuard) return;
-  g.__pulseGuard = true;
-  process.on("unhandledRejection", (reason) => {
-    console.warn("[unhandled]", reason instanceof Error ? reason.message : reason);
-  });
+  if (process.env.NEXT_RUNTIME === "nodejs") await import("./instrumentation-node");
 }
