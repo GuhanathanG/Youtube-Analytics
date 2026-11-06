@@ -107,7 +107,7 @@ export default async function ChannelPage({ params, searchParams }:
 
       {preds.length > 0 && <Reveal delay={0.1} className="mt-4"><NewVideosPanel preds={preds} /></Reveal>}
       <Reveal delay={0.1} className="mt-4"><TopicTrendsPanel trend={trend} /></Reveal>
-      <Reveal delay={0.1} className="mt-4"><SuperfansPanel superfans={people.superfans} critics={people.critics} /></Reveal>
+      <Reveal delay={0.1} className="mt-4"><SuperfansPanel top={people.top} superfans={people.superfans} critics={people.critics} channelId={id} /></Reveal>
 
       {snaps.length > 1 && (
         <div className="mt-4 grid gap-4 md:grid-cols-2">

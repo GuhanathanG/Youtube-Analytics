@@ -10,7 +10,9 @@ export function CommentCard({ c, showVideo = true }: { c: CommentRow; showVideo?
   return (
     <article className={`relative rounded-xl border border-line bg-white/[0.025] p-4 pl-5 transition hover:border-line-2 before:absolute before:left-0 before:top-3 before:bottom-3 before:w-[3px] before:rounded-full ${edge}`}>
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-ink-3">
-        <span className="font-medium text-ink-2">{c.author_name ?? "Viewer"}</span>
+        {c.author_channel_id
+          ? <Link href={`/people/${c.author_channel_id}${c.channel_id ? `?c=${c.channel_id}` : ""}`} className="font-medium text-ink-2 hover:text-accent" title="All comments by this person">{c.author_name ?? "Viewer"}</Link>
+          : <span className="font-medium text-ink-2">{c.author_name ?? "Viewer"}</span>}
         {c.is_reply && <span>↳ reply</span>}
         <span>{ago(c.published_at)}</span>
         {showVideo && <Link href={`/videos/${c.video_id}`} className="truncate text-ink-3 hover:text-accent">on {c.video_title}</Link>}

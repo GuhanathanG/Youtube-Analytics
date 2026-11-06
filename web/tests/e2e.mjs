@@ -125,7 +125,8 @@ try {
   check("Manage page shows the engine running 24/7", manage.includes("Running 24/7"));
   check("Manage page shows database storage", manage.includes("Database storage"));
   check("Manage page lists AI video analyses", (await (await get("/manage")).text()).includes("AI video analysis"));
-  check("Manage page shows history progress with an estimate", manage.includes("History progress") && manage.includes("Read by AI"));
+  check("Manage page shows every job with time left and an overall finish time",
+    manage.includes("Jobs &amp; time left") && manage.includes("AI reads every comment") && manage.includes("All jobs done"));
 
   // Feature 1: Ask AI answers from stored comments, with citations
   const askRes = await fetch(`${BASE}/api/ask`, { method: "POST", headers: { cookie, "content-type": "application/json" },
@@ -273,6 +274,31 @@ try {
     body: JSON.stringify({ question: "How has this audience changed over time?", channelId: ch.id }) });
   check("Ask AI reads the creator memory", askMem.status === 200 && (sent.askPrompts ?? []).some((p) => p.includes("Creator memory") && p.includes("loyal budget-phone audience")),
     `status ${askMem.status}`);
+
+  // Conversations: saved chats with history; follow-ups use earlier turns
+  check("chat API needs sign-in", (await fetch(`${BASE}/api/chat`)).status === 401);
+  const chat1 = await (await fetch(`${BASE}/api/chat`, { method: "POST", headers: { cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ question: "What do viewers say about the audio?", channelId: ch.id }) })).json();
+  const chat2 = await (await fetch(`${BASE}/api/chat`, { method: "POST", headers: { cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ threadId: chat1.threadId, question: "And what about the editing?" }) })).json();
+  const thread = await (await get(`/api/chat?t=${chat1.threadId}`)).json();
+  check("a conversation is saved with every question and answer", chat2.threadId === chat1.threadId && thread.messages?.length === 4
+    && thread.thread.title.startsWith("What do viewers say about the audio") && thread.thread.channel_id === ch.id, JSON.stringify({ chat1, chat2, n: thread.messages?.length }));
+  const lastAsk = (sent.askPrompts ?? []).at(-1) ?? "";
+  check("follow-up questions include the earlier conversation", lastAsk.includes("Conversation so far") && lastAsk.includes("What do viewers say about the audio?")
+    && lastAsk.includes("And what about the editing?"), lastAsk.slice(0, 200));
+  const askPage = await (await get(`/ask?t=${chat1.threadId}`)).text();
+  check("Ask AI page lists saved conversations and opens one", askPage.includes("New chat") && askPage.includes("What do viewers say about the audio")
+    && askPage.includes("And what about the editing?"));
+
+  // Commenters: names link to a page with everything that person wrote
+  const chTop = await (await get(`/channels/${ch.id}`)).text();
+  check("channel page lists top commenters with links to their comments", chTop.includes("Top commenters") && chTop.includes(`/people/UCfan?c=${ch.id}`));
+  const person = await (await get(`/people/UCfan?c=${ch.id}`)).text();
+  check("commenter page shows all their comments on the channel", person.includes("Super Fan") && person.includes("love it") && person.includes("All comments"));
+  const personAll = await (await get("/people/UCfan")).text();
+  check("commenter page across all channels shows each channel", personAll.includes("Live Creator") && personAll.includes("Second Creator") && personAll.includes("also here"));
+  check("unknown commenter shows the not-found page", (await (await get("/people/UCnobodyatall0000000000")).text()).includes("Signal lost"));
 
   // Phone app (PWA) and push notifications
   const mf = await fetch(`${BASE}/manifest.webmanifest`);

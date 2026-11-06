@@ -6,18 +6,18 @@ import { ago, compact, score } from "@/lib/format";
 import { TopicChart } from "./charts/TopicChart";
 import { Empty, Panel } from "./ui";
 
-function PeopleList({ people, tone }: { people: Commenter[]; tone: "pos" | "neg" }) {
-  if (!people.length) return <p className="text-[13px] text-ink-3">Nobody yet (needs 3+ comments from the same person).</p>;
+function PeopleList({ people, tone, channelId }: { people: Commenter[]; tone: "pos" | "neg" | "all"; channelId: string }) {
+  if (!people.length) return <p className="text-[13px] text-ink-3">Nobody yet (needs a few comments from the same person).</p>;
   return (
     <ul className="space-y-1.5">
       {people.map((p) => {
         const trend = p.recent_avg != null && p.avg_sentiment != null ? p.recent_avg - p.avg_sentiment : null;
         return (
           <li key={p.author_channel_id} className="flex items-center gap-3 rounded-lg px-2 py-2 text-[13px] hover:bg-white/[0.03]">
-            <a href={`https://www.youtube.com/channel/${p.author_channel_id}`} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-ink hover:text-accent">{p.author_name}</a>
+            <Link href={`/people/${p.author_channel_id}?c=${channelId}`} className="min-w-0 flex-1 truncate text-ink hover:text-accent" title="See all their comments">{p.author_name}</Link>
             <span className="flex items-center gap-1 tabular text-ink-3"><MessageCircle size={12} />{p.comments}</span>
             <span className="flex items-center gap-1 tabular text-ink-3"><Heart size={12} />{compact(p.likes)}</span>
-            <span className={`w-10 text-right tabular ${tone === "pos" ? "text-[#9cc5f5]" : "text-[#f3a9a9]"}`}>{score(p.avg_sentiment)}</span>
+            <span className={`w-10 text-right tabular ${tone === "pos" || (tone === "all" && (p.avg_sentiment ?? 0) > 0.2) ? "text-[#9cc5f5]" : tone === "neg" || (p.avg_sentiment ?? 0) < -0.1 ? "text-[#f3a9a9]" : "text-ink-2"}`}>{score(p.avg_sentiment)}</span>
             <span className="w-14 text-right text-[11.5px] text-ink-3" title="Last 30 days compared with their overall average">
               {trend == null ? "" : trend > 0.1 ? "warming" : trend < -0.1 ? "cooling" : "steady"}
             </span>
@@ -28,12 +28,13 @@ function PeopleList({ people, tone }: { people: Commenter[]; tone: "pos" | "neg"
   );
 }
 
-export function SuperfansPanel({ superfans, critics }: { superfans: Commenter[]; critics: Commenter[] }) {
+export function SuperfansPanel({ top, superfans, critics, channelId }: { top: Commenter[]; superfans: Commenter[]; critics: Commenter[]; channelId: string }) {
   return (
-    <Panel title="Superfans & critics" subtitle="Most active commenters (3+ comments), by average sentiment −100 … +100">
-      <div className="grid gap-5 md:grid-cols-2">
-        <div><div className="label mb-2">💙 Superfans</div><PeopleList people={superfans} tone="pos" /></div>
-        <div><div className="label mb-2">⚠️ Critics</div><PeopleList people={critics} tone="neg" /></div>
+    <Panel title="Top commenters, superfans & critics" subtitle="Click a name to see every comment they wrote. Mood is their average, −100 … +100">
+      <div className="grid gap-5 lg:grid-cols-3">
+        <div><div className="label mb-2">🏆 Top commenters</div><PeopleList people={top} tone="all" channelId={channelId} /></div>
+        <div><div className="label mb-2">💙 Superfans</div><PeopleList people={superfans} tone="pos" channelId={channelId} /></div>
+        <div><div className="label mb-2">⚠️ Critics</div><PeopleList people={critics} tone="neg" channelId={channelId} /></div>
       </div>
     </Panel>
   );
