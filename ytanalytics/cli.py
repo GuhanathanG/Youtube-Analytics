@@ -66,7 +66,8 @@ def main(argv: list[str] | None = None) -> int:
         # At least ~20 seconds, so new comments are always picked up.
         settings.max_run_minutes = max(0.35, (args.until - time.time()) / 60)
     engine = make_engine(settings.database_url)
-    init_db(engine)
+    if args.cmd != "db-health":  # the health report only reads; never change tables for it
+        init_db(engine)
     if args.cmd in ("sync", "init-db"):
         from .db import guard_website_queries
         guard_website_queries(engine)

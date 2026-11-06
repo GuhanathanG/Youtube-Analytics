@@ -47,7 +47,7 @@ export { utc } from "./db-time";
 export async function ensureRls(table: string) {
   const db = sql();
   const [r] = await db`select relrowsecurity from pg_class where relname = ${table} and relnamespace = 'public'::regnamespace`;
-  if (r && !r.relrowsecurity) await db.unsafe(`alter table "${table.replace(/"/g, "")}" enable row level security`);
+  if (r && !r.relrowsecurity) await carefulDdl(`alter table "${table.replace(/"/g, "")}" enable row level security`);
 }
 
 export async function ensureColumns(table: string, columns: [name: string, type: string][]) {
@@ -55,12 +55,27 @@ export async function ensureColumns(table: string, columns: [name: string, type:
   const have = new Set((await db`select column_name from information_schema.columns where table_schema = 'public' and table_name = ${table}`)
     .map((r) => r.column_name as string));
   for (const [name, type] of columns) {
-    if (!have.has(name)) await db.unsafe(`alter table "${table.replace(/"/g, "")}" add column if not exists "${name.replace(/"/g, "")}" ${type}`);
+    if (!have.has(name)) await carefulDdl(`alter table "${table.replace(/"/g, "")}" add column if not exists "${name.replace(/"/g, "")}" ${type}`);
   }
 }
 
 export async function ensureIndex(name: string, create: string) {
   const db = sql();
   const [r] = await db`select 1 from pg_indexes where schemaname = 'public' and indexname = ${name}`;
-  if (!r) await db.unsafe(create);
+  if (!r) await carefulDdl(create);
+}
+
+/** Run a table change, but give up after 3 s if the table is busy: while a change waits for its lock,
+ *  every other query on that table queues behind it, which freezes pages. A later run tries again. */
+async function carefulDdl(statement: string) {
+  try {
+    await sql().begin(async (tx) => {
+      await tx`set local lock_timeout = '3s'`;
+      await tx.unsafe(statement);
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/lock timeout/i.test(msg)) throw e;
+    console.warn("[setup] postponed, table busy:", statement.slice(0, 80));
+  }
 }

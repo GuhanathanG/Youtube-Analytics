@@ -6,7 +6,7 @@ on:
   workflow_dispatch: {}
   push:
     branches: ["claude/**"]
-    paths: [".github/workflows/db-health.yml", "ytanalytics/dbhealth.py"]
+    paths: [".github/workflows/db-health.yml", "ytanalytics/dbhealth.py", "ytanalytics/db.py"]
 
 jobs:
   report:
