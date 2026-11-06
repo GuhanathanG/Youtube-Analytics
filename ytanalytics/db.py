@@ -17,6 +17,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    text as sql_text,
     create_engine,
 )
 from sqlalchemy.engine import Engine
@@ -164,6 +165,9 @@ class Comment(Base):
     __table_args__ = (
         Index("ix_comments_video_published", "video_id", "published_at"),
         Index("ix_comments_pending", "analyzed_at"),
+        # Replies only (small): lets "did the creator answer this question?" be checked quickly.
+        Index("ix_comments_parent", "parent_id", "author_channel_id",
+              postgresql_where=sql_text("parent_id IS NOT NULL"), sqlite_where=sql_text("parent_id IS NOT NULL")),
     )
 
 

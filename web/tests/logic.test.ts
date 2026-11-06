@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { quickLabel } from "../lib/quick-labels.ts";
 import { pickGeminiModels } from "../lib/gemini-models.ts";
+import { healthScore, normalizeBrand } from "../lib/health-math.ts";
 import { TITLE_FEATURES, durationSeconds, forecastViews, isShort, median, titleWords, weekOf } from "../lib/analytics-math.ts";
 
 // Rule labels (same cases as tests/test_ai.py::test_quick_labels)
@@ -40,5 +41,15 @@ assert.ok(Math.abs(d7 - (1000 + 500 * Math.log(192))) < 5 && d30 > d7, `${d7} ${
 assert.equal(forecastViews(pts.slice(0, 2), [100]), null); // too few points
 assert.deepEqual(forecastViews([{ hours: 2, views: 900 }, { hours: 5, views: 800 }, { hours: 10, views: 700 }], [100]), [700]); // never shrinks
 assert.equal(weekOf(new Date("2026-11-05T12:00:00Z")), "2026-11-02");
+
+// Health score
+const strong = healthScore({ subscriberGrowthPct: 6, likeRate: 0.06, commentRate: 0.01, mood: 0.6, loyalShare: 0.2, weeksWithUploads: 8, weeks: 8, recentOutlier: 2 });
+assert.equal(strong.score, 97); assert.equal(strong.grade, "Excellent"); assert.equal(strong.parts.length, 6);
+const weak = healthScore({ subscriberGrowthPct: -3, likeRate: 0.01, commentRate: null, mood: -0.4, loyalShare: null, weeksWithUploads: 1, weeks: 8, recentOutlier: 0.5 });
+assert.ok(weak.score! < 45 && weak.grade === "Needs attention" && weak.parts.length === 5, JSON.stringify(weak));
+assert.equal(healthScore({ subscriberGrowthPct: null, likeRate: null, commentRate: null, mood: null, loyalShare: null, weeksWithUploads: 0, weeks: 0, recentOutlier: null }).score, null);
+// Brand names
+assert.equal(normalizeBrand("Samsung Galaxy S26 (shown on desk)."), "Samsung Galaxy S26");
+assert.equal(normalizeBrand("the host"), null); assert.equal(normalizeBrand("x"), null);
 
 console.log("logic unit tests: all passed");

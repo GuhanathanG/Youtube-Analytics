@@ -4,6 +4,8 @@ import { BarList } from "@/components/charts/BarList";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Tag } from "@/components/ui";
 import { audienceAnalytics, channelAnalytics, channelTopics, type VideoPerf } from "@/lib/analytics";
+import { BrandsPanel, HealthCard } from "@/components/CreatorPanels";
+import { brandTracker, channelHealth } from "@/lib/creator-insights";
 import { compact, score } from "@/lib/format";
 import { channels as getChannels } from "@/lib/queries";
 
@@ -39,7 +41,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       </>
     );
   }
-  const [a, aud, topics] = await Promise.all([channelAnalytics(ch.id), audienceAnalytics(ch.id), channelTopics(ch.id)]);
+  const [a, aud, topics, health, brands] = await Promise.all([channelAnalytics(ch.id), audienceAnalytics(ch.id), channelTopics(ch.id),
+    channelHealth(ch.id), brandTracker(ch.id).catch(() => [])]);
   const { shorts, long } = a.formats;
   const maxPeople = Math.max(1, ...aud.perVideo.map((v) => v.commenters));
   const maxMonth = Math.max(1, ...aud.monthly.map((m) => m.commenters));
@@ -61,6 +64,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           </Link>
         ))}
       </div>
+
+      <Reveal className="mb-6"><HealthCard h={health} /></Reveal>
 
       {/* ---------------------------------------------------------------- 1. video performance */}
       <h2 className="label mb-3 mt-2">1 · Video performance</h2>
@@ -272,6 +277,10 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           ) : <Empty>Topic groups appear after the background job&apos;s next daily run (it needs at least 60 recent comments).</Empty>}
         </Panel>
       </Reveal>
+
+      {/* ---------------------------------------------------------------- 5. brands */}
+      <h2 className="label mb-3 mt-8">5 · Brands and sponsors</h2>
+      <Reveal><BrandsPanel brands={brands} /></Reveal>
     </>
   );
 }

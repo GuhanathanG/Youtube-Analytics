@@ -3,6 +3,7 @@ import { CompareChart, SERIES } from "@/components/charts/CompareChart";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
 import { compareChannels } from "@/lib/features";
+import { channelHealth } from "@/lib/creator-insights";
 import { compact, score } from "@/lib/format";
 import { channels as getChannels } from "@/lib/queries";
 
@@ -20,6 +21,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
     ({ rows, weekly, overlap } = await compareChannels(ids));
   }
   const ordered = ids.map((id) => rows.find((r) => r.id === id)!).filter(Boolean);
+  const health = new Map(await Promise.all(ordered.map(async (r) => [r.id, await channelHealth(r.id).catch(() => null)] as const)));
   const name = (id: string) => rows.find((r) => r.id === id)?.title ?? all.find((c) => c.id === id)?.title ?? id;
   const toggle = (id: string) => {
     const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id].slice(-4);
@@ -27,6 +29,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   };
 
   const metrics: [string, (r: (typeof ordered)[number]) => string][] = [
+    ["Health score", (r) => { const h = health.get(r.id); return h?.score != null ? `${h.score} · ${h.grade}` : "–"; }],
     ["Subscribers", (r) => compact(r.subscriber_count)],
     ["Total views", (r) => compact(r.view_count)],
     ["Videos tracked", (r) => compact(r.videos)],

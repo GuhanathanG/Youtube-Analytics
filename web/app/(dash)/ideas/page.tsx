@@ -4,6 +4,8 @@ import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
 import { ago } from "@/lib/format";
 import { channels as getChannels, latestInsight } from "@/lib/queries";
+import { QuestionsList } from "@/components/CreatorPanels";
+import { unansweredQuestions } from "@/lib/creator-insights";
 
 export const metadata = { title: "Content ideas" };
 
@@ -11,7 +13,8 @@ type Idea = { title?: string; why?: string; requests?: number; likes?: number; e
 
 export default async function IdeasPage() {
   const chs = (await getChannels()).filter((c) => c.active);
-  const ideas = await Promise.all(chs.map(async (c) => ({ c, ins: await latestInsight("ideas", c.id) })));
+  const ideas = await Promise.all(chs.map(async (c) => ({ c, ins: await latestInsight("ideas", c.id),
+    questions: await unansweredQuestions(c.id).catch(() => []) })));
   return (
     <>
       <PageHeader eyebrow="Content ideas" title={<>What viewers are <span className="glow-text">asking for</span></>}>
@@ -19,7 +22,7 @@ export default async function IdeasPage() {
       </PageHeader>
       {ideas.length === 0 ? <Empty>No channels yet.</Empty> : (
         <div className="space-y-4">
-          {ideas.map(({ c, ins }, ci) => {
+          {ideas.map(({ c, ins, questions }, ci) => {
             const list = ((ins?.data.ideas as Idea[] | undefined) ?? []).slice(0, 10);
             return (
               <Reveal key={c.id} delay={ci * 0.05}>
@@ -47,6 +50,11 @@ export default async function IdeasPage() {
                       ))}
                     </ol>
                   )}
+                  <div className="mt-6 border-t border-line pt-5">
+                    <h3 className="mb-1 text-[14px] font-semibold text-ink">Unanswered questions</h3>
+                    <p className="mb-3 text-[12.5px] text-ink-3">Most-liked viewer questions from the last 6 months with no reply from the creator, by topic. Ready-made video ideas.</p>
+                    <QuestionsList questions={questions} />
+                  </div>
                 </Panel>
               </Reveal>
             );
