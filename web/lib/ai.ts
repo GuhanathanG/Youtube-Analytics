@@ -308,15 +308,22 @@ export async function labelBacklog(deadline: number, maxComments = 100): Promise
     ruled += ids.length - (await labelTrivial(ids)).length;
   }
   if (!aiSlots().length) return ruled;
-  // Look at the newest 5,000 unread comments (index ix_comments_ai_pending) and pick the important ones.
+  // Look at the newest 5,000 unread comments (index ix_comments_ai_next) and read the most useful first:
+  //   1. brand-new comments (last 2 days)          4. well-liked comments (more viewers agree)
+  //   2. comments on new videos (last 7 days)      5. ones the quick model was unsure about (Tanglish…)
+  //   3. likely questions and requests             6. longer comments (more to learn from)
   const rows = await db`
-    select id from (
-      select id, language, sentiment_score, published_at, like_count, length(text) as len from comments
-      where ai_at is null order by published_at desc nulls last limit 5000) recent
-    order by (published_at >= (now() at time zone 'utc') - interval '2 days') desc nulls last,
-             like_count desc,
-             (case when language like '%-Latn' or language = 'und' or sentiment_score is null or sentiment_score < 0.6 then 0 else 1 end),
-             len desc, published_at desc nulls last
+    select r.id from (
+      select id, video_id, language, sentiment_score, published_at, like_count, length(text) as len,
+             (text ~ '[?？]' or text ~* '\m(please|pls|plz|make|next video|part [0-9]|when|how|enna|eppo|eppadi|kab|kaise)\M') as ask
+      from comments where ai_at is null order by published_at desc nulls last limit 5000) r
+    left join videos v on v.id = r.video_id
+    order by (r.published_at >= (now() at time zone 'utc') - interval '2 days') desc nulls last,
+             (v.published_at >= (now() at time zone 'utc') - interval '7 days') desc nulls last,
+             r.ask desc,
+             least(r.like_count, 50) desc,
+             (case when r.language like '%-Latn' or r.language = 'und' or r.sentiment_score is null or r.sentiment_score < 0.6 then 0 else 1 end),
+             r.len desc, r.published_at desc nulls last
     limit ${maxComments}`;
   return ruled + await labelComments(rows.map((r) => r.id as string), deadline);
 }

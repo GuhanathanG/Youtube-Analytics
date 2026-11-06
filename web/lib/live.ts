@@ -3,7 +3,7 @@ import { sql, ensureRls, ensureColumns, ensureIndex } from "./db";
 import { aiSlots, labelBacklog, labelComments } from "./ai";
 import { writeDueIdeas, writeDueInsights } from "./insights";
 import { ensureVideoTables } from "./video";
-import { checkAlerts, sendWeeklyReports } from "./alerts";
+import { checkAlerts, checkHealth, sendWeeklyReports } from "./alerts";
 import { pollLiveChats, saveLiveInfo, summariseEndedChats } from "./livechat";
 import { writeDueMemory } from "./memory";
 import { refreshDueSummaries } from "./summary";
@@ -542,6 +542,8 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 9. Alerts (new uploads, negative spikes, viral comments): checked on the same ~10-minute turn,
     //    since the checks aggregate recent comments.
     if (insightsTurn || result.newVideos) result.alerts = await checkAlerts().catch(() => 0);
+    // Engine health alarm: background job stopped, AI stopped, database nearly full, quota gone early.
+    if (insightsTurn && timeLeft()) result.alerts = (result.alerts ?? 0) + await checkHealth().catch((e) => { console.log("[health]", e instanceof Error ? e.message : e); return 0; });
     // Push notifications for new uploads: keep each channel's subscription renewed (lasts 5 days).
     if (insightsTurn && timeLeft()) result.push = await renewSubscriptions().catch(() => 0);
     // Backup for GitHub's scheduler: start the background job if it hasn't run for 35 minutes.

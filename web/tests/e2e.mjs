@@ -441,6 +441,19 @@ try {
   const [pv] = await db`select id from videos where id = ${pushed}`;
   check("a signed push saves the new video at once", okPush.status === 204 && !!pv, `${okPush.status} ${!!pv}`);
 
+  // Engine health alarm: a stopped background job is reported on Telegram (once per window)
+  await db`insert into run_log (kind, started_at, status) values ('sync', (now() at time zone 'utc') - interval '5 hours', 'ok')`;
+  await db`update run_log set started_at = (now() at time zone 'utc') - interval '5 hours'`;
+  const tgBefore = sent.telegram.length;
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  check("a stopped background job raises a health alarm on Telegram", sent.telegram.slice(tgBefore).some((m) => String(m.text).includes("Background job stopped")),
+    JSON.stringify(sent.telegram.slice(tgBefore)).slice(0, 300));
+  await db`update live_state set last_tick_at = null where id = 1`;
+  await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  check("…and only once per window", sent.telegram.filter((m) => String(m.text).includes("Background job stopped")).length === 1);
+  await db`update run_log set started_at = (now() at time zone 'utc')`;
+
   // iPhone widget: read-only numbers with its own key (shown on Manage), refused without it
   const mgW = await (await get("/manage")).text();
   check("Manage shows the iPhone widget setup", mgW.includes("iPhone widget") && mgW.includes("Copy widget script"));

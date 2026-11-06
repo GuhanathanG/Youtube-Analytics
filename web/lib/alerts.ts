@@ -154,3 +154,59 @@ export async function sendWeeklyReports(now = new Date()): Promise<number> {
   }
   return sent;
 }
+
+/* ------------------------------------------------------------------ engine health alarm */
+/**
+ * Health checks (on the engine's ~10-minute turn). Each problem alerts once per window (6 hours by
+ * default), on Telegram and phone push, so a stuck part is noticed within minutes instead of hours.
+ * The opposite case — this engine itself stopping — is checked by the GitHub background job.
+ */
+export async function checkHealth(): Promise<number> {
+  await ensureTable();
+  const db = sql();
+  const hours = Number(process.env.HEALTH_ALERT_EVERY_HOURS ?? 6);
+  const window = `${new Date().toISOString().slice(0, 10)}-${Math.floor(new Date().getUTCHours() / hours)}`;
+  let raised = 0;
+  const alert = async (what: string, title: string, body: string, link = "/manage") => {
+    if (await raise("health", `health:${what}:${window}`, title, body, link)) raised++;
+  };
+
+  // 1. The background job (GitHub) hasn't started for 2+ hours.
+  const [job] = await db`select max(started_at) as at from run_log`.catch(() => [{ at: null }]);
+  const jobAge = job?.at ? (Date.now() - new Date(String(job.at).replace(" ", "T") + "Z").getTime()) / 3600_000 : null;
+  if (jobAge !== null && jobAge > Number(process.env.HEALTH_JOB_HOURS ?? 2)) {
+    await alert("job", "🛠 Background job stopped",
+      `It last ran ${Math.round(jobAge)} hours ago. History download and bulk AI reading are paused. Check GitHub → Actions → "Sync & analyze".`);
+  }
+
+  // 2. The AI read nothing in the last hour although comments are waiting (keys used up or wrong).
+  const [ai] = await db`select coalesce(sum(ai_hour), 0)::int as hour, coalesce(sum(comments - ai_read), 0)::int as waiting from channel_summary`.catch(() => [{ hour: 1, waiting: 0 }]);
+  if (Number(ai?.hour) === 0 && Number(ai?.waiting) > Number(process.env.HEALTH_AI_BACKLOG ?? 200)) {
+    await alert("ai", "🤖 AI stopped reading comments",
+      `${Number(ai.waiting).toLocaleString("en")} comments are waiting and none were read in the last hour. Free AI limits may be used up, or a key expired — run GitHub → Actions → "Check AI keys".`);
+  }
+
+  // 3. The database is nearly full (free plan: 500 MB).
+  const [size] = await db`select pg_database_size(current_database())::float8 / 1048576 as mb`;
+  const limit = Number(process.env.STORAGE_LIMIT_MB ?? 500);
+  if (Number(size.mb) > limit * 0.85) {
+    await alert("storage", "💾 Database nearly full",
+      `${Math.round(Number(size.mb))} MB of ${limit} MB used. Old comments move to the archive automatically above 70%; if this keeps rising, check the archive step.`);
+  }
+
+  // 4. YouTube's daily quota used up well before the daily reset (midnight Pacific).
+  const [q] = await db`select units from quota_usage where day = to_char((now() at time zone 'America/Los_Angeles'), 'YYYY-MM-DD')`;
+  const ptHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", hour: "numeric", hour12: false }).format(new Date()));
+  if (Number(q?.units ?? 0) >= Number(process.env.DAILY_QUOTA ?? 9500) * 0.98 && ptHour < 18) {
+    await alert("quota", "📉 YouTube quota used up early",
+      `Today's YouTube quota ran out before 6 pm Pacific. New comments still arrive by RSS/push, but history and stats wait for the reset (midnight Pacific, about 1:30 pm India time).`);
+  }
+
+  // 5. The engine itself keeps failing (same error on the last run).
+  const [st] = await db`select last_result from live_state where id = 1`.catch(() => [null]);
+  try {
+    const last = st?.last_result ? JSON.parse(st.last_result as string) : null;
+    if (last?.status === "error") await alert("engine", "⚠️ Engine error", String(last.message ?? "unknown error").slice(0, 300));
+  } catch { /* ignore */ }
+  return raised;
+}

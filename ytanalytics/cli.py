@@ -89,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             print(f"Tracking {channel.title} ({channel.id})")
         elif args.cmd == "sync":
+            from .health import check_engine
+
+            print(json.dumps({"health": check_engine(session)}))
             from .sync import run_sync
 
             if not settings.youtube_api_key:
