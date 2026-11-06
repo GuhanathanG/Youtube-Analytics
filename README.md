@@ -278,7 +278,7 @@ Limits of the free Apify plan: about 15 comments per post are returned, and Inst
   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` as GitHub secrets too (same values as in Vercel).
 - **Smarter AI reading order:** brand-new comments, then comments on new videos, likely questions/requests,
   well-liked comments, comments the quick model was unsure about, then longer ones.
-- **Always-on server (optional):** see [docs/ORACLE_SETUP.md](docs/ORACLE_SETUP.md).
+- **Always-on server (optional, free):** [docs/HUGGINGFACE_SETUP.md](docs/HUGGINGFACE_SETUP.md) (Hugging Face Space), or [docs/ORACLE_SETUP.md](docs/ORACLE_SETUP.md).
 
 ## Comment archive (free Neon database, when Supabase fills up)
 

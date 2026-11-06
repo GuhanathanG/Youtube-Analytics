@@ -3,7 +3,7 @@ import { AddChannelForm, AddInstagramForm, FullSyncButton, TestAlertButton, Togg
 import { telegramConfigured } from "@/lib/alerts";
 import { recentAnalyses } from "@/lib/video";
 import Link from "next/link";
-import { githubConfigured, recentRuns } from "@/lib/github";
+import { alwaysOnWorker, githubConfigured, recentRuns } from "@/lib/github";
 import { engineStatus, storageStatus } from "@/lib/live";
 import { utc } from "@/lib/db-time";
 import { Reveal } from "@/components/Reveal";
@@ -47,6 +47,7 @@ export default async function ManagePage() {
   ]);
   const ghRuns = await recentRuns(5).catch(() => null);
   const engine = await engineStatus().catch(() => null);
+  const worker = await within(alwaysOnWorker(), 5000, null);
   const prog = await progress().catch(() => []);
   const storage = await storageStatus().catch(() => null);
   const analyses = await recentAnalyses(8).catch(() => []);
@@ -70,10 +71,11 @@ export default async function ManagePage() {
         <Panel title={<span className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${alwaysOn ? "bg-accent animate-[pulse-dot_2s_ease-out_infinite]" : "bg-warn"}`} />Engine</span>}
           subtitle={alwaysOn ? "Running 24/7: new comments, history and AI analysis keep flowing even when this site is closed"
             : "Only runs while this site is open. Set up the free timer in the README (step 7) to run it 24/7."}>
-          <div className="grid gap-3 text-[13px] sm:grid-cols-4 lg:grid-cols-7">
+          <div className="grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-4 lg:grid-cols-8">
             {[
               ["Last run", e ? ago(e.at) : "never"],
               ["Timer (24/7)", cronAt ? ago(engine?.lastCronAt) : "not set up"],
+              ["Always-on server", worker ? `${worker.alive ? "working" : "stopped"} · ${ago(worker.at)}` : "not set up"],
               ["New comments", String(e?.newComments ?? 0)],
               ["History saved", String(e?.backfilled ?? 0)],
               ["Read by AI", String((e?.labelled ?? 0) + (e?.aiBacklog ?? 0))],

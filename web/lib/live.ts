@@ -544,6 +544,10 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     if (insightsTurn || result.newVideos) result.alerts = await checkAlerts().catch(() => 0);
     // Engine health alarm: background job stopped, AI stopped, database nearly full, quota gone early.
     if (insightsTurn && timeLeft()) result.alerts = (result.alerts ?? 0) + await checkHealth().catch((e) => { console.log("[health]", e instanceof Error ? e.message : e); return 0; });
+    // Keep the always-on server awake (free Hugging Face Spaces sleep after 48 hours without visits).
+    if (insightsTurn && process.env.ALWAYS_ON_URL) {
+      await fetch(process.env.ALWAYS_ON_URL, { cache: "no-store", signal: AbortSignal.timeout(5000) }).catch(() => null);
+    }
     // Push notifications for new uploads: keep each channel's subscription renewed (lasts 5 days).
     if (insightsTurn && timeLeft()) result.push = await renewSubscriptions().catch(() => 0);
     // Backup for GitHub's scheduler: start the background job if it hasn't run for 35 minutes.

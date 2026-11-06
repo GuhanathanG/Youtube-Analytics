@@ -486,6 +486,17 @@ try {
   await db`update quota_usage set units = 0`;
 
   check("engine starts the GitHub background job when GitHub's scheduler skipped it", (sent.dispatches ?? 0) > 0, `dispatches: ${sent.dispatches}`);
+  // …but not while the always-on server (Hugging Face Space) is working
+  await db`create table if not exists worker_heartbeat (name varchar(40) primary key, at timestamp not null, started_at timestamp, cycles integer not null default 0, info text)`;
+  await db`insert into worker_heartbeat (name, at, cycles, info) values ('space', (now() at time zone 'utc'), 1, 'sync exit 0')
+    on conflict (name) do update set at = excluded.at`;
+  const d0 = sent.dispatches ?? 0;
+  await db`update live_state set last_tick_at = null where id = 1`;
+  const kw = await (await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`)).json();
+  check("the GitHub job is not started while the always-on server works", (sent.dispatches ?? 0) === d0 && kw.job === "always-on server working", JSON.stringify({ job: kw.job, d0, d1: sent.dispatches }));
+  const mgS = await (await get("/manage")).text();
+  check("Manage shows the always-on server", mgS.includes("Always-on server") && mgS.includes("working"));
+  await db`delete from worker_heartbeat`;
 
   // Archiving: old, read comments move to the archive database; totals stay; Ask AI still finds them
   // Fresh channel totals: one channel's summary is refreshed per engine run, so run it once per channel

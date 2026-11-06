@@ -50,6 +50,14 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("--until", type=float, default=None, help="stop by this unix time")
     dh = sub.add_parser("db-health", help="report what makes the database slow")
     dh.add_argument("--unstick", action="store_true", help="also end connections the website left hanging")
+    hb = sub.add_parser("heartbeat", help="record that the always-on worker is working")
+    hb.add_argument("--name", default="space")
+    hb.add_argument("--info", default="")
+    hb.add_argument("--new-cycle", action="store_true")
+    wa = sub.add_parser("worker-alive", help="print 1 if an always-on worker reported recently, else 0")
+    wa.add_argument("--minutes", type=float, default=30)
+    la.add_argument("--minutes", type=float, default=None)
+    ar.add_argument("--minutes", type=float, default=None)
     sub.add_parser("pending", help="number of comments waiting for analysis")
     sub.add_parser("status", help="summary of what is stored")
     sub.add_parser("plan", help="print minutes for this run (GitHub Actions budget)")
@@ -175,6 +183,14 @@ def main(argv: list[str] | None = None) -> int:
             if args.unstick:
                 unstick(session)
             report(session)
+        elif args.cmd == "heartbeat":
+            from .heartbeat import beat
+
+            beat(session, args.name, args.info, args.new_cycle)
+        elif args.cmd == "worker-alive":
+            from .heartbeat import alive
+
+            print(1 if alive(session, args.minutes) else 0)
         elif args.cmd == "pending":
             from .sentiment import count_pending
 
