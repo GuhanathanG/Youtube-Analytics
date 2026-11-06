@@ -1,6 +1,6 @@
 import "server-only";
 import { sql } from "./db";
-import { labelBacklog, labelComments } from "./ai";
+import { aiSlots, labelBacklog, labelComments } from "./ai";
 import { writeDueIdeas, writeDueInsights } from "./insights";
 import { ensureVideoTables } from "./video";
 import { checkAlerts } from "./alerts";
@@ -317,6 +317,9 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
   const BUDGET_MS = Number(process.env.ENGINE_BUDGET_SECONDS ?? 22) * 1000;
   const deadline = started + BUDGET_MS;
   const timeLeft = () => Date.now() < deadline - 5000;
+  // Downloading old comments could fill the whole slot; leave the AI time to read what's stored.
+  const aiReserve = aiSlots().length ? Number(process.env.ENGINE_AI_RESERVE_SECONDS ?? 11) * 1000 : 0;
+  const historyTimeLeft = () => Date.now() < deadline - 5000 - aiReserve;
   const result: TickResult = { status: "ok", ...empty, source };
   const fresh: string[] = [];
 
@@ -416,7 +419,7 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     result.newComments = fresh.length;
 
     // 5. Fill in comment history a few pages at a time (the background job does the same, faster).
-    if (timeLeft()) result.backfilled = await backfillSome(Number(process.env.LIVE_BACKFILL_PAGES ?? 12), timeLeft);
+    if (historyTimeLeft()) result.backfilled = await backfillSome(Number(process.env.LIVE_BACKFILL_PAGES ?? 12), historyTimeLeft);
 
   } catch (e) {
     // YouTube steps failed (e.g. today's quota is used up). The AI steps below don't use YouTube
