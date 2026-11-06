@@ -183,3 +183,7 @@ input, select, textarea {
 .safe-bottom { margin-bottom: env(safe-area-inset-bottom); }
 .safe-main { padding-bottom: calc(7rem + env(safe-area-inset-bottom)); }
 @media (min-width: 1024px) { .safe-main { padding-bottom: 4rem; } }
+
+/* Grid/flex children may shrink below their content (long words, links): no sideways scrolling on phones */
+.reveal { min-width: 0; }
+.panel { overflow-wrap: anywhere; }

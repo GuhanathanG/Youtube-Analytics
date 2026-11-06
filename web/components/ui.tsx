@@ -4,10 +4,10 @@ import { CountUp } from "./CountUp";
 export function Panel({ children, className = "", title, subtitle, action }:
   { children: ReactNode; className?: string; title?: ReactNode; subtitle?: ReactNode; action?: ReactNode }) {
   return (
-    <section className={`panel p-5 sm:p-6 ${className}`}>
+    <section className={`panel min-w-0 p-5 sm:p-6 ${className}`}>
       {(title || action) && (
-        <header className="mb-4 flex items-start justify-between gap-4">
-          <div>
+        <header className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <div className="min-w-0 flex-1 basis-48">
             {title && <h2 className="font-[family-name:var(--font-display)] text-[15px] font-semibold tracking-tight text-ink">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-[13px] text-ink-3">{subtitle}</p>}
           </div>

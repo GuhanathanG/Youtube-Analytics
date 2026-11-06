@@ -32,7 +32,7 @@ function FocusSwitcher({ channels, focus }: { channels: NavChannel[]; focus: str
   return (
     <select aria-label="Channel shown across the site" value={focus ?? "all"} disabled={pending}
       onChange={(e) => { const v = e.target.value; start(async () => { await setFocus(v); router.refresh(); }); }}
-      className="h-10 max-w-[44vw] shrink-0 truncate rounded-xl border border-accent/40 bg-accent/10 px-3 text-[13.5px] text-ink outline-none sm:max-w-[240px]">
+      className="h-10 min-w-0 flex-1 truncate rounded-xl border border-accent/40 bg-accent/10 px-3 text-[13.5px] text-ink outline-none sm:max-w-[240px] sm:flex-none">
       {active.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
       <option value="all">All channels (combined)</option>
     </select>
@@ -83,11 +83,11 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
 
       {/* Top bar */}
       <header className="safe-top sticky top-0 z-20 flex h-16 box-content items-center gap-3 border-b border-line bg-[#05070d]/60 px-4 backdrop-blur-xl sm:px-8">
-        <Link href="/" className="lg:hidden"><Logo size={24} /></Link>
+        <Link href="/" className="shrink-0 lg:hidden" aria-label="Overview"><Logo size={28} compact /></Link>
         <FocusSwitcher channels={channels} focus={focus} />
         <button onClick={() => setOpen(true)}
-          className="ml-auto flex h-10 w-full max-w-[420px] items-center gap-3 rounded-xl border border-line bg-white/[0.03] px-3 text-[13.5px] text-ink-3 transition hover:border-line-2 hover:text-ink-2 lg:ml-0">
-          <Search size={16} /><span className="sm:hidden">Search</span><span className="hidden sm:inline">Search channels, videos…</span>
+          aria-label="Search" className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center gap-3 rounded-xl border border-line bg-white/[0.03] px-3 text-[13.5px] text-ink-3 transition hover:border-line-2 hover:text-ink-2 sm:w-full sm:max-w-[420px] sm:justify-start lg:ml-0">
+          <Search size={16} className="shrink-0" /><span className="hidden sm:inline">Search channels, videos…</span>
           <kbd className="ml-auto hidden rounded-md border border-line-2 px-1.5 py-0.5 font-mono text-[11px] sm:inline">⌘K</kbd>
         </button>
         <LivePill />

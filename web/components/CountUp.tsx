@@ -19,6 +19,7 @@ export function CountUp({ value, format = "compact", prefix = "", suffix = "" }:
   const text =
     format === "full" ? new Intl.NumberFormat("en").format(Math.round(shown))
     : format === "signed" ? `${shown > 0.5 ? "+" : ""}${Math.round(shown)}`
+    : Math.abs(value) < 1000 ? String(Math.round(shown))
     : new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(shown);
   return <span ref={ref} className="tabular">{prefix}{text}{suffix}</span>;
 }

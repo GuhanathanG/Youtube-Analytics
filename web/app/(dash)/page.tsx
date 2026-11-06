@@ -52,14 +52,14 @@ export default async function Overview({ searchParams }: { searchParams: Promise
       <LiveNowBanner live={live} />
       <PageHeader eyebrow="Mission control" title={<>Audience <span className="glow-text">pulse</span></>}>
         <p className="max-w-2xl text-[15px] text-ink-2">
-          {k.channels} channel{k.channels === 1 ? "" : "s"} under watch · {compact(k.comments)} comments captured ·{" "}
+          {fc ? <>{fc.title} · </> : <>{k.channels} channel{k.channels === 1 ? "" : "s"} under watch · </>}{compact(k.comments)} comments captured ·{" "}
           {compact(k.comments_24h)} in the last 24 hours.
         </p>
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Reveal><Stat label="Comments captured" value={k.comments} accent hint={`+${compact(k.comments_24h)} in 24h`} /></Reveal>
-        <Reveal delay={0.05}><Stat label="Sentiment score" value={Math.round(weighted * 100)} format="signed" hint="−100 … +100, all channels" /></Reveal>
+        <Reveal delay={0.05}><Stat label="Sentiment score" value={Math.round(weighted * 100)} format="signed" hint={focus ? "−100 … +100, this channel" : "−100 … +100, all channels"} /></Reveal>
         <Reveal delay={0.1}><Stat label="Read by AI" value={k.comments ? Math.round((k.ai_read / k.comments) * 100) : 0} suffix="%" hint={`${compact(k.ai_read)} deep-read comments`} /></Reveal>
         <Reveal delay={0.15}><Stat label="Videos tracked" value={k.videos} hint={k.videos_backfilling ? `${k.videos_backfilling} still downloading history` : "history complete"} /></Reveal>
       </div>
@@ -73,7 +73,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
           <Reveal delay={0.1} className="mt-8">
             <div className="mb-3 flex items-end justify-between">
               <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">Channels</h2>
-              <span className="label">{allChs.length} watching{focus ? " · showing one (switch at the top)" : ""}</span>
+              <span className="label">{allChs.length} watching</span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {allChs.map((c) => (
