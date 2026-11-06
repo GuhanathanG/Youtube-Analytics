@@ -126,8 +126,11 @@ export async function chatJson(system: string, user: string, maxTokens = 4000, d
           body: JSON.stringify(body), signal: AbortSignal.timeout(timeout),
         });
       } catch {
-        slowUntil.set(keyOf(s), Date.now() + 10 * 60000); // too slow: skip it for 10 minutes
-        await record(s, 0, false, "no answer in time");
+        // Only a model that had its full time is "too slow". If our own run was nearly over, it wasn't its fault.
+        if (timeout >= REQUEST_TIMEOUT_MS) {
+          slowUntil.set(keyOf(s), Date.now() + 10 * 60000); // skip it for 10 minutes
+          await record(s, 0, false, "no answer in time");
+        }
         break;
       }
       const text = await res.text();
@@ -203,7 +206,9 @@ export async function labelTrivial(ids: string[]): Promise<string[]> {
   return ids.filter((id) => !done.has(id));
 }
 
-const BATCH = () => Math.max(5, Math.min(100, Number(process.env.AI_BATCH ?? 50)));
+// The website engine runs in short slots (~22 s), so its batches are small enough to finish in one;
+// the background job uses big batches (AI_BATCH_SIZE, 100).
+const BATCH = () => Math.max(5, Math.min(100, Number(process.env.AI_BATCH ?? 20)));
 
 /** AI-label the given comments. Short reactions are rule-labelled first; the rest go out in batches
  *  of AI_BATCH (default 50) in parallel (up to AI_PARALLEL at once), each starting at a different model. */
@@ -219,6 +224,7 @@ export async function labelComments(ids: string[], deadline?: number): Promise<n
   const parallel = Math.max(1, Number(process.env.AI_PARALLEL ?? 3));
   let done = 0, next = 0, stop = false;
   async function worker(w: number) {
+    if (w) await new Promise((r) => setTimeout(r, w * 1100)); // free plans allow ~1 new request a second
     while (!stop && next < chunks.length) {
       if (deadline && Date.now() > deadline - 8000) return;
       const chunk = chunks[next++];
