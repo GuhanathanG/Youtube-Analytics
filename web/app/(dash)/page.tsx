@@ -1,5 +1,5 @@
 import { ArrowUpRight, Sparkles } from "lucide-react";
-import { within } from "@/lib/cache";
+import { cached, within } from "@/lib/cache";
 import Link from "next/link";
 import { MixBar } from "@/components/charts/MixBar";
 import { TrendChart } from "@/components/charts/TrendChart";
@@ -22,7 +22,8 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const { range } = await searchParams;
   const { key, since } = rangeSince(range);
   const [k, chs, daily, briefs, latest] = await Promise.all([
-    kpis(), getChannels(), dailySentiment({ since }), recentInsights(4), comments({ hideSpam: true }, "newest", 8),
+    kpis(), getChannels(), within(cached(`overview:daily:${key}`, Number(process.env.PAGE_CACHE_SECONDS ?? 120) * 1000, () => dailySentiment({ since })), 12_000, []),
+    within(recentInsights(4), 8000, []), within(comments({ hideSpam: true }, "newest", 8), 8000, []),
   ]);
   const prog = await within(progress(), 15000, []);
   const [alertList, preds, live] = await Promise.all([within(recentAlerts(8), 8000, []), within(predictions(), 10000, []), within(liveNow(), 8000, [])]);

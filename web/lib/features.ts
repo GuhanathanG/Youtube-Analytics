@@ -9,7 +9,7 @@ export type Commenter = {
 };
 
 /** People who comment most on a channel, split into superfans (warm) and critics (negative). */
-export async function commenters(channelId: string): Promise<{ superfans: Commenter[]; critics: Commenter[] }> {
+export async function commenters(channelId: string): Promise<{ top: Commenter[]; superfans: Commenter[]; critics: Commenter[] }> {
   const rows = (await sql()`
     select author_channel_id, max(author_name) as author_name, count(*)::int as comments,
            coalesce(sum(like_count), 0)::int as likes, avg(sentiment_value)::float8 as avg_sentiment,
@@ -18,12 +18,13 @@ export async function commenters(channelId: string): Promise<{ superfans: Commen
     from comments
     where channel_id = ${channelId} and author_channel_id is not null and (is_spam is null or not is_spam)
     group by author_channel_id
-    having count(*) >= 3
+    having count(*) >= 2
     order by count(*) desc
     limit 400`) as unknown as Commenter[];
   return {
-    superfans: rows.filter((r) => (r.avg_sentiment ?? 0) > 0.25).slice(0, 12),
-    critics: rows.filter((r) => (r.avg_sentiment ?? 0) < -0.15).slice(0, 12),
+    top: rows.slice(0, 15),
+    superfans: rows.filter((r) => r.comments >= 3 && (r.avg_sentiment ?? 0) > 0.25).slice(0, 12),
+    critics: rows.filter((r) => r.comments >= 3 && (r.avg_sentiment ?? 0) < -0.15).slice(0, 12),
   };
 }
 

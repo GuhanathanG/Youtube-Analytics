@@ -1,5 +1,5 @@
 import { ExternalLink, Play } from "lucide-react";
-import { within } from "@/lib/cache";
+import { cached, within } from "@/lib/cache";
 import Link from "next/link";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { creatorMemory } from "@/lib/memory";
@@ -33,12 +33,17 @@ export default async function ChannelPage({ params, searchParams }:
   const c = await getChannel(id);
   if (!c) notFound();
   const f = { channelId: id, since };
+  // Heavy counts are remembered for 2 minutes and give up after 12 s, so the page always opens.
+  const safe = <T,>(name: string, fn: () => Promise<T>, fallback: T) => within(cached(`ch:${id}:${key}:${name}`, Number(process.env.PAGE_CACHE_SECONDS ?? 120) * 1000, fn), 12_000, fallback);
+  const emptyMix = { positive: 0, neutral: 0, negative: 0, pending: 0 };
   const [insight, mix, daily, langs, emos, aspects, snaps, vids] = await Promise.all([
-    latestInsight("channel", id), sentimentMix(f), dailySentiment(f), languageCounts(f), emotionCounts(f),
-    aspectCounts(f), channelSnapshots(id), getVideos(id),
+    within(latestInsight("channel", id), 8000, null), safe("mix", () => sentimentMix(f), emptyMix), safe("daily", () => dailySentiment(f), []),
+    safe("langs", () => languageCounts(f), []), safe("emos", () => emotionCounts(f), []),
+    safe("aspects", () => aspectCounts(f), []), within(channelSnapshots(id), 8000, []), getVideos(id),
   ]);
-  const [people, trend, preds, memory] = await Promise.all([commenters(id), topicTrends(id), predictions(id),
-    within(creatorMemory(id), 10000, { profile: null, months: [] })]);
+  const [people, trend, preds, memory] = await Promise.all([
+    safe("people", () => commenters(id), { top: [], superfans: [], critics: [] }), safe("trend", () => topicTrends(id), { months: [], series: [], rising: [] }),
+    safe("preds", () => predictions(id), []), within(creatorMemory(id), 10000, { profile: null, months: [] })]);
 
   return (
     <>
@@ -107,7 +112,7 @@ export default async function ChannelPage({ params, searchParams }:
 
       {preds.length > 0 && <Reveal delay={0.1} className="mt-4"><NewVideosPanel preds={preds} /></Reveal>}
       <Reveal delay={0.1} className="mt-4"><TopicTrendsPanel trend={trend} /></Reveal>
-      <Reveal delay={0.1} className="mt-4"><SuperfansPanel superfans={people.superfans} critics={people.critics} /></Reveal>
+      <Reveal delay={0.1} className="mt-4"><SuperfansPanel top={people.top} superfans={people.superfans} critics={people.critics} channelId={id} /></Reveal>
 
       {snaps.length > 1 && (
         <div className="mt-4 grid gap-4 md:grid-cols-2">

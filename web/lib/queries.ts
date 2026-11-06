@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import { cached } from "./cache";
+import { ensureSummary, summaries } from "./summary";
 
 import { ASPECT_LABELS, EMOTIONS, languageName } from "./queries-shared";
 export { ASPECT_LABELS, EMOTIONS, LANGUAGE_NAMES, languageName } from "./queries-shared";
@@ -54,18 +55,19 @@ export async function kpis(): Promise<Kpis> {
 
 async function kpisUncached(): Promise<Kpis> {
   const db = sql();
+  const sums = await summaries();
   const [row] = await db`
     select
       (select count(*) from channels where active)::int as channels,
       (select count(*) from videos)::int as videos,
-      (select count(*) from comments)::int as comments,
-      (select count(*) from comments where analyzed_at is not null)::int as analyzed,
-      (select count(*) from comments where ai_at is not null)::int as ai_read,
       (select count(*) from videos where not comments_backfilled and not comments_disabled)::int as videos_backfilling,
-      (select max(fetched_at) from comments) as last_fetch,
-      (select count(*) from comments where published_at >= (now() at time zone 'utc') - interval '24 hours')::int as comments_24h,
       coalesce((select units from quota_usage where day = ${quotaDay()}), 0)::int as quota_used_today`;
-  return row as unknown as Kpis;
+  let comments = 0, analyzed = 0, ai_read = 0, comments_24h = 0, last_fetch: string | null = null;
+  for (const x of sums.values()) {
+    comments += x.comments; analyzed += x.analyzed; ai_read += x.ai_read; comments_24h += x.comments_24h;
+    if (x.last_fetch && (!last_fetch || x.last_fetch > last_fetch)) last_fetch = x.last_fetch;
+  }
+  return { ...(row as unknown as Kpis), comments, analyzed, ai_read, comments_24h, last_fetch };
 }
 
 export type ChannelRow = {
@@ -81,23 +83,19 @@ export async function channels(): Promise<ChannelRow[]> {
 
 async function channelsUncached(): Promise<ChannelRow[]> {
   const db = sql();
+  await ensureSummary();
   return (await db`
     select ch.id, ch.title, ch.handle, ch.thumbnail_url, ch.description,
            ch.subscriber_count::float8 as subscriber_count, ch.view_count::float8 as view_count,
            ch.video_count::int as video_count, ch.active, ch.last_synced_at,
            coalesce(v.n, 0)::int as videos_stored, coalesce(v.done, 0)::int as videos_backfilled,
-           coalesce(c.n, 0)::int as comments, coalesce(c.pos, 0)::int as positive,
-           coalesce(c.neu, 0)::int as neutral, coalesce(c.neg, 0)::int as negative,
-           c.avg_s::float8 as avg_sentiment
+           coalesce(c.comments, 0)::int as comments, coalesce(c.positive, 0)::int as positive,
+           coalesce(c.neutral, 0)::int as neutral, coalesce(c.negative, 0)::int as negative,
+           c.avg_sentiment::float8 as avg_sentiment
     from channels ch
     left join (select channel_id, count(*) n, sum(case when comments_backfilled then 1 else 0 end) done
                from videos group by channel_id) v on v.channel_id = ch.id
-    left join (select channel_id, count(*) n,
-                      sum(case when sentiment = 'positive' then 1 else 0 end) pos,
-                      sum(case when sentiment = 'neutral' then 1 else 0 end) neu,
-                      sum(case when sentiment = 'negative' then 1 else 0 end) neg,
-                      avg(sentiment_value) avg_s
-               from comments group by channel_id) c on c.channel_id = ch.id
+    left join channel_summary c on c.channel_id = ch.id
     order by ch.subscriber_count desc nulls last, ch.title`) as unknown as ChannelRow[];
 }
 
@@ -163,7 +161,14 @@ export async function dailySentiment(f: Filters): Promise<DailyRow[]> {
 
 export type Mix = { positive: number; neutral: number; negative: number; pending: number };
 
+/** True when the filter is "this channel, all time" (or everything): the summary already has the answer. */
+const summaryOnly = (f: Filters) => !f.videoId && !f.since && !f.sentiment && !f.language && !f.emotion && !f.flag && !f.search && !f.topLevelOnly;
+
 export async function sentimentMix(f: Filters): Promise<Mix> {
+  if (f.channelId && summaryOnly(f)) {
+    const x = (await summaries()).get(f.channelId);
+    if (x) return { positive: x.positive, neutral: x.neutral, negative: x.negative, pending: Math.max(0, x.comments - x.positive - x.neutral - x.negative) };
+  }
   const db = sql();
   const [r] = await db`
     select sum(case when c.sentiment = 'positive' then 1 else 0 end)::int as positive,
@@ -175,6 +180,10 @@ export async function sentimentMix(f: Filters): Promise<Mix> {
 }
 
 export async function languageCounts(f: Filters) {
+  if (f.channelId && summaryOnly(f)) {
+    const x = (await summaries()).get(f.channelId);
+    if (x) return x.languages.map((l) => ({ code: l.code, name: languageName(l.code), comments: l.comments, avg: l.avg }));
+  }
   const db = sql();
   const rows = await db`
     select c.language, count(*)::int as comments, avg(c.sentiment_value)::float8 as avg_sentiment
@@ -185,6 +194,10 @@ export async function languageCounts(f: Filters) {
 }
 
 export async function emotionCounts(f: Filters) {
+  if (f.channelId && summaryOnly(f)) {
+    const x = (await summaries()).get(f.channelId);
+    if (x) return x.emotions.map((e) => ({ emotion: e.emotion, icon: EMOTIONS[e.emotion] ?? "", comments: e.comments }));
+  }
   const db = sql();
   const rows = await db`
     select c.emotion, count(*)::int as comments from comments c
@@ -210,7 +223,7 @@ export type CommentRow = {
   author_name: string | null; text: string; translation: string | null; like_count: number; reply_count: number;
   sentiment: string | null; sentiment_value: number | null; sentiment_source: string | null; emotion: string | null;
   language: string | null; is_question: boolean | null; is_suggestion: boolean | null; is_spam: boolean | null;
-  is_reply: boolean; aspects: string | null;
+  is_reply: boolean; aspects: string | null; channel_id?: string; author_channel_id?: string | null;
 };
 
 export type CommentOrder = "newest" | "oldest" | "most_liked" | "most_negative" | "most_positive";
@@ -226,7 +239,7 @@ export async function comments(f: Filters, order: CommentOrder = "newest", limit
   }[order];
   const extra = order === "most_negative" || order === "most_positive" ? db`and c.sentiment_value is not null` : db``;
   return (await db`
-    select c.id, c.video_id, v.title as video_title, ch.title as channel_title, c.published_at, c.author_name,
+    select c.id, c.video_id, v.title as video_title, ch.title as channel_title, c.channel_id, c.author_channel_id, c.published_at, c.author_name,
            c.text, c.translation, c.like_count, c.reply_count, c.sentiment, c.sentiment_value::float8 as sentiment_value,
            c.sentiment_source, c.emotion, c.language, c.is_question, c.is_suggestion, c.is_spam,
            (c.parent_id is not null) as is_reply, c.aspects
@@ -344,6 +357,10 @@ export type Progress = {
   channel_id: string; title: string; videos_total: number | null; videos_known: number; videos_complete: number;
   comments_on_youtube: number; comments_stored: number; ai_read: number;
   saved_last_hour: number; ai_last_hour: number;
+  sentiment_done: number; sentiment_last_hour: number;
+  // Slower AI jobs (filled in by jobExtras; null when that job's table doesn't exist yet)
+  videos_to_watch?: number | null; thumbs_to_check?: number | null; months_to_remember?: number | null;
+  watch_per_hour?: number; thumbs_per_hour?: number; memory_per_hour?: number;
 };
 
 /** History download and AI progress per channel, with recent speed for an ETA. */
@@ -353,19 +370,53 @@ export async function progress(): Promise<Progress[]> {
 
 async function progressUncached(): Promise<Progress[]> {
   const db = sql();
-  return (await db`
+  await ensureSummary();
+  const rows = (await db`
     select ch.id as channel_id, ch.title, ch.video_count::int as videos_total,
       coalesce(v.known, 0)::int as videos_known, coalesce(v.complete, 0)::int as videos_complete,
       coalesce(v.on_yt, 0)::float8 as comments_on_youtube,
-      coalesce(c.stored, 0)::int as comments_stored, coalesce(c.ai, 0)::int as ai_read,
-      coalesce(c.saved_hour, 0)::int as saved_last_hour, coalesce(c.ai_hour, 0)::int as ai_last_hour
+      coalesce(c.comments, 0)::int as comments_stored, coalesce(c.ai_read, 0)::int as ai_read,
+      coalesce(c.saved_hour, 0)::int as saved_last_hour, coalesce(c.ai_hour, 0)::int as ai_last_hour,
+      coalesce(c.analyzed, 0)::int as sentiment_done, coalesce(c.sentiment_hour, 0)::int as sentiment_last_hour
     from channels ch
     left join (select channel_id, count(*) known, sum(case when comments_backfilled or comments_disabled then 1 else 0 end) complete,
                       sum(case when comments_disabled then 0 else coalesce(comment_count, 0) end) on_yt
                from videos group by channel_id) v on v.channel_id = ch.id
-    left join (select channel_id, count(*) stored, count(ai_at) ai,
-                      sum(case when fetched_at >= (now() at time zone 'utc') - interval '1 hour' then 1 else 0 end) saved_hour,
-                      sum(case when ai_at >= (now() at time zone 'utc') - interval '1 hour' then 1 else 0 end) ai_hour
-               from comments group by channel_id) c on c.channel_id = ch.id
+    left join channel_summary c on c.channel_id = ch.id
     where ch.active order by ch.title`) as unknown as Progress[];
+  const extra = await cached("job-extras", 10 * 60_000, jobExtras).catch(() => null);
+  if (extra) for (const r of rows) Object.assign(r, extra.perChannel.get(r.channel_id) ?? {}, extra.rates);
+  return rows;
+}
+
+/** Remaining work and speed of the slower AI jobs (video watching, thumbnails, Creator Memory). */
+async function jobExtras() {
+  const db = sql();
+  const perChannel = new Map<string, Partial<Progress>>();
+  const rates = { watch_per_hour: 0.5, thumbs_per_hour: 12.5, memory_per_hour: 6 }; // designed pace, replaced by measured speed below
+  const safe = async <T,>(p: Promise<T>) => { try { return await p; } catch { return null; } };
+  const watch = await safe(db`select v.channel_id, count(*)::int as n from videos v join channels c on c.id = v.channel_id
+    left join video_analysis a on a.video_id = v.id where c.active and a.video_id is null
+      and v.published_at >= (now() at time zone 'utc') - interval '30 days' group by 1`);
+  const thumbs = await safe(db`select v.channel_id, count(*)::int as n from videos v join channels c on c.id = v.channel_id
+    left join thumb_analysis t on t.video_id = v.id where c.active and v.thumbnail_url is not null and t.video_id is null group by 1`);
+  const months = await safe(db`
+    with m as (select c.channel_id, to_char(date_trunc('month', c.published_at), 'YYYY-MM') as mon from comments c
+               where c.published_at >= date_trunc('month', (now() at time zone 'utc')) - interval '23 months'
+               group by 1, 2 having count(*) >= 20)
+    select m.channel_id, count(*)::int as n from m
+    where not exists (select 1 from insights i where i.scope = 'month' and i.target_id = m.channel_id || ':' || m.mon) group by 1`);
+  for (const [rows, key] of [[watch, "videos_to_watch"], [thumbs, "thumbs_to_check"], [months, "months_to_remember"]] as const) {
+    if (!rows) continue;
+    for (const r of rows) perChannel.set(r.channel_id as string, { ...(perChannel.get(r.channel_id as string) ?? {}), [key]: r.n as number });
+  }
+  const [speed] = await db`select
+      (select count(*) from insights where scope = 'month' and created_at >= (now() at time zone 'utc') - interval '24 hours')::float8 / 24 as memory,
+      (select count(*) from insights where scope = 'month' and created_at >= (now() at time zone 'utc') - interval '24 hours') as memory_n`;
+  if ((speed?.memory_n as number) >= 3) rates.memory_per_hour = speed.memory as number;
+  const w = await safe(db`select count(*)::int as n from video_analysis where status = 'done' and created_at >= (now() at time zone 'utc') - interval '24 hours'`);
+  if (w && (w[0].n as number) >= 2) rates.watch_per_hour = (w[0].n as number) / 24;
+  const t = await safe(db`select count(*)::int as n from thumb_analysis where status = 'done' and created_at >= (now() at time zone 'utc') - interval '24 hours'`);
+  if (t && (t[0].n as number) >= 5) rates.thumbs_per_hour = (t[0].n as number) / 24;
+  return { perChannel, rates };
 }

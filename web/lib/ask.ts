@@ -20,21 +20,33 @@ export type AskAnswer = {
 
 const PLAN = `You turn a question about YouTube comments into database search terms.
 Viewers write in English, Tamil, Hindi and other languages, in native script AND romanized (Tanglish, Hinglish).
-Return JSON only: {"terms": ["word or short phrase", ...]} with 4-12 terms that comments answering the question
-would contain. Include synonyms, common misspellings, and Tamil/Hindi words in both scripts. Use [] if the question
-is general (e.g. "summarise the audience mood").`;
+The question may be a follow-up in a conversation: first rewrite it as a complete standalone question using the
+conversation so far (e.g. "what about the second one?" -> "What do viewers say about the audio quality?").
+Return JSON only: {"standalone": "the complete question", "terms": ["word or short phrase", ...]} with 4-12 terms that
+comments answering the question would contain. Include synonyms, common misspellings, and Tamil/Hindi words in both
+scripts. Use [] for terms if the question is general (e.g. "summarise the audience mood").`;
 
 const ANSWER = `You are an audience-research analyst. Answer the user's question using ONLY the creator memory (long-term
 monthly summaries written earlier from all stored comments), the numbered viewer comments and the statistics provided.
-Use the memory for questions about the creator overall or how things changed over time; use comments for evidence. Be specific and concise (short paragraphs or bullet points, plain English). Quote or
+Use the memory for questions about the creator overall or how things changed over time; use comments for evidence.
+This is a conversation: use the earlier messages to understand follow-up questions, and don't repeat earlier answers. Be specific and concise (short paragraphs or bullet points, plain English). Quote or
 paraphrase real comments and cite them like [3] or [3][7]. If the comments don't answer the question, say so plainly.
 Reply with JSON only: {"answer": "markdown text with [n] citations", "used": [n, ...]}`;
 
-export async function askComments(question: string, channelId: string | null): Promise<AskAnswer | { error: string }> {
+export type Turn = { role: "user" | "assistant"; content: string };
+
+/** The last few turns of the conversation, trimmed so the prompt stays small. */
+function historyText(history: Turn[]): string {
+  return history.slice(-6).map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content.replace(/\s+/g, " ").slice(0, 600)}`).join("\n");
+}
+
+export async function askComments(question: string, channelId: string | null, history: Turn[] = []): Promise<AskAnswer | { error: string }> {
   if (!aiSlots().length) return { error: "No AI key is set (GEMINI_API_KEY / GROQ_API_KEY / OPENROUTER_API_KEY in Vercel)." };
   const db = sql();
   const deadline = Date.now() + 50000;
-  const plan = await chatJson(PLAN, `Question: ${question}`, 600, deadline);
+  const convo = historyText(history);
+  const plan = await chatJson(PLAN, `${convo ? `Conversation so far:\n${convo}\n\n` : ""}Question: ${question}`, 700, deadline);
+  const standalone = String(plan?.data.standalone ?? "").trim() || question;
   const terms = ((plan?.data.terms as string[] | undefined) ?? [])
     .map((t) => String(t).trim()).filter((t) => t.length >= 2 && t.length <= 60).slice(0, 12);
 
@@ -67,7 +79,8 @@ export async function askComments(question: string, channelId: string | null): P
     return t;
   });
   const memory = await memoryContext(channelId).catch(() => "");
-  const prompt = [`Question: ${question}`, `Statistics: ${stats.n} comments in scope, ${stats.pos}% positive, ${stats.neg}% negative.`,
+  const prompt = [convo ? `Conversation so far:\n${convo}\n` : "", `Question: ${question}`,
+    standalone !== question ? `(Meaning: ${standalone})` : "", `Statistics: ${stats.n} comments in scope, ${stats.pos}% positive, ${stats.neg}% negative.`,
     memory ? `\nCreator memory:\n${memory}\n` : "",
     terms.length ? `Search terms used: ${terms.join(", ")}` : "", "", "Comments:", ...lines].join("\n");
   const out = await chatJson(ANSWER, prompt, 2500, deadline);

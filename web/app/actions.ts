@@ -81,6 +81,29 @@ export async function askAction(question: string, channelId: string | null) {
   return askComments(q, channelId || null);
 }
 
+/** Send a message in a saved conversation (creates the conversation on the first message). */
+export async function chatAction(threadId: string | null, question: string, channelId: string | null) {
+  await requireSession();
+  const { sendChatMessage } = await import("@/lib/chat");
+  const res = await sendChatMessage(threadId, question, channelId);
+  revalidatePath("/ask");
+  return res;
+}
+
+export async function deleteChatAction(threadId: string) {
+  await requireSession();
+  const chat = await import("@/lib/chat");
+  await chat.deleteThread(threadId);
+  revalidatePath("/ask");
+}
+
+export async function renameChatAction(threadId: string, title: string) {
+  await requireSession();
+  const chat = await import("@/lib/chat");
+  await chat.renameThread(threadId, title);
+  revalidatePath("/ask");
+}
+
 export async function testAlertAction() {
   await requireSession();
   const { sendTestAlert } = await import("@/lib/alerts");

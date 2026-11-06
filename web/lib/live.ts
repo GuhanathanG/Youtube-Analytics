@@ -6,6 +6,7 @@ import { ensureVideoTables } from "./video";
 import { checkAlerts, sendWeeklyReports } from "./alerts";
 import { pollLiveChats, saveLiveInfo, summariseEndedChats } from "./livechat";
 import { writeDueMemory } from "./memory";
+import { refreshDueSummaries } from "./summary";
 import { quotaDay } from "./queries";
 import {
   QuotaExhausted, YouTubeError, getVideos, listThreads, listUploads, resolveChannel, thumb, youtubeConfigured,
@@ -33,6 +34,7 @@ export type TickResult = {
   alerts?: number;
   liveChat?: number;
   memory?: number;
+  summaries?: number;
   at: string;
 };
 
@@ -416,6 +418,9 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
           and not exists (select 1 from video_snapshots s where s.video_id = v.id
                           and s.taken_at >= (now() at time zone 'utc') - interval '30 minutes')`;
     }
+
+    // 3a. Pre-calculated totals for the dashboards (one or two channels per run, each every few minutes).
+    if (timeLeft()) result.summaries = await refreshDueSummaries(timeLeft).catch((e) => { console.log("[summary]", e instanceof Error ? e.message : e); return 0; });
 
     // 3b. Live chat of streams/premieres that are live right now (5 units per read).
     if (timeLeft()) result.liveChat = await pollLiveChats(timeLeft);
