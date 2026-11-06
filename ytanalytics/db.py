@@ -71,6 +71,8 @@ class Channel(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     # None = YouTube; "instagram" = an Instagram account (collected by the website engine via Apify).
     platform: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # None = one of your channels; "competitor" = watched for videos and stats only (no comments: saves quota and AI).
+    role: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Paging through the full upload history happens once, possibly across several runs.
     videos_backfilled: Mapped[bool] = mapped_column(Boolean, default=False)
     videos_page_token: Mapped[str | None] = mapped_column(String(200), nullable=True)

@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import { AddChannelForm, AddInstagramForm, FullSyncButton, TestAlertButton, ToggleChannel } from "@/components/ChannelControls";
+import { AddChannelForm, AddInstagramForm, CompetitorToggle, FullSyncButton, TestAlertButton, ToggleChannel } from "@/components/ChannelControls";
 import { telegramConfigured } from "@/lib/alerts";
 import { recentAnalyses } from "@/lib/video";
 import Link from "next/link";
@@ -209,6 +209,7 @@ export default async function ManagePage() {
                       </div>
                     </div>
                     {c.active ? <Tag tone="accent">live</Tag> : <Tag tone="warn">paused</Tag>}
+                    <CompetitorToggle id={c.id} competitor={c.role === "competitor"} />
                     <ToggleChannel id={c.id} active={c.active} />
                   </li>
                 ))}

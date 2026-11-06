@@ -268,7 +268,10 @@ class Syncer:
 
     # -- comments ------------------------------------------------------------------
     def _active_channel_ids(self) -> list[str]:
-        return list(self.s.scalars(select(Channel.id).where(Channel.active.is_(True), Channel.platform.is_(None))).all())
+        """Channels whose comments are collected (YouTube, not competitors)."""
+        return list(self.s.scalars(select(Channel.id).where(
+            Channel.active.is_(True), Channel.platform.is_(None),
+            or_(Channel.role.is_(None), Channel.role != "competitor"))).all())
 
     def sync_new_comments(self) -> None:
         """Pick up comments posted since the last run."""

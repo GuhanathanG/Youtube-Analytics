@@ -102,6 +102,15 @@ export async function runFullSync(): Promise<{ ok: boolean; message: string }> {
   return startFullSync();
 }
 
+/** Manage: mark a watched channel as a competitor (videos and stats only) or back to one of yours. */
+export async function setChannelRole(id: string, competitor: boolean) {
+  await requireSession();
+  await sql()`update channels set role = ${competitor ? "competitor" : null} where id = ${id}`;
+  clearCache();
+  await (await import("@/lib/stored")).clearStored("radar:").catch(() => {}); // the radar changes with the competitor list
+  revalidatePath("/", "layout");
+}
+
 export async function setChannelActive(id: string, active: boolean) {
   await requireSession();
   await sql()`update channels set active = ${active} where id = ${id}`;
