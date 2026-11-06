@@ -39,3 +39,28 @@ export function sql() {
 }
 
 export { utc } from "./db-time";
+
+/* ------------------------------------------------------------------ safe setup helpers
+ * "alter table …" and "create index if not exists …" take table locks even when there is nothing to do.
+ * On a busy table (e.g. while the background job writes) that lock waits, and every page query on the
+ * table queues behind it. So: look in the catalog first (no locks) and only change what's missing. */
+export async function ensureRls(table: string) {
+  const db = sql();
+  const [r] = await db`select relrowsecurity from pg_class where relname = ${table} and relnamespace = 'public'::regnamespace`;
+  if (r && !r.relrowsecurity) await db.unsafe(`alter table "${table.replace(/"/g, "")}" enable row level security`);
+}
+
+export async function ensureColumns(table: string, columns: [name: string, type: string][]) {
+  const db = sql();
+  const have = new Set((await db`select column_name from information_schema.columns where table_schema = 'public' and table_name = ${table}`)
+    .map((r) => r.column_name as string));
+  for (const [name, type] of columns) {
+    if (!have.has(name)) await db.unsafe(`alter table "${table.replace(/"/g, "")}" add column if not exists "${name.replace(/"/g, "")}" ${type}`);
+  }
+}
+
+export async function ensureIndex(name: string, create: string) {
+  const db = sql();
+  const [r] = await db`select 1 from pg_indexes where schemaname = 'public' and indexname = ${name}`;
+  if (!r) await db.unsafe(create);
+}

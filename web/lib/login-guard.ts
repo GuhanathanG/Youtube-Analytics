@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, ensureRls } from "./db";
 
 /**
  * Slows down password guessing: at most 8 wrong passwords per address per 15 minutes,
@@ -14,7 +14,7 @@ async function ensure() {
   const db = sql();
   await db`create table if not exists login_attempts (id serial primary key, ip text not null,
     at timestamp not null default (now() at time zone 'utc'))`;
-  await db`alter table login_attempts enable row level security`;
+  await ensureRls("login_attempts");
   ready = true;
 }
 

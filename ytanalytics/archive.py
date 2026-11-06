@@ -47,9 +47,7 @@ create table if not exists archive_stats (
   channel_id text not null, day date not null, comments integer not null default 0, positive integer not null default 0,
   neutral integer not null default 0, negative integer not null default 0, sentiment_sum double precision not null default 0,
   sentiment_n integer not null default 0, analyzed integer not null default 0, ai_read integer not null default 0,
-  primary key (channel_id, day));
-alter table archive_stats enable row level security;
-alter table videos add column if not exists archived_comments integer not null default 0;
+  primary key (channel_id, day))
 """
 
 
@@ -80,13 +78,17 @@ def archive_old_comments(session: Session, archive_url: str, *, batch: int = 500
             if stmt.strip():
                 conn.execute(text(stmt))
     dialect = session.get_bind().dialect.name
-    for stmt in MAIN_TABLES.strip().split(";"):
-        if stmt.strip() and not (dialect == "sqlite" and ("row level" in stmt or "if not exists archived" in stmt)):
-            session.execute(text(stmt))
-    if dialect == "sqlite":  # tests: add the column the simple way
+    session.execute(text(MAIN_TABLES))
+    if dialect == "sqlite":  # tests
         cols = [r[1] for r in session.execute(text("pragma table_info(videos)"))]
         if "archived_comments" not in cols:
             session.execute(text("alter table videos add column archived_comments integer not null default 0"))
+    else:  # look first: ALTER TABLE locks the table even when there's nothing to change
+        if not session.execute(text("select 1 from information_schema.columns where table_schema = 'public' "
+                                    "and table_name = 'videos' and column_name = 'archived_comments'")).first():
+            session.execute(text("alter table videos add column if not exists archived_comments integer not null default 0"))
+        if not session.execute(text("select relrowsecurity from pg_class where relname = 'archive_stats'")).scalar():
+            session.execute(text("alter table archive_stats enable row level security"))
     session.commit()
 
     moved = 0

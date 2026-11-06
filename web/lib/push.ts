@@ -1,6 +1,6 @@
 import "server-only";
 import webpush from "web-push";
-import { sql } from "./db";
+import { sql, ensureRls } from "./db";
 
 /**
  * Phone notifications (web push) for alerts. The signing keys (VAPID) are created automatically
@@ -14,8 +14,8 @@ async function ensureTables() {
   await db`create table if not exists push_subscriptions (endpoint text primary key, p256dh text not null, auth text not null,
     created_at timestamp not null default (now() at time zone 'utc'))`;
   await db`create table if not exists app_secrets (name text primary key, value text not null)`;
-  await db`alter table push_subscriptions enable row level security`;
-  await db`alter table app_secrets enable row level security`;
+  await ensureRls("push_subscriptions");
+  await ensureRls("app_secrets");
   ready = true;
 }
 

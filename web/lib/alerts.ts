@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, ensureRls } from "./db";
 
 /**
  * 2. Alerts. Checked on every engine run; each alert is sent once (unique key).
@@ -18,7 +18,7 @@ async function ensureTable() {
     id serial primary key, kind text not null, key text not null unique, title text not null,
     body text not null default '', link text, created_at timestamp not null default (now() at time zone 'utc'),
     sent boolean not null default false)`;
-  await db`alter table alerts enable row level security`;
+  await ensureRls("alerts");
   ready = true;
 }
 

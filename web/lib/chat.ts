@@ -1,6 +1,6 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { sql } from "./db";
+import { sql, ensureRls, ensureIndex } from "./db";
 import type { AskAnswer } from "./ask";
 
 /** Saved Ask AI conversations (like ChatGPT/Claude history): threads and their messages. */
@@ -15,9 +15,9 @@ async function ensureTables() {
     id serial primary key, thread_id text not null references chat_threads(id) on delete cascade,
     role text not null, content text not null, citations text, searched text, model text,
     created_at timestamp not null default (now() at time zone 'utc'))`;
-  await db`create index if not exists ix_chat_messages_thread on chat_messages (thread_id, id)`;
-  await db`alter table chat_threads enable row level security`;
-  await db`alter table chat_messages enable row level security`;
+  await ensureIndex("ix_chat_messages_thread", "create index if not exists ix_chat_messages_thread on chat_messages (thread_id, id)");
+  await ensureRls("chat_threads");
+  await ensureRls("chat_messages");
   ready = true;
 }
 

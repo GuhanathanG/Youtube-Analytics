@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, ensureRls, ensureColumns } from "./db";
 import { quotaDay } from "./queries";
 
 /**
@@ -19,11 +19,9 @@ export async function ensureVideoTables() {
   await db`create table if not exists video_analysis (
     video_id text primary key, status text not null default 'pending', model text, duration_s integer,
     data text, error text, created_at timestamp not null default (now() at time zone 'utc'))`;
-  await db`alter table video_analysis enable row level security`;
-  for (const col of [db`tags text`, db`category_id text`, db`definition text`, db`has_captions boolean`,
-    db`default_language text`, db`topic_categories text`, db`ryd_dislikes bigint`, db`ryd_fetched_at timestamp`]) {
-    await db`alter table videos add column if not exists ${col}`;
-  }
+  await ensureRls("video_analysis");
+  await ensureColumns("videos", [["tags", "text"], ["category_id", "text"], ["definition", "text"], ["has_captions", "boolean"],
+    ["default_language", "text"], ["topic_categories", "text"], ["ryd_dislikes", "bigint"], ["ryd_fetched_at", "timestamp"]]);
   ready = true;
 }
 

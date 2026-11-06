@@ -1,6 +1,6 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { sql } from "./db";
+import { sql, ensureRls } from "./db";
 
 /**
  * 10. Read-only share links. A random 128-bit token in the URL opens one channel's report without
@@ -14,7 +14,7 @@ async function ensureTable() {
     token text primary key, channel_id text not null references channels(id) on delete cascade,
     created_at timestamp not null default (now() at time zone 'utc'), expires_at timestamp, revoked boolean not null default false,
     views integer not null default 0)`;
-  await db`alter table share_links enable row level security`;
+  await ensureRls("share_links");
   ready = true;
 }
 
