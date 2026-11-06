@@ -51,7 +51,9 @@ PROVIDERS = {
     "groq": ("https://api.groq.com/openai/v1/", "GROQ",
              "openai/gpt-oss-20b,openai/gpt-oss-120b", 900, 30.0),
     # Mistral's free "Experiment" plan: about 1 request/second and ~1B tokens/month (phone verification only).
-    "mistral": ("https://api.mistral.ai/v1/", "MISTRAL", "mistral-small-latest", 20000, 1.5),
+    # Several models, because the free tier can report "capacity exceeded" for one model while others answer.
+    "mistral": ("https://api.mistral.ai/v1/", "MISTRAL", "mistral-small-latest,ministral-8b-latest,open-mistral-nemo",
+                20000, 1.5),
     # Cloudflare Workers AI: 10,000 free "neurons" a day (~40 big batches with gpt-oss-20b).
     # Needs CLOUDFLARE_ACCOUNT_ID as well as CLOUDFLARE_API_KEY.
     "cloudflare": ("https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1/", "CLOUDFLARE",
@@ -163,6 +165,7 @@ class LLMRouter:
         self.http = http or requests.Session()
         self.sleep = sleep
         self.errors: dict[str, str] = {}  # model -> problem seen in this run (bad key, etc.)
+        self.errors_seen: dict[str, str] = {}  # last temporary problem per model, for messages
 
     # -- usage bookkeeping --------------------------------------------------------
     def _usage(self, slot: ModelSlot) -> LlmUsage:
@@ -281,9 +284,13 @@ class LLMRouter:
                     self._mark_exhausted(slot, f"free daily limit reached: {_short(text)}")
                     return None
                 retry_after = _retry_after(resp)
-                if deadline is not None and time.monotonic() + retry_after > deadline:
+                self.errors_seen[slot.key] = f"rate limited (429): {_short(text)}"
+                if attempt == 3 or (deadline is not None and time.monotonic() + retry_after > deadline):
+                    # Still busy: skip it for this run and say why (e.g. "service tier capacity exceeded").
+                    self.errors[slot.key] = self.errors_seen[slot.key]
+                    log.warning("AI model %s: %s", slot.key, self.errors[slot.key])
                     return None
-                log.info("AI %s rate limited, waiting %.0fs", slot.key, retry_after)
+                log.info("AI %s rate limited (%s), waiting %.0fs", slot.key, _short(text)[:120], retry_after)
                 self.sleep(retry_after)
                 continue
             if resp.status_code in (401, 403) or (
@@ -363,6 +370,7 @@ def check_models(session: Session, slots: list[ModelSlot]) -> list[tuple[str, st
             results.append((slot.key, f"OK → {json.dumps(data, ensure_ascii=False)}"))
         except NoModelAvailable:
             row = session.get(LlmUsage, (quota_day(), slot.key))
-            reason = router.errors.get(slot.key) or (row.last_error if row else None) or "no usable response"
+            reason = (router.errors.get(slot.key) or (row.last_error if row and row.exhausted else None)
+                      or router.errors_seen.get(slot.key) or "no usable response")
             results.append((slot.key, f"NOT AVAILABLE: {reason[:200]}"))
     return results

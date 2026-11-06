@@ -15,7 +15,7 @@ const PROVIDERS: Record<string, { base: string; prefix: string; models: string; 
     models: "gemini-2.5-flash,gemini-3.5-flash-lite,gemini-2.5-flash-lite,gemini-3.8-flash", daily: 200 },
   groq: { base: "https://api.groq.com/openai/v1/", prefix: "GROQ", models: "openai/gpt-oss-20b,openai/gpt-oss-120b", daily: 900 },
   // Mistral free "Experiment" plan: ~1 request/second, ~1B tokens/month (phone verification only).
-  mistral: { base: "https://api.mistral.ai/v1/", prefix: "MISTRAL", models: "mistral-small-latest", daily: 20000 },
+  mistral: { base: "https://api.mistral.ai/v1/", prefix: "MISTRAL", models: "mistral-small-latest,ministral-8b-latest,open-mistral-nemo", daily: 20000 },
   // Cloudflare Workers AI: 10,000 free "neurons"/day. Needs CLOUDFLARE_ACCOUNT_ID too.
   cloudflare: { base: "https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1/", prefix: "CLOUDFLARE",
     models: "@cf/openai/gpt-oss-20b", daily: 40 },
