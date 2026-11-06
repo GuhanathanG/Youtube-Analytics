@@ -69,6 +69,7 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { ok: false, message: "Video analysis needs GEMINI_API_KEY in Vercel." };
   const [v] = await db`select id, title, duration from videos where id = ${videoId}`;
+  if (videoId.startsWith("ig_")) return { ok: false, message: "Watching the video with AI works for YouTube videos only." };
   if (!v) return { ok: false, message: "Video not found." };
   const seconds = durationSeconds(v.duration as string);
   const maxMinutes = Number(process.env.VIDEO_AI_MAX_MINUTES ?? 60);
@@ -150,7 +151,7 @@ export async function analyseDueVideos(max = 1): Promise<{ analysed: number; wai
   const due = await db`
     select v.id, v.title from videos v join channels c on c.id = v.channel_id
     left join video_analysis a on a.video_id = v.id
-    where c.active and v.published_at >= (now() at time zone 'utc') - interval '30 days'
+    where c.active and c.platform is null and v.published_at >= (now() at time zone 'utc') - interval '30 days'
       and (a.video_id is null -- never tried, or a temporary failure (Google busy) at least 3 hours ago
         or (a.status = 'error' and a.created_at < (now() at time zone 'utc') - interval '3 hours'
             and a.error ~ '(429|500|502|503|504|no answer|unreadable)'))

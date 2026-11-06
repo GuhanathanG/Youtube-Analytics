@@ -1,4 +1,5 @@
 import { ExternalLink, Play } from "lucide-react";
+import { channelUrl, isInstagram } from "@/lib/platform";
 import { cached, within } from "@/lib/cache";
 import Link from "next/link";
 import { MemoryPanel } from "@/components/MemoryPanel";
@@ -56,10 +57,10 @@ export default async function ChannelPage({ params, searchParams }:
               <img src={c.thumbnail_url} alt="" className="h-20 w-20 rounded-2xl object-cover ring-2 ring-white/10" />
             ) : <div className="grid h-20 w-20 place-items-center rounded-2xl bg-gradient-to-br from-accent/30 to-accent-2/30 text-2xl font-semibold">{c.title.slice(0, 1)}</div>}
             <div className="min-w-0 flex-1">
-              <div className="label">Channel</div>
+              <div className="label">{isInstagram(c.id) ? "Instagram account" : "Channel"}</div>
               <h1 className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight sm:text-4xl">{c.title}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <a href={`https://www.youtube.com/channel/${c.id}`} target="_blank" rel="noreferrer"
+                <a href={channelUrl(c.id, c.handle)} target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-accent">{c.handle ?? c.id}<ExternalLink size={13} /></a>
                 {!c.active && <Tag tone="warn">paused</Tag>}
                 <Link href={`/analytics?c=${encodeURIComponent(c.id)}`} className="rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-ink-2 hover:border-accent/50 hover:text-ink">Analytics</Link>
@@ -72,8 +73,8 @@ export default async function ChannelPage({ params, searchParams }:
       </Reveal>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Reveal><Stat label="Subscribers" value={c.subscriber_count ?? 0} accent /></Reveal>
-        <Reveal delay={0.05}><Stat label="Total views" value={c.view_count ?? 0} /></Reveal>
+        <Reveal><Stat label={isInstagram(c.id) ? "Followers" : "Subscribers"} value={c.subscriber_count ?? 0} accent /></Reveal>
+        <Reveal delay={0.05}>{isInstagram(c.id) ? <Stat label="Posts" value={c.video_count ?? 0} /> : <Stat label="Total views" value={c.view_count ?? 0} />}</Reveal>
         <Reveal delay={0.1}><Stat label="Comments captured" value={c.comments} hint={`${c.videos_backfilled}/${c.videos_stored} videos complete`} /></Reveal>
         <Reveal delay={0.15}><Stat label="Sentiment score" value={Math.round((c.avg_sentiment ?? 0) * 100)} format="signed" hint="−100 … +100" /></Reveal>
       </div>

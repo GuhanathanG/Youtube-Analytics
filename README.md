@@ -255,6 +255,18 @@ The first run downloads each channel's video list and starts on past comments, b
 
 ---
 
+## Instagram (via Apify)
+
+Watch Instagram accounts next to YouTube channels. Needs `APIFY_TOKEN` in Vercel (free Apify plan: $5 of credit a month).
+
+1. **Manage → Watch an Instagram account**: type `@username` (or paste the profile link; an `instagram.com/…` link in the normal channel box works too).
+2. Within 1–3 minutes the profile (followers, bio), the latest 50 posts and their likes/comment counts appear. Comments follow on the next engine runs, and the AI reads them like YouTube comments, so briefings, Creator Memory, Ask AI, commenter pages and analytics include Instagram.
+3. After that the engine refreshes each account's profile + newest 12 posts every 12 hours, and fetches comments every 6 hours for posts whose comment count went up (newest posts first).
+
+**Spending is capped.** Every Apify run has a hard limit (`maxItems` and `maxTotalChargeUsd`). The month's budget (`IG_MONTHLY_USD`, default $4.50) is spread evenly over the days left in the month, and nothing starts once today's share is spent. Manage → Instagram budget shows what was spent and the latest runs.
+
+Limits of the free Apify plan: about 15 comments per post are returned, and Instagram image links expire after a few days (the newest posts' images refresh every 12 hours). Private accounts can't be read. Settings: `IG_PROFILE_HOURS` (12), `IG_COMMENT_HOURS` (6), `IG_POSTS_PER_RUN` (8), `IG_COMMENTS_PER_POST` (50), `IG_HISTORY_POSTS` (50), `IG_PRICE_PER_RESULT` (0.0027).
+
 ## Comment archive (free Neon database, when Supabase fills up)
 
 Supabase's free database holds about 1 million comments (500 MB). The background job can move **old comments the AI has already read** to a second free database, so downloads never stop:

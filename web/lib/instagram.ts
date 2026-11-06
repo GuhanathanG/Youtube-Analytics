@@ -175,6 +175,8 @@ async function saveProfile(channelId: string, p: IgProfile): Promise<void> {
   if (p.error || !p.username) {
     await db`insert into channel_requests (query, status, error, created_at)
       values (${"@" + usernameOf(channelId)}, 'error', ${`Instagram: ${p.errorDescription ?? p.error ?? "profile not found"}`.slice(0, 300)}, ${nowSql()})`;
+    // Don't keep paying to look up an account that isn't there (or is private).
+    await db`update channels set active = false where id = ${channelId} and last_synced_at is null`;
     return;
   }
   await db`update channels set title = ${p.fullName || "@" + p.username}, handle = ${"@" + p.username},

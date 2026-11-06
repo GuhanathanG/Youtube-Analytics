@@ -15,7 +15,7 @@ const nextConfig: NextConfig = {
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com",
+      "img-src 'self' data: https://yt3.ggpht.com https://yt3.googleusercontent.com https://i.ytimg.com https://*.cdninstagram.com https://*.fbcdn.net",
       "font-src 'self'",
       "connect-src 'self'",
       "frame-src https://www.youtube-nocookie.com https://www.youtube.com",

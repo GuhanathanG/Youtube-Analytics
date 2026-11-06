@@ -8,6 +8,7 @@ import { pollLiveChats, saveLiveInfo, summariseEndedChats } from "./livechat";
 import { writeDueMemory } from "./memory";
 import { refreshDueSummaries } from "./summary";
 import { kickBackgroundJob } from "./github";
+import { addInstagramNow, ensureInstagram, instagramTick, looksLikeInstagram } from "./instagram";
 import { quotaDay } from "./queries";
 import {
   QuotaExhausted, YouTubeError, getVideos, listThreads, listUploads, resolveChannel, thumb, youtubeConfigured,
@@ -38,6 +39,7 @@ export type TickResult = {
   summaries?: number;
   job?: string;
   unstuck?: number;
+  instagram?: { collected: number; started: number; newComments: number; newPosts: number; note?: string };
   at: string;
 };
 
@@ -56,6 +58,7 @@ async function ensureLiveTable() {
   // Fast "what should the AI read next" without sorting the whole backlog.
   await ensureIndex("ix_comments_ai_pending", "create index if not exists ix_comments_ai_pending on comments (published_at desc) where ai_at is null");
   await db`insert into live_state (id) values (1) on conflict do nothing`;
+  await ensureInstagram(); // channels.platform (null = YouTube), used by the YouTube-only steps below
   tableReady = true;
 }
 
@@ -287,13 +290,13 @@ async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<
   await db`update videos set comments_backfilled = true, comment_count_checked = 0,
       latest_comment_at = coalesce(latest_comment_at, published_at, (now() at time zone 'utc'))
     where not comments_backfilled and not comments_disabled and comment_count = 0
-      and channel_id in (select id from channels where active)`;
+      and channel_id in (select id from channels where active and platform is null)`;
   const parallel = Math.max(1, Number(process.env.LIVE_BACKFILL_PARALLEL ?? 4));
   const perVideo = Math.max(1, Math.ceil(maxPages / parallel));
   const videos = await db`
     select v.id, v.channel_id, v.comments_page_token, v.comment_count, v.latest_comment_at, v.published_at
     from videos v join channels c on c.id = v.channel_id
-    where c.active and not v.comments_backfilled and not v.comments_disabled
+    where c.active and c.platform is null and not v.comments_backfilled and not v.comments_disabled
     order by v.published_at desc nulls last limit ${parallel}`;
   const results = await Promise.all(videos.map((v) => backfillVideo(v, perVideo, timeLeft).catch((e) => {
     if (e instanceof QuotaExhausted) return 0;
@@ -354,7 +357,8 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     for (const p of pending) {
       await db`delete from channel_requests where id = ${p.id}`;
       try {
-        await addChannelNow(p.query as string);
+        if (looksLikeInstagram(p.query as string)) await addInstagramNow(p.query as string);
+        else await addChannelNow(p.query as string);
       } catch (e) {
         // Keep the request (with the reason) instead of losing it.
         await db`insert into channel_requests (query, status, error, created_at)
@@ -413,7 +417,7 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     //    every 2 hours, anything older once a day — so late comments on old videos are caught too.
     const recent = await db`
       select v.id, v.channel_id from videos v join channels c on c.id = v.channel_id
-      where c.active and not v.comments_disabled and (
+      where c.active and c.platform is null and not v.comments_disabled and (
         v.stats_updated_at is null or v.published_at is null
         or (v.published_at >= (now() at time zone 'utc') - interval '2 days')
         or (v.published_at >= (now() at time zone 'utc') - interval '14 days' and v.stats_updated_at < (now() at time zone 'utc') - interval '15 minutes')
@@ -446,7 +450,7 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 4. New comments wherever the count went up (newest videos first).
     const changed = await db`
       select v.id, v.channel_id, v.latest_comment_at from videos v join channels c on c.id = v.channel_id
-      where c.active and not v.comments_disabled and v.comment_count > coalesce(v.comment_count_checked, -1)
+      where c.active and c.platform is null and not v.comments_disabled and v.comment_count > coalesce(v.comment_count_checked, -1)
         and (v.latest_comment_at is not null or v.published_at >= (now() at time zone 'utc') - interval '30 days')
       order by v.published_at desc nulls last limit 15`;
     // Three videos at a time: each fetch waits on YouTube, so doing them together is ~3x faster.
@@ -468,6 +472,16 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     if (e instanceof QuotaExhausted) { result.status = "quota"; result.message = e.message; }
     else { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }
   }
+
+  // 5b. Instagram (via Apify): collect finished runs, start the ones that are due.
+  try {
+    if (timeLeft()) {
+      const ig = await instagramTick(timeLeft);
+      fresh.push(...ig.newComments);
+      result.instagram = { collected: ig.collected, started: ig.started, newComments: ig.newComments.length, newPosts: ig.newPosts, note: ig.note };
+      result.newComments += ig.newComments.length;
+    }
+  } catch (e) { console.log("[instagram]", e instanceof Error ? e.message : e); }
 
   try {
     // 6. Let the AI read the new comments right away.

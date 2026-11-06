@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import { AddChannelForm, FullSyncButton, TestAlertButton, ToggleChannel } from "@/components/ChannelControls";
+import { AddChannelForm, AddInstagramForm, FullSyncButton, TestAlertButton, ToggleChannel } from "@/components/ChannelControls";
 import { telegramConfigured } from "@/lib/alerts";
 import { recentAnalyses } from "@/lib/video";
 import Link from "next/link";
@@ -15,6 +15,8 @@ import { ShareLinks } from "@/components/ShareLinks";
 import { PushToggle } from "@/components/PushToggle";
 import { pushCount } from "@/lib/push";
 import { listShareLinks } from "@/lib/share";
+import { instagramStatus } from "@/lib/instagram";
+import { within } from "@/lib/cache";
 
 export const metadata = { title: "Manage" };
 
@@ -45,6 +47,7 @@ export default async function ManagePage() {
   const prog = await progress().catch(() => []);
   const storage = await storageStatus().catch(() => null);
   const analyses = await recentAnalyses(8).catch(() => []);
+  const ig = await within(instagramStatus(), 6000, null);
   const cronAt = utc(engine?.lastCronAt);
   const alwaysOn = !!cronAt && Date.now() - cronAt.getTime() < 10 * 60000;
   const e = engine?.last;
@@ -139,6 +142,35 @@ export default async function ManagePage() {
                   </li>
                 ))}
               </ul>
+            )}
+          </Panel>
+        </Reveal>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-3 [&>*]:min-w-0">
+        <Reveal className="xl:col-span-2">
+          <Panel title="Watch an Instagram account" subtitle="Posts, likes, comments and followers via Apify. Comments then get the same AI reading as YouTube.">
+            <AddInstagramForm configured={!!ig?.configured} />
+          </Panel>
+        </Reveal>
+        <Reveal delay={0.05}>
+          <Panel title="Instagram budget" subtitle="Apify free plan: $5 a month, spread evenly over the month">
+            {!ig?.configured || !ig.budget ? <p className="text-[13px] text-ink-2">Not connected. Add <span className="font-mono">APIFY_TOKEN</span> in Vercel.</p> : (
+              <>
+                <Meter label="Spent this month" used={Math.round(ig.budget.spent * 100) / 100} total={ig.budget.month} unit="USD" />
+                <p className="mt-3 text-[12.5px] text-ink-3">Left for today: ${ig.budget.today.toFixed(2)} · {ig.accounts} account{ig.accounts === 1 ? "" : "s"} watched</p>
+                {ig.runs.length > 0 && (
+                  <ul className="mt-3 space-y-1.5">
+                    {ig.runs.map((r) => (
+                      <li key={r.id} className="flex items-center gap-2 text-[12.5px]">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${r.status === "SUCCEEDED" ? "bg-good" : r.status === "RUNNING" || r.status === "READY" ? "bg-accent" : "bg-neg"}`} />
+                        <span className="truncate text-ink-2">{r.channel_id.replace(/^ig_/, "@")} · {r.kind}</span>
+                        <span className="ml-auto shrink-0 text-ink-3" title={r.error ?? undefined}>{r.items ?? "…"} items · {ago(r.started_at)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </Panel>
         </Reveal>

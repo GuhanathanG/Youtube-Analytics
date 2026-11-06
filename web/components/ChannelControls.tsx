@@ -2,7 +2,7 @@
 
 import { Pause, Play, Plus, RefreshCw } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
-import { addChannel, runFullSync, setChannelActive, testAlertAction } from "@/app/actions";
+import { addChannel, runFullSync, setChannelActive, testAlertAction, addInstagram } from "@/app/actions";
 
 export function AddChannelForm() {
   const [state, action, pending] = useActionState(addChannel, undefined);
@@ -18,6 +18,25 @@ export function AddChannelForm() {
       </div>
       <p className={`mt-3 min-h-5 text-[13px] ${state?.error ? "text-neg" : "text-accent"}`} aria-live="polite">
         {pending ? "Looking up the channel and loading its newest videos and comments…" : state?.ok ?? state?.error ?? ""}
+      </p>
+    </form>
+  );
+}
+
+export function AddInstagramForm({ configured }: { configured: boolean }) {
+  const [state, action, pending] = useActionState(addInstagram, undefined);
+  return (
+    <form action={action}>
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <input name="query" required disabled={!configured} aria-label="Instagram account to watch" placeholder="@username or instagram.com/username"
+          className="h-12 flex-1 rounded-xl border border-line-2 bg-white/[0.03] px-4 text-[15px] text-ink outline-none transition placeholder:text-ink-3 focus:border-accent/60 disabled:opacity-50" />
+        <button disabled={pending || !configured}
+          className="flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#f58529] via-[#dd2a7b] to-[#8134af] px-5 text-[14.5px] font-semibold text-white transition hover:brightness-110 disabled:opacity-60">
+          <Plus size={17} />{pending ? "Starting…" : "Watch on Instagram"}
+        </button>
+      </div>
+      <p className={`mt-3 min-h-5 text-[13px] ${state?.error ? "text-neg" : "text-accent"}`} aria-live="polite">
+        {!configured ? "Add APIFY_TOKEN in Vercel to watch Instagram accounts." : pending ? "Asking Apify for the profile and posts…" : state?.ok ?? state?.error ?? ""}
       </p>
     </form>
   );

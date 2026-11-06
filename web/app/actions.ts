@@ -10,6 +10,7 @@ import { clearCache } from "@/lib/cache";
 import { sql } from "@/lib/db";
 import { startFullSync } from "@/lib/github";
 import { addChannelNow } from "@/lib/live";
+import { addInstagramNow, looksLikeInstagram } from "@/lib/instagram";
 import { createShareLink, revokeShareLink } from "@/lib/share";
 
 async function requireSession() {
@@ -51,7 +52,22 @@ export async function addChannel(_: { ok?: string; error?: string } | undefined,
   if (!query) return { error: "Paste a @handle, channel link or video link." };
   if (query.length > 300) return { error: "That looks too long for a channel link." };
   try {
-    const res = await addChannelNow(query);
+    const res = looksLikeInstagram(query) ? await addInstagramNow(query) : await addChannelNow(query);
+    clearCache();
+    revalidatePath("/", "layout");
+    return res.ok ? { ok: res.message } : { error: res.message };
+  } catch (e) {
+    return { error: `Something went wrong: ${e instanceof Error ? e.message.slice(0, 200) : "unknown error"}` };
+  }
+}
+
+export async function addInstagram(_: { ok?: string; error?: string } | undefined, form: FormData) {
+  await requireSession();
+  const query = String(form.get("query") ?? "").trim();
+  if (!query) return { error: "Type an Instagram @username or paste the profile link." };
+  if (query.length > 200) return { error: "That looks too long for an Instagram username." };
+  try {
+    const res = await addInstagramNow(query);
     clearCache();
     revalidatePath("/", "layout");
     return res.ok ? { ok: res.message } : { error: res.message };

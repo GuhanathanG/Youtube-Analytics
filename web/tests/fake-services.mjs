@@ -48,7 +48,8 @@ export function startFake(port = 4100) {
     const p = u.pathname;
     if (p.endsWith("/channels")) return send({ items: (u.searchParams.get("forHandle") === "@livecreator" || u.searchParams.get("id") === CH) ? [channel] : [] });
     if (p.endsWith("/playlistItems")) return send(page(state.videos.map((v) => ({ contentDetails: { videoId: v.id } })), u.searchParams.get("pageToken"), 50));
-    if (p.endsWith("/videos")) { const ids = u.searchParams.get("id").split(","); return send({ items: state.videos.filter((v) => ids.includes(v.id)) }); }
+    if (p.endsWith("/videos")) { const ids = u.searchParams.get("id").split(","); sent.ytVideoIds = [...(sent.ytVideoIds ?? []), ...ids]; return send({ items: state.videos.filter((v) => ids.includes(v.id)) }); }
+    if (p.endsWith("/commentThreads")) sent.ytThreadIds = [...(sent.ytThreadIds ?? []), u.searchParams.get("videoId")];
     if (p.endsWith("/commentThreads")) return send(page(state.threads[u.searchParams.get("videoId")] || [], u.searchParams.get("pageToken"), 100));
     if (p === "/_add") { const v = state.videos[0].id; ["vera level bro 🔥", "worst editing ever", "when is part 3?"].forEach((t) => addComment(v, t)); return send({ ok: true }); }
     if (p === "/_upload") { const v = addVideo(99, 0); addComment(v, "first!"); return send({ ok: true }); }
@@ -89,6 +90,47 @@ export function startFake(port = 4100) {
           displayMessage: texts[i % texts.length], ...(i === 0 ? { superChatDetails: { amountMicros: "500000000", currency: "INR", userComment: "semma stream anna 🔥" } } : {}) },
         authorDetails: { channelId: `UCchat${i % 7}`, displayName: `Chatter${i % 7}`, isChatSponsor: i % 10 === 0 } }));
       return send({ items, nextPageToken: "chat-page-2", pollingIntervalMillis: 5000 });
+    }
+    // Apify (Instagram scraper): runs finish at once; results depend on the requested kind.
+    if (p.startsWith("/v2/acts/") && p.endsWith("/runs") && req.method === "POST") {
+      let body = ""; req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        const input = JSON.parse(body);
+        const id = `run${(sent.igRuns = (sent.igRuns ?? 0) + 1)}`;
+        state.igRuns = { ...(state.igRuns ?? {}), [id]: input };
+        sent.igCaps = [...(sent.igCaps ?? []), { maxItems: u.searchParams.get("maxItems"), maxTotalChargeUsd: u.searchParams.get("maxTotalChargeUsd") }];
+        send({ data: { id, status: "RUNNING", defaultDatasetId: `ds-${id}` } }, 201);
+      });
+      return;
+    }
+    if (p.startsWith("/v2/actor-runs/")) {
+      const id = p.split("/").pop();
+      return send({ data: { id, status: "SUCCEEDED", defaultDatasetId: `ds-${id}`, usageTotalUsd: 0.004 } });
+    }
+    if (p.startsWith("/v2/datasets/ds-")) {
+      const input = state.igRuns?.[p.split("/")[3].slice(3)] ?? {};
+      const at = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+      const post = (code, h, comments, caption) => ({ id: `9${code}`, shortCode: code, type: "Image", caption, displayUrl: `http://localhost:4100/thumbs/${code}.jpg`,
+        timestamp: at(h), likesCount: 120, commentsCount: comments, ownerUsername: "pulsecreator", hashtags: ["phones"] });
+      const posts = [post("IGPOST0001", 5, 3, "New phone unboxing 📱\nmore soon"), post("IGPOST0002", 30, 0, "Weekend vlog"), post("IGPOST0003", 400, 2, "Old review")];
+      if (input.resultsType === "details") {
+        if (String(input.directUrls?.[0]).includes("nobody_here")) return send([{ error: "not_found", errorDescription: "Profile does not exist" }]);
+        return send([{ id: "777", username: "pulsecreator", fullName: "Pulse Creator", biography: "Tech in Tamil", followersCount: 5000,
+          followsCount: 10, postsCount: 3, profilePicUrl: "http://localhost:4100/thumbs/pic.jpg", latestPosts: posts.slice(0, 2) }]);
+      }
+      if (input.resultsType === "posts") return send(String(input.directUrls?.[0]).includes("nobody_here") ? [{ error: "not_found" }] : posts);
+      if (input.resultsType === "comments") {
+        const out = [];
+        for (const url of input.directUrls ?? []) {
+          const code = url.match(/\/p\/([^/]+)/)[1];
+          const texts = code === "IGPOST0001" ? ["semma phone anna 🔥", "price enna?", "worst camera"] : ["nice review", "battery?"];
+          texts.forEach((t, i) => out.push({ id: `${code}c${i}`, postUrl: url, text: t, ownerUsername: `fan${i}`, owner: { id: `55${i}`, username: `fan${i}` },
+            likesCount: i, repliesCount: i === 0 ? 1 : 0, timestamp: at(2),
+            replies: i === 0 ? [{ id: `${code}r0`, text: "thanks da!", ownerUsername: "pulsecreator", owner: { id: "777" }, timestamp: at(1) }] : [] }));
+        }
+        return send(out);
+      }
+      return send([]);
     }
     if (p.startsWith("/thumbs/")) { // tiny JPEG-like bytes for thumbnail analysis
       res.writeHead(200, { "Content-Type": "image/jpeg" }); return res.end(Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
