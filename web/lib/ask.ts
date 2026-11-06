@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "./db";
 import { aiSlots, chatJson } from "./ai";
 import { memoryContext } from "./memory";
+import { searchArchive } from "./archive";
 
 /**
  * 1. Ask AI about your comments.
@@ -64,8 +65,9 @@ export async function askComments(question: string, channelId: string | null, hi
     from comments c join videos v on v.id = c.video_id
     where ${scope} and ${spam} and c.published_at >= (now() at time zone 'utc') - interval '60 days'
     order by c.like_count desc limit ${matched.length >= 60 ? 20 : 60}`;
+  const fromArchive = terms.length ? await searchArchive(terms, channelId, 40) : [];
   const seen = new Set<string>();
-  const pool = [...matched, ...popular].filter((r) => !seen.has(r.id as string) && seen.add(r.id as string)).slice(0, 120);
+  const pool = [...matched, ...fromArchive, ...popular].filter((r) => !seen.has(r.id as string) && seen.add(r.id as string)).slice(0, 120);
   if (!pool.length) return { error: "There are no comments to answer from yet." };
 
   const [stats] = await db`

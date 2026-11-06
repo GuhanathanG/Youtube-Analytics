@@ -46,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
     la = sub.add_parser("local-ai", help="free on-machine AI: emotions, questions/requests, topic groups")
     la.add_argument("--until", type=float, default=None, help="stop by this unix time")
     sub.add_parser("topics-due", help="print 1 if any channel's topic groups need rebuilding, else 0")
+    ar = sub.add_parser("archive", help="move old analysed comments to the archive database (ARCHIVE_DATABASE_URL)")
+    ar.add_argument("--until", type=float, default=None, help="stop by this unix time")
     sub.add_parser("pending", help="number of comments waiting for analysis")
     sub.add_parser("status", help="summary of what is stored")
     sub.add_parser("plan", help="print minutes for this run (GitHub Actions budget)")
@@ -127,6 +129,15 @@ def main(argv: list[str] | None = None) -> int:
             router = LLMRouter(session, slots) if slots else None
             t = build_topics(session, router=router, deadline=deadline)
             print(json.dumps({"emotions": n, "topic_channels": t}))
+        elif args.cmd == "archive":
+            from .archive import archive_old_comments, should_archive
+
+            go, why = should_archive(session)
+            print(f"Archive: {why}")
+            if go:
+                n = archive_old_comments(session, os.environ["ARCHIVE_DATABASE_URL"],
+                                         deadline=time.monotonic() + settings.max_run_minutes * 60)
+                print(json.dumps({"archived": n}))
         elif args.cmd == "topics-due":
             from .local_ai import topics_due
 

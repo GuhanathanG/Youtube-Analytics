@@ -255,6 +255,25 @@ The first run downloads each channel's video list and starts on past comments, b
 
 ---
 
+## Comment archive (free Neon database, when Supabase fills up)
+
+Supabase's free database holds about 1 million comments (500 MB). The background job can move **old comments the AI has already read** to a second free database, so downloads never stop:
+
+- **What moves:** comments older than 180 days that the local model and the AI have read.
+- **What stays:** questions, requests and comments with 25 or more likes.
+- **Counts:** each channel's per-day counts are kept in the main database, so totals and charts stay correct.
+- **AI understanding:** it's kept in Creator Memory.
+- **Search, Ask AI, CSV export and commenter pages** also look in the archive.
+- **When it runs:** only when the main database is over 70% full (`ARCHIVE_AT_PERCENT`).
+
+Setup (about 5 minutes):
+1. Sign up at <https://neon.tech> (free plan, no card).
+2. Create a project and pick the region closest to Sydney: **AWS Asia Pacific (Sydney)** if offered, else Singapore.
+3. On the project dashboard click **Connect**, choose **Pooled connection**, and copy the connection string. It starts with `postgresql://` and ends with `?sslmode=require`.
+4. Add it as `ARCHIVE_DATABASE_URL` in **GitHub Secrets** (the background job moves comments) **and in Vercel** (the website reads the archive). Then redeploy in Vercel.
+
+Neon's free plan (as checked earlier) gives about 1 GB per project, roughly 2 million more comments; check your Neon dashboard for the current limit. When it fills up, create another project and swap the address.
+
 ## Free-tier limits
 
 | Service | Free limit | What it means here |

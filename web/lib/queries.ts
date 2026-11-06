@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "./db";
 import { cached } from "./cache";
 import { ensureSummary, summaries } from "./summary";
+import { archiveConfigured, searchArchive } from "./archive";
 
 import { ASPECT_LABELS, EMOTIONS, languageName } from "./queries-shared";
 export { ASPECT_LABELS, EMOTIONS, LANGUAGE_NAMES, languageName } from "./queries-shared";
@@ -148,6 +149,15 @@ export type DailyRow = { day: string; positive: number; neutral: number; negativ
 
 export async function dailySentiment(f: Filters): Promise<DailyRow[]> {
   const db = sql();
+  // Archived days (counts kept in archive_stats) are added when the filter is only channel and/or date.
+  let archived: Record<string, unknown>[] = [];
+  if (!f.videoId && !f.sentiment && !f.language && !f.emotion && !f.flag && !f.search && !f.topLevelOnly) {
+    archived = await db`select to_char(day, 'YYYY-MM-DD') as day, sum(positive)::int as positive, sum(neutral)::int as neutral,
+        sum(negative)::int as negative, sum(comments - positive - neutral - negative)::int as pending
+      from archive_stats where ${f.channelId ? db`channel_id = ${f.channelId}` : db`true`}
+        and ${f.since ? db`day >= ${f.since.toISOString().slice(0, 10)}::date` : db`true`}
+      group by 1`.catch(() => []);
+  }
   const rows = await db`
     select to_char(date(c.published_at), 'YYYY-MM-DD') as day,
            sum(case when c.sentiment = 'positive' then 1 else 0 end)::int as positive,
@@ -156,7 +166,14 @@ export async function dailySentiment(f: Filters): Promise<DailyRow[]> {
            sum(case when c.sentiment is null then 1 else 0 end)::int as pending
     from comments c where ${where(f)} and c.published_at is not null
     group by 1 order by 1`;
-  return rows as unknown as DailyRow[];
+  if (!archived.length) return rows as unknown as DailyRow[];
+  const byDay = new Map<string, DailyRow>();
+  for (const r of [...rows, ...archived] as unknown as DailyRow[]) {
+    const d = byDay.get(r.day) ?? { ...r, positive: 0, neutral: 0, negative: 0, pending: 0 };
+    d.positive += r.positive; d.neutral += r.neutral; d.negative += r.negative; d.pending += r.pending;
+    byDay.set(r.day, d);
+  }
+  return [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1));
 }
 
 export type Mix = { positive: number; neutral: number; negative: number; pending: number };
@@ -238,7 +255,7 @@ export async function comments(f: Filters, order: CommentOrder = "newest", limit
     most_positive: db`c.sentiment_value desc`,
   }[order];
   const extra = order === "most_negative" || order === "most_positive" ? db`and c.sentiment_value is not null` : db``;
-  return (await db`
+  const live = (await db`
     select c.id, c.video_id, v.title as video_title, ch.title as channel_title, c.channel_id, c.author_channel_id, c.published_at, c.author_name,
            c.text, c.translation, c.like_count, c.reply_count, c.sentiment, c.sentiment_value::float8 as sentiment_value,
            c.sentiment_source, c.emotion, c.language, c.is_question, c.is_suggestion, c.is_spam,
@@ -247,6 +264,13 @@ export async function comments(f: Filters, order: CommentOrder = "newest", limit
     where ${where(f)} ${extra}
     order by ${orderSql}
     limit ${Math.min(limit, 5000)}`) as unknown as CommentRow[];
+  // A text search also looks in the comment archive (old comments moved out of the main database).
+  if (!f.search || !archiveConfigured() || f.videoId || f.sentiment || f.language || f.emotion || f.flag) return live;
+  const old = (await searchArchive([f.search], f.channelId ?? null, Math.min(limit, 200))) as unknown as CommentRow[];
+  if (!old.length) return live;
+  const key = (c: CommentRow) => (order === "most_liked" ? c.like_count : Date.parse(String(c.published_at ?? 0)) * (order === "oldest" ? -1 : 1));
+  const seen = new Set(live.map((c) => c.id));
+  return [...live, ...old.filter((c) => !seen.has(c.id))].sort((a, b) => key(b) - key(a)).slice(0, Math.min(limit, 5000));
 }
 
 /* ------------------------------------------------------------------ growth, insights, ops */

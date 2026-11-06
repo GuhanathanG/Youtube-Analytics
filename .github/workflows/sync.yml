@@ -26,6 +26,7 @@ jobs:
       MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
       CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ARCHIVE_DATABASE_URL: ${{ secrets.ARCHIVE_DATABASE_URL }}
       SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
       RUNS_PER_DAY: "48"
       MONTHLY_MINUTES_BUDGET: "0"     # 0 = no limit (public repository)
@@ -86,6 +87,11 @@ jobs:
 
       - name: AI deep analysis and insights (free Gemini / Mistral / Groq)
         run: python -m ytanalytics ai --until ${{ steps.plan.outputs.ai_until }}
+
+      - name: Archive old analysed comments (only when the main database is getting full)
+        if: env.ARCHIVE_DATABASE_URL != ''
+        continue-on-error: true
+        run: python -m ytanalytics archive --until $(( $(date +%s) + 300 ))
 
       - name: Record minutes used
         if: always()
