@@ -454,6 +454,12 @@ try {
   check("…and only once per window", sent.telegram.filter((m) => String(m.text).includes("Background job stopped")).length === 1);
   await db`update run_log set started_at = (now() at time zone 'utc')`;
 
+  // Command Center: ranked next moves with evidence, and the AI brief
+  const cmd = await (await fetch(`${BASE}/command`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } })).text();
+  check("Command Center shows next moves with evidence", cmd.includes("next moves") && /Answer \d+ open question/.test(cmd) && cmd.includes("impact"),
+    (cmd.match(/Answer[^<]{0,60}/) ?? ["no move"])[0]);
+  check("Command Center shows the AI brief", cmd.includes("Answer the mic question today"));
+
   // Pulse Glance: the widget-style home-screen app
   const gl = await (await get("/glance")).text();
   check("Glance shows every channel with its mood, the dock and its own home-screen manifest",

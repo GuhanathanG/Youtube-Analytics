@@ -195,6 +195,9 @@ export function startFake(port = 4100) {
             creator: "Honest phone reviews", audience: "Tamil-speaking students", strengths: ["honesty"], weaknesses: ["audio"],
             recurring_requests: ["part 3"], recurring_complaints: ["audio"], evolution: "Steady growth since launch", key_moments: [], opportunities: ["fix audio"] }) } }], usage: { total_tokens: 900 } });
         }
+        if (system.includes("growth strategist")) {
+          return send({ choices: [{ message: { content: JSON.stringify({ headline: "Answer the mic question today", brief: "Viewers keep asking about your mic. Reply, then make the budget phone guide.", focus: "audience" }) } }], usage: { total_tokens: 200 } });
+        }
         if (system.includes("Answer the user's question")) {
           sent.askPrompts = [...(sent.askPrompts ?? []), parsed.messages[1].content];
           return send({ choices: [{ message: { content: JSON.stringify({ answer: "Viewers complain about the **audio** [1].", used: [1] }) } }], usage: { total_tokens: 200 } });

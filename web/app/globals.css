@@ -205,3 +205,52 @@ input, select, textarea {
 .glance-chip-warn { color: #fde3a0; border-color: rgba(250,178,25,0.4); background: rgba(250,178,25,0.08); box-shadow: none; }
 .glance-live { border: 1px solid rgba(230,103,103,0.45); background: rgba(230,103,103,0.08); box-shadow: 0 0 22px -8px rgba(230,103,103,0.8); }
 .glance-rail { scrollbar-width: none; } .glance-rail::-webkit-scrollbar { display: none; }
+
+/* ======================= Pulse OS design system ======================= */
+/* Deeper space backdrop: horizon glow + finer grid. */
+.backdrop { background:
+  radial-gradient(1100px 520px at 50% -12%, rgba(34, 211, 238, 0.13), transparent 62%),
+  radial-gradient(900px 600px at 110% 20%, rgba(139, 124, 246, 0.12), transparent 60%),
+  radial-gradient(700px 500px at -10% 90%, rgba(34, 211, 238, 0.06), transparent 60%), #03040a; }
+.backdrop::before { background-image:
+  linear-gradient(rgba(34, 211, 238, 0.05) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(34, 211, 238, 0.05) 1px, transparent 1px);
+  background-size: 36px 36px; }
+body { background: #03040a; }
+
+/* Panels: glass with a glowing gradient edge and holographic corner ticks. */
+.panel {
+  position: relative;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015)) padding-box,
+    linear-gradient(140deg, rgba(34, 211, 238, 0.38), rgba(139, 124, 246, 0.22) 38%, rgba(255, 255, 255, 0.06) 70%, rgba(34, 211, 238, 0.18)) border-box;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset, 0 24px 60px -30px rgba(34, 211, 238, 0.28), 0 18px 40px -26px rgba(0, 0, 0, 0.8);
+}
+.panel::after { /* corner ticks */
+  content: ""; position: absolute; inset: 7px; pointer-events: none; border-radius: 12px; opacity: 0.55;
+  background:
+    linear-gradient(#22d3ee, #22d3ee) top left / 10px 1px no-repeat, linear-gradient(#22d3ee, #22d3ee) top left / 1px 10px no-repeat,
+    linear-gradient(#8b7cf6, #8b7cf6) bottom right / 10px 1px no-repeat, linear-gradient(#8b7cf6, #8b7cf6) bottom right / 1px 10px no-repeat;
+}
+.panel-hover:hover { box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.35) inset, 0 24px 60px -24px rgba(34, 211, 238, 0.45); }
+.panel > header h2::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; vertical-align: 2px;
+  border-radius: 2px; background: #22d3ee; box-shadow: 0 0 10px #22d3ee; }
+
+/* Neon actions */
+.btn-neon { display: inline-flex; align-items: center; gap: 8px; border-radius: 12px; padding: 9px 14px; font-size: 13.5px; font-weight: 500;
+  color: #e9fbff; border: 1px solid rgba(34, 211, 238, 0.45); background: linear-gradient(135deg, rgba(34, 211, 238, 0.16), rgba(139, 124, 246, 0.14));
+  box-shadow: 0 0 22px -10px rgba(34, 211, 238, 0.9); transition: transform .15s, box-shadow .15s; }
+.btn-neon:hover { transform: translateY(-1px); box-shadow: 0 0 28px -8px rgba(34, 211, 238, 1); }
+.chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; border-radius: 999px; padding: 3px 9px; font-family: var(--font-mono);
+  font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; border: 1px solid rgba(255, 255, 255, 0.12); color: var(--color-ink-2); }
+.chip-hi { color: #a5f3fc; border-color: rgba(34, 211, 238, 0.45); background: rgba(34, 211, 238, 0.08); }
+.chip-mid { color: #ddd6fe; border-color: rgba(139, 124, 246, 0.45); background: rgba(139, 124, 246, 0.08); }
+.scanline { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: inherit; }
+.scanline::before { content: ""; position: absolute; left: 0; right: 0; height: 40%; top: -40%;
+  background: linear-gradient(180deg, transparent, rgba(34, 211, 238, 0.07), transparent); animation: scan 6s linear infinite; }
+@keyframes scan { to { transform: translateY(350%); } }
+
+@media print {
+  .panel::after, .panel > header h2::before, .scanline { display: none !important; }
+}

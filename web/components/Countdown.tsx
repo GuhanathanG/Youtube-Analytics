@@ -3,9 +3,12 @@ import { useEffect, useState } from "react";
 
 /** Live "time left" that counts down every 30 seconds from a finish time (ms since epoch). */
 export function Countdown({ at, className = "" }: { at: number | null; className?: string }) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
+  // Time-dependent text is shown only once the page runs on the device: the server's clock and time zone
+  // differ from the phone's, and a mismatch breaks the page's hand-over to the browser.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
   if (at === null) return <span className={className}>waiting to start</span>;
+  if (now === null) return <span className={className}>…</span>;
   const ms = at - now;
   if (ms <= 0) return <span className={className}>finishing…</span>;
   const m = Math.round(ms / 60000);
