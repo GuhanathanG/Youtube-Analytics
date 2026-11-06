@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import { aiSlots, chatJson } from "./ai";
+import { memoryContext } from "./memory";
 
 /**
  * 1. Ask AI about your comments.
@@ -23,8 +24,9 @@ Return JSON only: {"terms": ["word or short phrase", ...]} with 4-12 terms that 
 would contain. Include synonyms, common misspellings, and Tamil/Hindi words in both scripts. Use [] if the question
 is general (e.g. "summarise the audience mood").`;
 
-const ANSWER = `You are an audience-research analyst. Answer the user's question using ONLY the numbered viewer comments
-and statistics provided. Be specific and concise (short paragraphs or bullet points, plain English). Quote or
+const ANSWER = `You are an audience-research analyst. Answer the user's question using ONLY the creator memory (long-term
+monthly summaries written earlier from all stored comments), the numbered viewer comments and the statistics provided.
+Use the memory for questions about the creator overall or how things changed over time; use comments for evidence. Be specific and concise (short paragraphs or bullet points, plain English). Quote or
 paraphrase real comments and cite them like [3] or [3][7]. If the comments don't answer the question, say so plainly.
 Reply with JSON only: {"answer": "markdown text with [n] citations", "used": [n, ...]}`;
 
@@ -64,7 +66,9 @@ export async function askComments(question: string, channelId: string | null): P
     if (r.translation) t += ` [EN: ${String(r.translation).slice(0, 160)}]`;
     return t;
   });
+  const memory = await memoryContext(channelId).catch(() => "");
   const prompt = [`Question: ${question}`, `Statistics: ${stats.n} comments in scope, ${stats.pos}% positive, ${stats.neg}% negative.`,
+    memory ? `\nCreator memory:\n${memory}\n` : "",
     terms.length ? `Search terms used: ${terms.join(", ")}` : "", "", "Comments:", ...lines].join("\n");
   const out = await chatJson(ANSWER, prompt, 2500, deadline);
   if (!out) return { error: "The free AI models are busy or used up right now. Try again in a minute." };

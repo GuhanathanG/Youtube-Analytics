@@ -5,6 +5,7 @@ import { writeDueIdeas, writeDueInsights } from "./insights";
 import { ensureVideoTables } from "./video";
 import { checkAlerts, sendWeeklyReports } from "./alerts";
 import { pollLiveChats, saveLiveInfo, summariseEndedChats } from "./livechat";
+import { writeDueMemory } from "./memory";
 import { quotaDay } from "./queries";
 import {
   QuotaExhausted, YouTubeError, getVideos, listThreads, listUploads, resolveChannel, thumb, youtubeConfigured,
@@ -31,6 +32,7 @@ export type TickResult = {
   durationMs?: number;
   alerts?: number;
   liveChat?: number;
+  memory?: number;
   at: string;
 };
 
@@ -455,6 +457,8 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     if (insightsTurn && timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
     if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await writeDueIdeas(deadline).catch(() => 0));
     if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await summariseEndedChats(deadline).catch(() => 0));
+    // Creator Memory: one monthly memory or creator profile per turn (builds up the long-term picture).
+    if (insightsTurn && timeLeft()) result.memory = await writeDueMemory(deadline).catch((e) => { console.log("[memory]", e instanceof Error ? e.message : e); return 0; });
     if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, Number(process.env.AI_BACKLOG_PER_RUN ?? 150)).catch(() => 0);
 
     // 9. Alerts (new uploads, negative spikes, viral comments): checked on the same ~10-minute turn,

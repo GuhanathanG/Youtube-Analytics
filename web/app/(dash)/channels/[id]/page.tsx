@@ -1,5 +1,8 @@
 import { ExternalLink, Play } from "lucide-react";
+import { within } from "@/lib/cache";
 import Link from "next/link";
+import { MemoryPanel } from "@/components/MemoryPanel";
+import { creatorMemory } from "@/lib/memory";
 import { notFound } from "next/navigation";
 import { AspectChart } from "@/components/charts/AspectChart";
 import { BarList } from "@/components/charts/BarList";
@@ -34,7 +37,8 @@ export default async function ChannelPage({ params, searchParams }:
     latestInsight("channel", id), sentimentMix(f), dailySentiment(f), languageCounts(f), emotionCounts(f),
     aspectCounts(f), channelSnapshots(id), getVideos(id),
   ]);
-  const [people, trend, preds] = await Promise.all([commenters(id), topicTrends(id), predictions(id)]);
+  const [people, trend, preds, memory] = await Promise.all([commenters(id), topicTrends(id), predictions(id),
+    within(creatorMemory(id), 10000, { profile: null, months: [] })]);
 
   return (
     <>
@@ -70,6 +74,7 @@ export default async function ChannelPage({ params, searchParams }:
       </div>
 
       <Reveal delay={0.1} className="mt-6"><InsightPanel insight={insight} scope="channel" /></Reveal>
+      <Reveal delay={0.1} className="mt-6"><MemoryPanel profile={memory.profile} months={memory.months} /></Reveal>
 
       <div className="mt-6 flex items-center justify-between">
         <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">Audience signals</h2>

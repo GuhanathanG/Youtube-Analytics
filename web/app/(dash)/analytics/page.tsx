@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { within } from "@/lib/cache";
 import { Heatmap, MiniStat, OutlierBadge, Sparkline, SplitBar, Trend, times } from "@/components/AnalyticsParts";
 import { BarList } from "@/components/charts/BarList";
 import { Reveal } from "@/components/Reveal";
@@ -43,9 +44,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       </>
     );
   }
-  const [a, aud, topics, health, brands] = await Promise.all([channelAnalytics(ch.id), audienceAnalytics(ch.id), channelTopics(ch.id),
-    channelHealth(ch.id), brandTracker(ch.id).catch(() => [])]);
-  const thumbs = await thumbnailsFor(ch.id);
+  const [a, aud, topics, health, brands] = await Promise.all([channelAnalytics(ch.id), audienceAnalytics(ch.id), within(channelTopics(ch.id), 15000, []),
+    within(channelHealth(ch.id), 20000, { score: null, grade: "–", parts: [], weekly: [] }), within(brandTracker(ch.id), 20000, [])]);
+  const thumbs = await within(thumbnailsFor(ch.id), 10000, new Map());
   const thumbItems = a.videos.filter((v) => v.outlier !== null && thumbs.has(v.id)).map((v) => ({ outlier: v.outlier!, data: thumbs.get(v.id)! }));
   const thumbLift = featureLift(thumbItems, THUMB_FEATURES);
   const { shorts, long } = a.formats;

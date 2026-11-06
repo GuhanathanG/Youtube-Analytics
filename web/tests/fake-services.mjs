@@ -126,7 +126,17 @@ export function startFake(port = 4100) {
         if (system.includes("database search terms")) {
           return send({ choices: [{ message: { content: JSON.stringify({ terms: ["audio", "sound"] }) } }], usage: { total_tokens: 50 } });
         }
+        if (system.includes("monthly memory")) {
+          return send({ choices: [{ message: { content: JSON.stringify({ summary: "Viewers loved the budget phone review month.", mood: "upbeat",
+            liked: ["honest reviews"], complaints: ["audio"], requests: ["part 3"], themes: ["phones"], notable_videos: [], changes: "first month on record" }) } }], usage: { total_tokens: 700 } });
+        }
+        if (system.includes("long-term profile")) {
+          return send({ choices: [{ message: { content: JSON.stringify({ one_line: "A Tamil tech reviewer with a loyal budget-phone audience.",
+            creator: "Honest phone reviews", audience: "Tamil-speaking students", strengths: ["honesty"], weaknesses: ["audio"],
+            recurring_requests: ["part 3"], recurring_complaints: ["audio"], evolution: "Steady growth since launch", key_moments: [], opportunities: ["fix audio"] }) } }], usage: { total_tokens: 900 } });
+        }
         if (system.includes("Answer the user's question")) {
+          sent.askPrompts = [...(sent.askPrompts ?? []), parsed.messages[1].content];
           return send({ choices: [{ message: { content: JSON.stringify({ answer: "Viewers complain about the **audio** [1].", used: [1] }) } }], usage: { total_tokens: 200 } });
         }
         if (system.includes("Group them into distinct content ideas")) {

@@ -2,16 +2,43 @@
  * Tiny in-memory cache for heavy summary queries (counts over every comment). Server copies are
  * reused between requests, so repeated page views within the TTL skip the database scan.
  * Your own changes (add/pause channel) clear it straight away.
+ *
+ * Safety: a result that hasn't arrived after CACHE_WAIT_SECONDS (default 25 s) is dropped and the
+ * caller gets an error instead of waiting forever, so one stuck query can never freeze every page.
  */
-type Entry = { at: number; value: Promise<unknown> };
+type Entry = { at: number; value: Promise<unknown>; settled: boolean };
 const store = new Map<string, Entry>();
+const WAIT_MS = Number(process.env.CACHE_WAIT_SECONDS ?? 25) * 1000;
 
 export function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const hit = store.get(key);
-  if (hit && Date.now() - hit.at < ttlMs) return hit.value as Promise<T>;
-  const value = fn().catch((e) => { store.delete(key); throw e; });
-  store.set(key, { at: Date.now(), value });
-  return value;
+  if (hit && (Date.now() - hit.at < ttlMs || !hit.settled)) return withLimit(hit.value as Promise<T>, key, hit);
+  const entry: Entry = { at: Date.now(), value: Promise.resolve(), settled: false };
+  entry.value = fn().then(
+    (v) => { entry.settled = true; entry.at = Date.now(); return v; },
+    (e) => { if (store.get(key) === entry) store.delete(key); throw e; },
+  );
+  store.set(key, entry);
+  return withLimit(entry.value as Promise<T>, key, entry);
+}
+
+function withLimit<T>(p: Promise<T>, key: string, entry: Entry): Promise<T> {
+  if (entry.settled) return p;
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => {
+      if (store.get(key) === entry && !entry.settled) store.delete(key); // don't hand a stuck result to the next visitor
+      reject(new Error("This is taking too long; try again in a moment."));
+    }, WAIT_MS);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+/** Give up on a slow promise after `ms` and use `fallback` (for optional page sections). */
+export function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
+  });
 }
 
 export function clearCache() {

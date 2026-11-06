@@ -42,7 +42,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
-    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1",
+    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100" },
   stdio: ["ignore", "inherit", "inherit"],
@@ -258,6 +258,21 @@ try {
     && (await fetch(`${BASE}/share/AAAAAAAAAAAAAAAAAAAAAAAA`)).status === 404);
   const [views] = await db`select views from share_links where token = 'e2eShareToken0123456789'`;
   check("share link views are counted", views.views === 1);
+
+  // Creator Memory: monthly memories, then a profile; shown on the channel page and used by Ask AI
+  for (let i = 0; i < 4; i++) {
+    await db`update live_state set last_tick_at = null where id = 1`;
+    await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`);
+  }
+  const [mem] = await db`select count(*) filter (where scope = 'month')::int as months, count(*) filter (where scope = 'profile')::int as profiles
+    from insights where target_id like ${ch.id + "%"}`;
+  check("Creator Memory writes monthly memories and a creator profile", mem.months >= 1 && mem.profiles >= 1, JSON.stringify(mem));
+  const chMem = await (await get(`/channels/${ch.id}`)).text();
+  check("channel page shows the creator memory", chMem.includes("Creator memory") && chMem.includes("A Tamil tech reviewer with a loyal budget-phone audience."));
+  const askMem = await fetch(`${BASE}/api/ask`, { method: "POST", headers: { cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ question: "How has this audience changed over time?", channelId: ch.id }) });
+  check("Ask AI reads the creator memory", askMem.status === 200 && (sent.askPrompts ?? []).some((p) => p.includes("Creator memory") && p.includes("loyal budget-phone audience")),
+    `status ${askMem.status}`);
 
   // Phone app (PWA) and push notifications
   const mf = await fetch(`${BASE}/manifest.webmanifest`);

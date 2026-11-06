@@ -1,4 +1,5 @@
 import { ArrowUpRight, Sparkles } from "lucide-react";
+import { within } from "@/lib/cache";
 import Link from "next/link";
 import { MixBar } from "@/components/charts/MixBar";
 import { TrendChart } from "@/components/charts/TrendChart";
@@ -23,8 +24,8 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const [k, chs, daily, briefs, latest] = await Promise.all([
     kpis(), getChannels(), dailySentiment({ since }), recentInsights(4), comments({ hideSpam: true }, "newest", 8),
   ]);
-  const prog = await progress().catch(() => []);
-  const [alertList, preds, live] = await Promise.all([recentAlerts(8).catch(() => []), predictions().catch(() => []), liveNow().catch(() => [])]);
+  const prog = await within(progress(), 15000, []);
+  const [alertList, preds, live] = await Promise.all([within(recentAlerts(8), 8000, []), within(predictions(), 10000, []), within(liveNow(), 8000, [])]);
   const historyBusy = prog.some((p) => p.comments_stored < p.comments_on_youtube * 0.98 || p.ai_read < p.comments_stored * 0.98
     || (p.videos_total ?? 0) > p.videos_known);
   const analysed = chs.reduce((s, c) => s + c.positive + c.neutral + c.negative, 0);
