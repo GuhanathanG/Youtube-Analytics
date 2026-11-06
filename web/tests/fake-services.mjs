@@ -57,6 +57,9 @@ export function startFake(port = 4100) {
       req.on("end", () => { sent.telegram.push(JSON.parse(body)); send({ ok: true }); });
       return;
     }
+    if (p.endsWith("/actions/workflows/sync.yml/dispatches") && req.method === "POST") {
+      sent.dispatches = (sent.dispatches ?? 0) + 1; res.writeHead(204); return res.end();
+    }
     if (p.includes("/actions/workflows/sync.yml/runs")) {
       return send({ workflow_runs: [{ status: "completed", conclusion: "success", created_at: new Date().toISOString(), html_url: "https://github.com/x/runs/1", event: "schedule" }] });
     }

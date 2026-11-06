@@ -44,7 +44,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       </>
     );
   }
-  const [a, aud, topics, health, brands] = await Promise.all([channelAnalytics(ch.id), audienceAnalytics(ch.id), within(channelTopics(ch.id), 15000, []),
+  const [a, aud, topics, health, brands] = await Promise.all([channelAnalytics(ch.id), within(audienceAnalytics(ch.id), 15000, { perVideo: [], monthly: [], languages: [], topLanguages: [],
+      creator: { topLevel: 0, answered: 0, replies: 0, replyRate: null }, loyal: { people: 0, loyal: 0, loyalShare: null } }), within(channelTopics(ch.id), 15000, []),
     within(channelHealth(ch.id), 20000, { score: null, grade: "–", parts: [], weekly: [] }), within(brandTracker(ch.id), 20000, [])]);
   const thumbs = await within(thumbnailsFor(ch.id), 10000, new Map());
   const thumbItems = a.videos.filter((v) => v.outlier !== null && thumbs.has(v.id)).map((v) => ({ outlier: v.outlier!, data: thumbs.get(v.id)! }));

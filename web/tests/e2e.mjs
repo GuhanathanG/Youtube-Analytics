@@ -46,7 +46,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
     GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
-    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB,
+    GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100" },
   stdio: ["ignore", "inherit", "inherit"],
@@ -378,6 +378,8 @@ try {
   const q = await (await fetch(`${BASE}/api/cron?key=e2e-cron-secret-0123456789`)).json();
   check("with YouTube quota used up, the engine reports it and the AI keeps going", q.status === "quota" && (q.aiBacklog ?? 0) > 0, JSON.stringify(q));
   await db`update quota_usage set units = 0`;
+
+  check("engine starts the GitHub background job when GitHub's scheduler skipped it", (sent.dispatches ?? 0) > 0, `dispatches: ${sent.dispatches}`);
 
   // Archiving: old, read comments move to the archive database; totals stay; Ask AI still finds them
   await db`update live_state set last_tick_at = null where id = 1`;

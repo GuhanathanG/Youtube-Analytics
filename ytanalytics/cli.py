@@ -66,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
         settings.max_run_minutes = max(0.35, (args.until - time.time()) / 60)
     engine = make_engine(settings.database_url)
     init_db(engine)
+    if args.cmd in ("sync", "init-db"):
+        from .db import guard_website_queries
+        guard_website_queries(engine)
     Session = make_session_factory(engine)
 
     with Session() as session:

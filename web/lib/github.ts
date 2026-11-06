@@ -32,6 +32,18 @@ export async function startFullSync(): Promise<{ ok: boolean; message: string }>
   return { ok: false, message: `GitHub said ${res.status}: ${(await res.text()).slice(0, 160)}` };
 }
 
+/** Start the background job when GitHub's own scheduler has skipped it (it often delays or drops runs). */
+export async function kickBackgroundJob(maxGapMinutes = Number(process.env.JOB_MAX_GAP_MINUTES ?? 35)): Promise<string> {
+  if (!githubConfigured()) return "no GITHUB_TOKEN";
+  const runs = await recentRuns(3);
+  if (!runs) return "couldn't read runs";
+  if (runs.some((r) => r.status === "in_progress" || r.status === "queued")) return "running";
+  const last = runs[0] ? Date.parse(runs[0].created_at) : 0;
+  if (Date.now() - last < maxGapMinutes * 60_000) return "recent";
+  const res = await startFullSync();
+  return res.ok ? "started" : `not started: ${res.message}`;
+}
+
 export type RunInfo = { status: string; conclusion: string | null; created_at: string; html_url: string; event: string };
 
 export async function recentRuns(limit = 5): Promise<RunInfo[] | null> {
