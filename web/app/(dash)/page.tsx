@@ -1,6 +1,8 @@
 import { ArrowUpRight, Sparkles } from "lucide-react";
 import { within } from "@/lib/cache";
-import { overviewDaily } from "@/lib/panels";
+import { overviewDaily, panel } from "@/lib/panels";
+import { focusChannel } from "@/lib/focus";
+import { summaries } from "@/lib/summary";
 import Link from "next/link";
 import { MixBar } from "@/components/charts/MixBar";
 import { TrendChart } from "@/components/charts/TrendChart";
@@ -22,13 +24,24 @@ export const metadata = { title: "Overview" };
 export default async function Overview({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
   const { range } = await searchParams;
   const { key } = rangeSince(range);
-  const [k, chs, daily, briefs, latest] = await Promise.all([
+  const allChs = await within(getChannels(), 10_000, []);
+  // Channel focus (top bar): everything below is about that one channel unless "All channels" is chosen.
+  const focus = await focusChannel(allChs.filter((c) => c.active).map((c) => c.id));
+  const chs = focus ? allChs.filter((c) => c.id === focus) : allChs;
+  const sums = await within(summaries(), 8000, new Map());
+  const [kAll, daily, briefs, latest] = await Promise.all([
     within(kpis(), 10_000, { channels: 0, videos: 0, comments: 0, analyzed: 0, ai_read: 0, videos_backfilling: 0, last_fetch: null,
-      quota_used_today: 0, comments_24h: 0 }), within(getChannels(), 10_000, []), within(overviewDaily(key), 12_000, []),
-    within(recentInsights(4), 8000, []), within(comments({ hideSpam: true }, "newest", 8), 8000, []),
+      quota_used_today: 0, comments_24h: 0 }),
+    within(focus ? panel("daily", focus, key) : overviewDaily(key), 12_000, []),
+    within(recentInsights(4, focus), 8000, []), within(comments({ hideSpam: true, channelId: focus }, "newest", 8), 8000, []),
   ]);
-  const prog = await within(progress(), 15000, []);
-  const [alertList, preds, live] = await Promise.all([within(recentAlerts(8), 8000, []), within(predictions(), 10000, []), within(liveNow(), 8000, [])]);
+  const one = focus ? sums.get(focus) : null;
+  const fc = focus ? allChs.find((c) => c.id === focus) : null;
+  const k = one && fc ? { ...kAll, channels: 1, comments: one.comments, analyzed: one.analyzed, ai_read: one.ai_read, comments_24h: one.comments_24h,
+    videos: fc.videos_stored, videos_backfilling: Math.max(0, fc.videos_stored - fc.videos_backfilled) } : kAll;
+  const prog = (await within(progress(), 15000, [])).filter((p) => !focus || p.channel_id === focus);
+  const [alertList, preds, live] = await Promise.all([within(recentAlerts(8, focus), 8000, []), within(predictions(focus ?? undefined), 10000, []),
+    within(liveNow(), 8000, [])]);
   const historyBusy = prog.some((p) => p.comments_stored < p.comments_on_youtube * 0.98 || p.ai_read < p.comments_stored * 0.98
     || (p.videos_total ?? 0) > p.videos_known);
   const analysed = chs.reduce((s, c) => s + c.positive + c.neutral + c.negative, 0);
@@ -60,11 +73,11 @@ export default async function Overview({ searchParams }: { searchParams: Promise
           <Reveal delay={0.1} className="mt-8">
             <div className="mb-3 flex items-end justify-between">
               <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">Channels</h2>
-              <span className="label">{chs.length} watching</span>
+              <span className="label">{allChs.length} watching{focus ? " · showing one (switch at the top)" : ""}</span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {chs.map((c) => (
-                <Link key={c.id} href={`/channels/${c.id}`} className="panel panel-hover group block p-5">
+              {allChs.map((c) => (
+                <Link key={c.id} href={`/channels/${c.id}`} className={`panel panel-hover group block p-5 ${c.id === focus ? "ring-1 ring-accent/50" : ""}`}>
                   <div className="flex items-center gap-3">
                     {c.thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -123,7 +136,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
           <div className="mt-4 grid gap-4 xl:grid-cols-3">
             <Reveal delay={0.25} className="xl:col-span-2">
               <Panel title={<span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-accent animate-[pulse-dot_2s_ease-out_infinite]" />Live feed</span>}
-                subtitle="Newest comments across your channels; new ones slide in automatically"
+                subtitle={focus ? "Newest comments on this channel" : "Newest comments across your channels; new ones slide in automatically"}
                 action={<Link href="/comments" className="text-[13px] text-ink-3 hover:text-accent">All comments →</Link>}>
                 {latest.length ? <LiveFeed comments={latest} /> : <Empty>Comments appear here as they arrive.</Empty>}
               </Panel>

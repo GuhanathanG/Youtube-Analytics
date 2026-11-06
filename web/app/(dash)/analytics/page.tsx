@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { within } from "@/lib/cache";
+import { focusChannel } from "@/lib/focus";
 import { Heatmap, MiniStat, OutlierBadge, Sparkline, SplitBar, Trend, times } from "@/components/AnalyticsParts";
 import { BarList } from "@/components/charts/BarList";
 import { Reveal } from "@/components/Reveal";
@@ -34,7 +35,7 @@ function VideoRow({ v }: { v: VideoPerf }) {
 
 export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
   const all = await getChannels();
-  const requested = (await searchParams).c;
+  const requested = (await searchParams).c ?? (await focusChannel(all.filter((c) => c.active).map((c) => c.id)));
   const ch = all.find((c) => c.id === requested) ?? all[0];
   if (!ch) {
     return (

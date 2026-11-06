@@ -79,7 +79,7 @@ export type ChannelRow = {
 };
 
 export async function channels(): Promise<ChannelRow[]> {
-  return cached("channels", 30000, channelsUncached);
+  return cached("channels", Number(process.env.LIST_CACHE_SECONDS ?? 30) * 1000, channelsUncached);
 }
 
 async function channelsUncached(): Promise<ChannelRow[]> {
@@ -320,7 +320,7 @@ export async function latestInsight(scope: "video" | "channel" | "ideas", id: st
   }
 }
 
-export async function recentInsights(limit = 6) {
+export async function recentInsights(limit = 6, channelId: string | null = null) {
   const db = sql();
   const rows = await db`
     select i.scope, i.target_id, i.created_at, i.data,
@@ -328,6 +328,8 @@ export async function recentInsights(limit = 6) {
     from insights i
     left join videos v on i.scope = 'video' and v.id = i.target_id
     left join channels ch on i.scope = 'channel' and ch.id = i.target_id
+    where i.scope in ('video', 'channel')
+      and (${channelId}::text is null or (i.scope = 'channel' and i.target_id = ${channelId}) or (i.scope = 'video' and v.channel_id = ${channelId}))
     order by i.created_at desc limit ${limit}`;
   return rows.map((r) => {
     let summary = "";

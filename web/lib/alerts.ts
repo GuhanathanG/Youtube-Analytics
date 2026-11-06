@@ -105,9 +105,13 @@ export async function checkAlerts(): Promise<number> {
   return raised;
 }
 
-export async function recentAlerts(limit = 20): Promise<Alert[]> {
+export async function recentAlerts(limit = 20, channelId: string | null = null): Promise<Alert[]> {
   await ensureTable();
-  return (await sql()`select id, kind, title, body, link, created_at from alerts order by created_at desc limit ${limit}`) as unknown as Alert[];
+  // Alerts link to a channel or one of its videos; with a channel chosen, show only that channel's.
+  return (await sql()`select a.id, a.kind, a.title, a.body, a.link, a.created_at from alerts a
+    where ${channelId}::text is null or a.link = ${"/channels/" + (channelId ?? "")} or a.link = ${"/report/" + (channelId ?? "")}
+      or exists (select 1 from videos v where v.channel_id = ${channelId} and a.link = '/videos/' || v.id)
+    order by a.created_at desc limit ${limit}`) as unknown as Alert[];
 }
 
 export async function sendTestAlert(): Promise<{ ok: boolean; message: string }> {

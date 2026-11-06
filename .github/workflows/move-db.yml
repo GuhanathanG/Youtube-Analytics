@@ -1,0 +1,49 @@
+name: Move database
+
+# Copies everything in the website's tables (schema "public") from the current database
+# (DATABASE_URL) to a new one (NEW_DATABASE_URL), then compares row counts.
+# Run it from the Actions tab: type MOVE to confirm. The current database is only read, never changed.
+# Afterwards, point DATABASE_URL (GitHub and Vercel) at the new database.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type MOVE to copy the database into NEW_DATABASE_URL (anything there in the same tables is replaced)"
+        required: true
+
+jobs:
+  move:
+    if: inputs.confirm == 'MOVE'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SRC: ${{ secrets.DATABASE_URL }}
+      DST: ${{ secrets.NEW_DATABASE_URL }}
+    steps:
+      - name: Install PostgreSQL 17 tools
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+      - name: Check both databases are reachable
+        run: |
+          test -n "$DST" || { echo "Add the NEW_DATABASE_URL secret first."; exit 1; }
+          # SQLAlchemy-style URLs (postgresql+psycopg://) -> plain libpq URLs
+          echo "SRC_PG=${SRC/postgresql+psycopg:/postgresql:}" >> $GITHUB_ENV
+          echo "DST_PG=${DST/postgresql+psycopg:/postgresql:}" >> $GITHUB_ENV
+      - name: Show sizes
+        run: |
+          /usr/lib/postgresql/17/bin/psql "$SRC_PG" -Atc "select 'current database: ' || pg_size_pretty(pg_database_size(current_database()))"
+          /usr/lib/postgresql/17/bin/psql "$DST_PG" -Atc "select 'new database reachable: ' || version()"
+      - name: Copy (read-only on the current database)
+        run: |
+          /usr/lib/postgresql/17/bin/pg_dump "$SRC_PG" --schema=public --no-owner --no-privileges --format=custom --file=db.dump
+          ls -lh db.dump
+          /usr/lib/postgresql/17/bin/pg_restore --dbname="$DST_PG" --no-owner --no-privileges --clean --if-exists --single-transaction db.dump
+      - name: Compare row counts
+        run: |
+          q="select relname || '=' || n from (select c.relname, (xpath('/row/n/text()', query_to_xml(format('select count(*) as n from public.%I', c.relname), false, true, '')))[1]::text::bigint as n from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'r') t order by 1"
+          /usr/lib/postgresql/17/bin/psql "$SRC_PG" -Atc "$q" > src.txt
+          /usr/lib/postgresql/17/bin/psql "$DST_PG" -Atc "$q" > dst.txt
+          diff src.txt dst.txt && echo "All tables match:" && cat dst.txt || { echo "Counts differ (new rows may have arrived during the copy):"; paste src.txt dst.txt; }

@@ -8,7 +8,7 @@ export function parseExplorer(p: ExplorerParams): { filters: Filters; order: Com
   const flag = flags.find((f) => f === p.type) ?? null;
   return {
     filters: {
-      channelId: p.channel || null,
+      channelId: p.channel && p.channel !== "all" ? p.channel : null,
       sentiment: ["positive", "neutral", "negative"].includes(p.sentiment ?? "") ? p.sentiment! : null,
       language: p.lang || null,
       emotion: p.emotion || null,

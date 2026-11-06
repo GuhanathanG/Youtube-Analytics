@@ -18,8 +18,8 @@ function Select({ name, value, options, onChange, label }: { name: string; value
   );
 }
 
-export function ExplorerFilters({ channels, languages, emotions, count }:
-  { channels: Opt[]; languages: Opt[]; emotions: Opt[]; count: number }) {
+export function ExplorerFilters({ channels, languages, emotions, count, defaultChannel }:
+  { channels: Opt[]; languages: Opt[]; emotions: Opt[]; count: number; defaultChannel?: string }) {
   const router = useRouter();
   const path = usePathname();
   const sp = useSearchParams();
@@ -50,7 +50,7 @@ export function ExplorerFilters({ channels, languages, emotions, count }:
         {pending && <span className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-accent border-t-transparent" />}
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        <Select label="Channel" name="channel" value={v("channel")} onChange={set} options={[{ value: "", label: "All channels" }, ...channels]} />
+        <Select label="Channel" name="channel" value={v("channel", defaultChannel ?? "all")} onChange={set} options={[...channels, { value: "all", label: "All channels (combined)" }]} />
         <Select label="Sentiment" name="sentiment" value={v("sentiment")} onChange={set}
           options={[{ value: "", label: "Any" }, { value: "positive", label: "Positive" }, { value: "neutral", label: "Neutral" }, { value: "negative", label: "Negative" }]} />
         <Select label="Language" name="lang" value={v("lang")} onChange={set} options={[{ value: "", label: "Any language" }, ...languages]} />

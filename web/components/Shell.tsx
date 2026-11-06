@@ -2,9 +2,9 @@
 
 import { ChartNoAxesCombined, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
-import { logout } from "@/app/actions";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useTransition, type ReactNode } from "react";
+import { logout, setFocus } from "@/app/actions";
 import { CommandPalette } from "./CommandPalette";
 import { LivePill } from "./LivePill";
 import { Logo } from "./Logo";
@@ -23,7 +23,23 @@ const NAV = [
 // The phone bar has room for four items plus search.
 const MOBILE_NAV = NAV.filter((n) => ["/", "/analytics", "/ask", "/comments"].includes(n.href));
 
-export function Shell({ children, channels }: { children: ReactNode; channels: NavChannel[] }) {
+/** Which channel the whole site shows. Switching reloads the page's data for that channel only. */
+function FocusSwitcher({ channels, focus }: { channels: NavChannel[]; focus: string | null }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const active = channels.filter((c) => c.active);
+  if (active.length < 2) return null;
+  return (
+    <select aria-label="Channel shown across the site" value={focus ?? "all"} disabled={pending}
+      onChange={(e) => { const v = e.target.value; start(async () => { await setFocus(v); router.refresh(); }); }}
+      className="h-10 max-w-[44vw] shrink-0 truncate rounded-xl border border-accent/40 bg-accent/10 px-3 text-[13.5px] text-ink outline-none sm:max-w-[240px]">
+      {active.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+      <option value="all">All channels (combined)</option>
+    </select>
+  );
+}
+
+export function Shell({ children, channels, focus }: { children: ReactNode; channels: NavChannel[]; focus: string | null }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);
@@ -68,6 +84,7 @@ export function Shell({ children, channels }: { children: ReactNode; channels: N
       {/* Top bar */}
       <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line bg-[#05070d]/60 px-4 backdrop-blur-xl sm:px-8">
         <Link href="/" className="lg:hidden"><Logo size={24} /></Link>
+        <FocusSwitcher channels={channels} focus={focus} />
         <button onClick={() => setOpen(true)}
           className="ml-auto flex h-10 w-full max-w-[420px] items-center gap-3 rounded-xl border border-line bg-white/[0.03] px-3 text-[13.5px] text-ink-3 transition hover:border-line-2 hover:text-ink-2 lg:ml-0">
           <Search size={16} /><span className="sm:hidden">Search</span><span className="hidden sm:inline">Search channels, videos…</span>

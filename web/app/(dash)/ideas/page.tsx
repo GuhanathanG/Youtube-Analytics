@@ -1,5 +1,6 @@
 import { Heart, Lightbulb } from "lucide-react";
 import { within } from "@/lib/cache";
+import { focusChannel } from "@/lib/focus";
 import Link from "next/link";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
@@ -13,7 +14,9 @@ export const metadata = { title: "Content ideas" };
 type Idea = { title?: string; why?: string; requests?: number; likes?: number; examples?: string[] };
 
 export default async function IdeasPage() {
-  const chs = (await getChannels()).filter((c) => c.active);
+  const active = (await getChannels()).filter((c) => c.active);
+  const focus = await focusChannel(active.map((c) => c.id));
+  const chs = focus ? active.filter((c) => c.id === focus) : active; // channel picked in the top bar
   const ideas = await Promise.all(chs.map(async (c) => ({ c, ins: await latestInsight("ideas", c.id),
     questions: await within(unansweredQuestions(c.id), 15000, []) })));
   return (
