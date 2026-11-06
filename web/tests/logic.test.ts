@@ -4,6 +4,7 @@ import { quickLabel } from "../lib/quick-labels.ts";
 import { pickGeminiModels } from "../lib/gemini-models.ts";
 import { healthScore, normalizeBrand } from "../lib/health-math.ts";
 import { buildMoves, type MoveInputs } from "../lib/moves.ts";
+import { demandWords, scoreTitle } from "../lib/packaging.ts";
 import { THUMB_FEATURES, featureLift, TITLE_FEATURES, durationSeconds, forecastViews, isShort, median, titleWords, weekOf } from "../lib/analytics-math.ts";
 
 // Rule labels (same cases as tests/test_ai.py::test_quick_labels)
@@ -82,3 +83,16 @@ assert.equal(moves[0].impact, 3, "highest impact first");
 assert.ok(moves.every((m) => m.evidence.length > 0 && m.href.startsWith("/")));
 assert.ok(moves.find((m) => m.id === "answer-questions")!.evidence[0].includes("40 likes"));
 assert.equal(buildMoves({ ...base, questions: moves.length ? [{ id: "q", text: "?", translation: null, like_count: 1, video_title: "" }] : [] }, 8)[0].impact, 2);
+
+// Packaging Lab: titles are scored against this channel's own winners
+const tctx = { features: [{ label: "Has a number", with: 6, without: 8, lift: 1.8 }, { label: "Has an emoji", with: 5, without: 9, lift: 0.6 }],
+  words: [{ word: "budget", count: 4, outlier: 2.4 }, { word: "vlog", count: 5, outlier: 0.5 }], demand: ["camera", "battery"] };
+const pkStrong = scoreTitle("5 budget phones with the best camera in 2026", tctx);
+const pkWeak = scoreTitle("my vlog 😀", tctx);
+assert.ok(pkStrong.score > pkWeak.score + 20, `${pkStrong.score} vs ${pkWeak.score}`);
+assert.ok(pkStrong.good.some((g) => g.includes("budget")) && pkStrong.good.some((g) => g.includes("camera")));
+assert.ok(pkWeak.fix.some((f) => f.includes("vlog")) && pkWeak.fix.some((f) => f.includes("emoji")));
+assert.ok(scoreTitle("THIS IS ALL CAPS SHOUTING TITLE", tctx).fix.some((f) => f.includes("capitals")));
+assert.equal(scoreTitle("", tctx).score, 0);
+assert.deepEqual(demandWords(["please make camera test", "camera test video please", "battery life?", "battery backup"]).slice(0, 3).sort(),
+  ["battery", "camera", "test"]);

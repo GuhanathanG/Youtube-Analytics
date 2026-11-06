@@ -195,6 +195,18 @@ export function startFake(port = 4100) {
             creator: "Honest phone reviews", audience: "Tamil-speaking students", strengths: ["honesty"], weaknesses: ["audio"],
             recurring_requests: ["part 3"], recurring_complaints: ["audio"], evolution: "Steady growth since launch", key_moments: [], opportunities: ["fix audio"] }) } }], usage: { total_tokens: 900 } });
         }
+        if (system.includes("strategist and scriptwriter")) {
+          sent.studioPrompts = [...(sent.studioPrompts ?? []), parsed.messages[1].content];
+          return send({ choices: [{ message: { content: JSON.stringify({ angles: [{ name: "Night test", pitch: "Shoot every phone at night" }, { name: "Budget king", pitch: "Best value wins" }, { name: "Real life", pitch: "A week of daily use" }],
+            titles: ["5 budget phones tested at night: which camera wins?", "my vlog", "Best camera phone under 20K (real test)"],
+            thumbnail: { concept: "Three phones held up against city lights", text: "WHICH WINS?", emotion: "surprised", colors: ["cyan", "black"] },
+            hook: "I spent a week shooting with five cheap phones, and one of them embarrassed a flagship.",
+            outline: [{ part: "Hook", notes: "The surprise result" }, { part: "Day tests", notes: "Daylight photos" }, { part: "Night tests", notes: "The big difference" }],
+            tags: ["budget phone", "camera test"], cta: "Watch the battery test next", why: "Viewers keep asking for camera tests." }) } }], usage: { total_tokens: 900 } });
+        }
+        if (system.includes("You improve YouTube titles")) {
+          return send({ choices: [{ message: { content: JSON.stringify({ titles: ["I tested 5 budget phones at night", "Budget camera phones: night test"] }) } }], usage: { total_tokens: 100 } });
+        }
         if (system.includes("growth strategist")) {
           return send({ choices: [{ message: { content: JSON.stringify({ headline: "Answer the mic question today", brief: "Viewers keep asking about your mic. Reply, then make the budget phone guide.", focus: "audience" }) } }], usage: { total_tokens: 200 } });
         }
