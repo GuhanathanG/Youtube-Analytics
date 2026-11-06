@@ -16,6 +16,9 @@ import { PushToggle } from "@/components/PushToggle";
 import { pushCount } from "@/lib/push";
 import { listShareLinks } from "@/lib/share";
 import { instagramStatus } from "@/lib/instagram";
+import { scriptableScript, widgetToken } from "@/lib/widget";
+import { WidgetSetup } from "@/components/WidgetSetup";
+import { headers } from "next/headers";
 import { within } from "@/lib/cache";
 
 export const metadata = { title: "Manage" };
@@ -48,6 +51,9 @@ export default async function ManagePage() {
   const storage = await storageStatus().catch(() => null);
   const analyses = await recentAnalyses(8).catch(() => []);
   const ig = await within(instagramStatus(), 6000, null);
+  const host = process.env.SITE_HOST ?? process.env.VERCEL_PROJECT_PRODUCTION_URL ?? (await headers()).get("host") ?? "localhost:3000";
+  const widgetKey = await within(widgetToken(), 6000, null);
+  const widgetScript = widgetKey ? scriptableScript(`${host.startsWith("localhost") ? "http" : "https"}://${host}`, widgetKey) : null;
   const cronAt = utc(engine?.lastCronAt);
   const alwaysOn = !!cronAt && Date.now() - cronAt.getTime() < 10 * 60000;
   const e = engine?.last;
@@ -112,6 +118,13 @@ export default async function ManagePage() {
       <Reveal className="mt-4">
         <Panel title="Share a read-only report" subtitle="Anyone with the link sees one channel's report (no password, nothing else). Turn links off any time.">
           <ShareLinks channels={chs.map((c) => ({ id: c.id, title: c.title }))} links={await listShareLinks().catch(() => [])} site={process.env.SITE_URL ?? ""} />
+        </Panel>
+      </Reveal>
+
+      <Reveal className="mt-4">
+        <Panel title="iPhone widget" subtitle="Live mood, comments today and followers on your home screen (refreshes about every 15 minutes)">
+          {widgetScript ? <WidgetSetup script={widgetScript} /> : <p className="text-[13px] text-ink-2">The widget key couldn&apos;t be loaded right now; reload the page.</p>}
+          <p className="mt-3 text-[12.5px] text-ink-3">For the full app: open this site in Safari → Share → <b>Add to Home Screen</b>. It opens full-screen with its own icon and stays signed in for 30 days.</p>
         </Panel>
       </Reveal>
 

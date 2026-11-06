@@ -82,7 +82,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
       </aside>
 
       {/* Top bar */}
-      <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line bg-[#05070d]/60 px-4 backdrop-blur-xl sm:px-8">
+      <header className="safe-top sticky top-0 z-20 flex h-16 box-content items-center gap-3 border-b border-line bg-[#05070d]/60 px-4 backdrop-blur-xl sm:px-8">
         <Link href="/" className="lg:hidden"><Logo size={24} /></Link>
         <FocusSwitcher channels={channels} focus={focus} />
         <button onClick={() => setOpen(true)}
@@ -93,10 +93,10 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
         <LivePill />
       </header>
 
-      <main className="mx-auto max-w-[1400px] px-4 pb-28 pt-6 sm:px-8 sm:pt-8 lg:pb-16">{children}</main>
+      <main className="safe-main mx-auto max-w-[1400px] px-4 pt-6 sm:px-8 sm:pt-8">{children}</main>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-[#0a0e1a]/85 p-1.5 backdrop-blur-xl lg:hidden">
+      <nav className="safe-bottom fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-[#0a0e1a]/85 p-1.5 backdrop-blur-xl lg:hidden">
         {MOBILE_NAV.map(({ href, label, icon: Icon }) => (
           <Link key={href} href={href} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${isActive(href) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
             <Icon size={18} className={isActive(href) ? "text-accent" : ""} />{label}
@@ -112,7 +112,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
       {more && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="All pages">
           <button aria-label="Close" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMore(false)} />
-          <div className="absolute inset-x-3 bottom-3 rounded-2xl border border-line-2 bg-[#0a0e1a] p-3 shadow-2xl">
+          <div className="safe-bottom absolute inset-x-3 bottom-3 rounded-2xl border border-line-2 bg-[#0a0e1a] p-3 shadow-2xl">
             <div className="mb-1 flex items-center justify-between px-2 py-1">
               <span className="label">All pages</span>
               <button onClick={() => setMore(false)} aria-label="Close menu" className="rounded-lg p-1.5 text-ink-3 hover:text-ink"><X size={18} /></button>
