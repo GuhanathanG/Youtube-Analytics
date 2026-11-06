@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { quickLabel } from "../lib/quick-labels.ts";
 import { pickGeminiModels } from "../lib/gemini-models.ts";
 import { healthScore, normalizeBrand } from "../lib/health-math.ts";
+import { buildMoves, type MoveInputs } from "../lib/moves.ts";
 import { THUMB_FEATURES, featureLift, TITLE_FEATURES, durationSeconds, forecastViews, isShort, median, titleWords, weekOf } from "../lib/analytics-math.ts";
 
 // Rule labels (same cases as tests/test_ai.py::test_quick_labels)
@@ -60,3 +61,24 @@ assert.equal(face.lift, 2); assert.equal(face.with, 4);
 assert.ok(!featureLift(items, THUMB_FEATURES).some((f) => f.label === "Has text")); // no "without" group -> not shown
 
 console.log("logic unit tests: all passed");
+
+// Next moves: evidence-backed actions, ranked by impact and effort
+const base: MoveInputs = { channelId: "UCx", questions: [], ideas: [], heatmapBest: null, titleFeatures: [], lengths: [], formats: null, topVideos: [],
+  rising: [], healthParts: [], superfans: [], critics: [], predictions: [], lastUploadDays: null, typicalGapDays: null };
+assert.deepEqual(buildMoves(base), []);
+const moves = buildMoves({ ...base,
+  questions: [{ id: "q1", text: "Which mic do you use?", translation: null, like_count: 40, video_title: "V" }],
+  ideas: [{ title: "Budget phone guide", why: "Many ask", requests: 20, likes: 80 }],
+  heatmapBest: { day: "Saturday", block: "6–9 pm", outlier: 1.6, count: 5 },
+  titleFeatures: [{ label: "a number", with: 6, without: 9, lift: 1.8 }, { label: "a question", with: 1, without: 9, lift: 3 }],
+  predictions: [{ video_id: "v9", title: "New video", age_hours: 20, index: 2.1 }],
+  healthParts: [{ key: "consistency", label: "Consistency", score: 30, detail: "uploads in 2 of 8 weeks" }],
+  lastUploadDays: 30, typicalGapDays: 7 });
+const ids = moves.map((m) => m.id);
+assert.ok(ids.includes("answer-questions") && ids.includes("make-requested") && ids.includes("push-v9") && ids.includes("timing"));
+assert.ok(ids.includes("title-a number") && !ids.includes("title-a question"), "needs 3+ videos with the pattern");
+assert.ok(ids.includes("cadence") && ids.includes("health-consistency"));
+assert.equal(moves[0].impact, 3, "highest impact first");
+assert.ok(moves.every((m) => m.evidence.length > 0 && m.href.startsWith("/")));
+assert.ok(moves.find((m) => m.id === "answer-questions")!.evidence[0].includes("40 likes"));
+assert.equal(buildMoves({ ...base, questions: moves.length ? [{ id: "q", text: "?", translation: null, like_count: 1, video_title: "" }] : [] }, 8)[0].impact, 2);

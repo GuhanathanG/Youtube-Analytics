@@ -86,8 +86,8 @@ export function LiveProvider({ children, initial }: { children: ReactNode; initi
   );
 }
 
-function since(iso: string | undefined, now: number) {
-  if (!iso) return "";
+function since(iso: string | undefined, now: number | null) {
+  if (!iso || now === null) return "";
   const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
   return s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`;
 }
@@ -95,8 +95,9 @@ function since(iso: string | undefined, now: number) {
 /** The pill in the top bar: shows live status and lets you pause it or check right now. */
 export function LivePill() {
   const { enabled, setEnabled, last, busy, checkNow } = useLive();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 5000); return () => clearInterval(t); }, []);
+  // null until running on the device, so the server's and the phone's "12s ago" never disagree.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => { setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 5000); return () => clearInterval(t); }, []);
   const off = last?.status === "off";
   const problem = last?.status === "error" || last?.status === "quota";
   const label = !enabled ? "Live paused" : off ? "Live off" : busy ? "Checking…" : problem ? (last?.status === "quota" ? "Quota used up" : "Live · retrying") : `Live · ${since(last?.at, now) || "starting"}`;

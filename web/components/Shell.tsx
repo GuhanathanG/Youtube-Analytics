@@ -1,6 +1,6 @@
 "use client";
 
-import { ChartNoAxesCombined, Gauge, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
+import { ChartNoAxesCombined, Gauge, Rocket, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
@@ -12,6 +12,7 @@ import { Logo } from "./Logo";
 type NavChannel = { id: string; title: string; thumb: string | null; active: boolean };
 
 const NAV = [
+  { href: "/command", label: "Command", icon: Rocket },
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/ask", label: "Ask AI", icon: Sparkles },
   { href: "/comments", label: "Comments", icon: MessageSquareText },
@@ -22,7 +23,7 @@ const NAV = [
   { href: "/glance", label: "Glance", icon: Gauge },
 ];
 // The phone bar has room for four items plus search.
-const MOBILE_NAV = NAV.filter((n) => ["/", "/analytics", "/ask", "/comments"].includes(n.href));
+const MOBILE_NAV = NAV.filter((n) => ["/command", "/", "/ask", "/comments"].includes(n.href));
 
 /** Which channel the whole site shows. Switching reloads the page's data for that channel only. */
 function FocusSwitcher({ channels, focus }: { channels: NavChannel[]; focus: string | null }) {

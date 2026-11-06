@@ -29,7 +29,7 @@ export function ShareLinks({ channels, links, site }: { channels: { id: string; 
           {links.map((l) => (
             <li key={l.token} className="flex flex-wrap items-center gap-2 py-2.5 text-[13px]">
               <span className="min-w-0 flex-1 truncate"><span className="text-ink">{l.channel_title}</span>
-                <span className="ml-2 text-ink-3">{live(l) ? (l.expires_at ? `until ${new Date(l.expires_at + "Z").toLocaleDateString("en-GB")}` : "no end date") : "off"} · {l.views} views</span></span>
+                <span className="ml-2 text-ink-3">{live(l) ? (l.expires_at ? `until ${new Date(l.expires_at + "Z").toLocaleDateString("en-GB", { timeZone: "Asia/Kolkata" })}` : "no end date") : "off"} · {l.views} views</span></span>
               {live(l) && <>
                 <button type="button" onClick={() => copy(l.token)} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-ink-2 hover:text-ink">
                   {copied === l.token ? <Check size={13} /> : <Copy size={13} />}{copied === l.token ? "Copied" : "Copy link"}</button>
