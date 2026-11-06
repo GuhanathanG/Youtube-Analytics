@@ -1,6 +1,6 @@
 "use client";
 
-import { ChartNoAxesCombined, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, MessageSquareText, Search, Settings2, Sparkles } from "lucide-react";
+import { ChartNoAxesCombined, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -21,11 +21,12 @@ const NAV = [
   { href: "/manage", label: "Manage", icon: Settings2 },
 ];
 // The phone bar has room for four items plus search.
-const MOBILE_NAV = NAV.filter((n) => ["/", "/ask", "/comments", "/manage"].includes(n.href));
+const MOBILE_NAV = NAV.filter((n) => ["/", "/analytics", "/ask", "/comments"].includes(n.href));
 
 export function Shell({ children, channels }: { children: ReactNode; channels: NavChannel[] }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const [more, setMore] = useState(false);
   const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
   return (
@@ -84,10 +85,41 @@ export function Shell({ children, channels }: { children: ReactNode; channels: N
             <Icon size={18} className={isActive(href) ? "text-accent" : ""} />{label}
           </Link>
         ))}
-        <button onClick={() => setOpen(true)} className="flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] text-ink-3">
-          <Search size={18} />Search
+        <button onClick={() => setMore(true)} aria-expanded={more} aria-label="More pages"
+          className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${more || !MOBILE_NAV.some((n) => isActive(n.href)) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
+          <Menu size={18} />More
         </button>
       </nav>
+
+      {/* Phone: every page, so nothing is hidden behind the 5-button bar */}
+      {more && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="All pages">
+          <button aria-label="Close" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMore(false)} />
+          <div className="absolute inset-x-3 bottom-3 rounded-2xl border border-line-2 bg-[#0a0e1a] p-3 shadow-2xl">
+            <div className="mb-1 flex items-center justify-between px-2 py-1">
+              <span className="label">All pages</span>
+              <button onClick={() => setMore(false)} aria-label="Close menu" className="rounded-lg p-1.5 text-ink-3 hover:text-ink"><X size={18} /></button>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {NAV.map(({ href, label, icon: Icon }) => (
+                <Link key={href} href={href} onClick={() => setMore(false)}
+                  className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-3 text-[12.5px] ${isActive(href) ? "border-accent/40 bg-accent/10 text-ink" : "border-line text-ink-2"}`}>
+                  <Icon size={19} className={isActive(href) ? "text-accent" : ""} />{label}
+                </Link>
+              ))}
+              <button onClick={() => { setMore(false); setOpen(true); }}
+                className="flex flex-col items-center gap-1 rounded-xl border border-line px-2 py-3 text-[12.5px] text-ink-2">
+                <Search size={19} />Search
+              </button>
+              <form action={logout} className="contents">
+                <button className="flex flex-col items-center gap-1 rounded-xl border border-line px-2 py-3 text-[12.5px] text-ink-2">
+                  <LogOut size={19} />Sign out
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       <CommandPalette open={open} setOpen={setOpen} />
     </div>
