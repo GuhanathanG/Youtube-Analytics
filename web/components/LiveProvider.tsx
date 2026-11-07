@@ -1,6 +1,5 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
 import { Radio } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
@@ -73,14 +72,12 @@ export function LiveProvider({ children, initial }: { children: ReactNode; initi
     <LiveCtx.Provider value={{ enabled, setEnabled, last, busy, checkNow, notify }}>
       {children}
       <div className="pointer-events-none fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 lg:bottom-6" aria-live="polite">
-        <AnimatePresence>
-          {toasts.map((t) => (
-            <motion.div key={t.id} initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8 }}
-              className={`pointer-events-auto flex max-w-[360px] items-center gap-2.5 rounded-xl border px-4 py-3 text-[13.5px] shadow-2xl backdrop-blur-xl ${t.tone === "warn" ? "border-warn/40 bg-[#1a1408]/90 text-warn" : "border-accent/40 bg-[#07141a]/90 text-ink"}`}>
+                  {toasts.map((t) => (
+            <div key={t.id}
+              className={`anim-toast-in pointer-events-auto flex max-w-[360px] items-center gap-2.5 rounded-xl border px-4 py-3 text-[13.5px] shadow-2xl backdrop-blur-xl ${t.tone === "warn" ? "border-warn/40 bg-[#1a1408]/90 text-warn" : "border-accent/40 bg-[#07141a]/90 text-ink"}`}>
               <Radio size={15} className={t.tone === "warn" ? "" : "text-accent"} />{t.text}
-            </motion.div>
+            </div>
           ))}
-        </AnimatePresence>
       </div>
     </LiveCtx.Provider>
   );

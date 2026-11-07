@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { Alert } from "@/lib/alerts";
 import type { Commenter, Prediction, TopicTrend } from "@/lib/features";
 import { ago, compact, score } from "@/lib/format";
-import { TopicChart } from "./charts/TopicChart";
+import { TopicChart } from "./charts/lazy";
 import { Empty, Panel } from "./ui";
 
 function PeopleList({ people, tone, channelId }: { people: Commenter[]; tone: "pos" | "neg" | "all"; channelId: string }) {

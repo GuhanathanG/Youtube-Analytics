@@ -524,7 +524,7 @@ try {
   // Pulse Glance: the widget-style home-screen app
   const gl = await (await get("/glance")).text();
   check("Glance shows every channel with its mood, the dock and its own home-screen manifest",
-    gl.includes("PULSE // GLANCE") && gl.includes("Live Creator") && gl.includes("MOOD") && gl.includes("Ask AI") && gl.includes("/glance.webmanifest"));
+    gl.includes(">Glance<") && gl.includes("Live Creator") && gl.includes("Sentiment") && gl.includes("Ask AI") && gl.includes("/glance.webmanifest"));
   check("Glance needs sign-in", (await get("/glance", false)).status === 307);
   const gm = await (await fetch(`${BASE}/glance.webmanifest`)).json().catch(() => ({}));
   check("Glance installs as its own app (opens on /glance)", gm.start_url === "/glance" && gm.short_name === "Glance");

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { within } from "@/lib/cache";
-import { CompareChart, SERIES } from "@/components/charts/CompareChart";
+import { CompareChart } from "@/components/charts/lazy";
+import { SERIES } from "@/components/charts/series";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
 import { compareChannels } from "@/lib/features";
