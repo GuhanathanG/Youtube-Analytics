@@ -10,6 +10,7 @@
     python -m ytanalytics ai-check       # test which free AI models your keys can use
     python -m ytanalytics plan           # minutes this run may use (GitHub free-minutes budget)
     python -m ytanalytics record-job --started <unix time>
+    python -m ytanalytics train          # prediction engine: learn from every channel, save forecasts
 """
 from __future__ import annotations
 
@@ -58,6 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     wa.add_argument("--minutes", type=float, default=30)
     la.add_argument("--minutes", type=float, default=None)
     ar.add_argument("--minutes", type=float, default=None)
+    sub.add_parser("train", help="train the prediction engine (needs scikit-learn) and save forecasts + drivers")
     sub.add_parser("pending", help="number of comments waiting for analysis")
     sub.add_parser("status", help="summary of what is stored")
     sub.add_parser("plan", help="print minutes for this run (GitHub Actions budget)")
@@ -191,6 +193,10 @@ def main(argv: list[str] | None = None) -> int:
             from .heartbeat import alive
 
             print(1 if alive(session, args.minutes) else 0)
+        elif args.cmd == "train":
+            from .model import train
+
+            print(json.dumps(train(session), default=str))
         elif args.cmd == "pending":
             from .sentiment import count_pending
 

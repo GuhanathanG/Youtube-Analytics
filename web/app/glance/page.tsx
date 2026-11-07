@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChartNoAxesCombined, Clapperboard, LayoutDashboard, Lightbulb, MessageSquareText, Radar, Rocket, Settings2, Sparkles } from "lucide-react";
+import { BrainCircuit, ChartNoAxesCombined, Clapperboard, LayoutDashboard, Lightbulb, MessageSquareText, Radar, Rocket, Settings2, Sparkles } from "lucide-react";
 import { within } from "@/lib/cache";
 import { widgetData, type WidgetChannel } from "@/lib/widget";
 import { recentAlerts } from "@/lib/alerts";
@@ -23,7 +23,7 @@ const DOCK = [
   { href: "/ask", label: "Ask AI", Icon: Sparkles },
   { href: "/comments", label: "Comments", Icon: MessageSquareText },
   { href: "/analytics", label: "Analytics", Icon: ChartNoAxesCombined },
-  { href: "/radar", label: "Radar", Icon: Radar },
+  { href: "/predict", label: "Predict", Icon: BrainCircuit },
   { href: "/ideas", label: "Ideas", Icon: Lightbulb },
   { href: "/manage", label: "Manage", Icon: Settings2 },
 ];

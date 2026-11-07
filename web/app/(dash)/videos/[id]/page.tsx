@@ -11,6 +11,7 @@ import { CommentCard } from "@/components/CommentCard";
 import { InsightPanel } from "@/components/InsightPanel";
 import { PredictionBadge } from "@/components/FeaturePanels";
 import { predictions } from "@/lib/features";
+import { forecastFor } from "@/lib/engine-model";
 import { AIWatchPanel, DetailsPanel, MomentsPanel, PerformancePanel, ThumbnailPanel } from "@/components/VideoAnalysis";
 import { thumbnailsFor } from "@/lib/thumbnails";
 import { ownerReport } from "@/lib/owner";
@@ -20,7 +21,7 @@ import { videoAdvanced } from "@/lib/analytics";
 import { commentMoments, durationSeconds, getAnalysis, performance } from "@/lib/video";
 import { Reveal } from "@/components/Reveal";
 import { Empty, Panel, Stat } from "@/components/ui";
-import { date, duration } from "@/lib/format";
+import { compact, date, duration } from "@/lib/format";
 import {
   aspectCounts, comments, dailySentiment, emotionCounts, languageCounts, latestInsight, sentimentMix,
   video as getVideo, videoSnapshots, type CommentOrder, type Filters,
@@ -48,16 +49,15 @@ export default async function VideoPage({ params, searchParams }:
   const v = await getVideo(id);
   if (!v) notFound();
   const f = { videoId: id };
-  const [insight, mix, daily, langs, emos, aspects, snaps, list] = await Promise.all([
-    latestInsight("video", id), sentimentMix(f), dailySentiment(f), languageCounts(f), emotionCounts(f),
-    aspectCounts(f), videoSnapshots(id), comments({ ...f, ...tab.extra }, tab.order, 60),
-  ]);
-  const prediction = (await predictions(v.channel_id).catch(() => [])).find((p) => p.video_id === id);
   const durS = durationSeconds(v.duration);
-  const [perf, analysis, momentData, adv] = await Promise.all([
+  // One round for everything (it used to wait for the first half before starting the second).
+  const [insight, mix, daily, langs, emos, aspects, snaps, list, preds, perf, analysis, momentData, adv, fc] = await Promise.all([
+    latestInsight("video", id), sentimentMix(f), dailySentiment(f), languageCounts(f), emotionCounts(f),
+    aspectCounts(f), videoSnapshots(id), comments({ ...f, ...tab.extra }, tab.order, 60), predictions(v.channel_id).catch(() => []),
     performance(id).catch(() => null), getAnalysis(id).catch(() => null), commentMoments(id, durS).catch(() => ({ moments: [], histogram: [] })),
-    videoAdvanced(id, v.channel_id).catch(() => null),
+    videoAdvanced(id, v.channel_id).catch(() => null), forecastFor(id),
   ]);
+  const prediction = preds.find((p) => p.video_id === id);
   const thumb = (await thumbnailsFor(v.channel_id)).get(id);
   const chat = await liveChatStats(id).catch(() => null);
   const owner = await ownerReport(v.channel_id).catch(() => null);
@@ -97,6 +97,14 @@ export default async function VideoPage({ params, searchParams }:
             </div>
             <div className="mt-5"><MixBar mix={mix} /></div>
             {prediction && <div className="mt-4"><PredictionBadge p={prediction} /></div>}
+            {fc && (
+              <Link href="/predict" className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-line bg-white/[0.02] px-3 py-2 text-[13px] text-ink-2 hover:border-accent/40">
+                <span className="label">Engine forecast</span>
+                <span className="text-ink tabular">~{compact(fc.views_30d)} views in 30 days</span>
+                <span className="text-ink-3 tabular">({compact(fc.low)}–{compact(fc.high)})</span>
+                <span className={`tabular ${fc.vs_normal >= 1.5 ? "text-pos" : fc.vs_normal <= 0.6 ? "text-neg" : ""}`}>{Number(fc.vs_normal).toFixed(1)}× normal</span>
+              </Link>
+            )}
           </div>
         </div>
       </Reveal>

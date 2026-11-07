@@ -586,6 +586,27 @@ try {
     body: JSON.stringify({ question: "What do viewers say about the audio?", channelId: ch.id }) });
   check("Ask AI still finds archived comments", askArch.status === 200 && (sent.askPrompts ?? []).at(-1)?.includes("audio is bad"));
 
+  // Prediction engine: trains on history (here: 200 older practice videos where numbers in the title double the views),
+  // then the website shows its accuracy, the drivers, forecasts, a what-if estimate and engine-based next moves.
+  await db`insert into videos (id, channel_id, title, duration, published_at, view_count, like_count, comment_count, comments_disabled, comments_backfilled)
+    select 'mdl' || g, ${ch.id}, case when g % 2 = 0 then 'Top ' || g || ' tips' else 'My day out' end, 'PT12M',
+      (now() at time zone 'utc') - make_interval(days => 20 + g * 2), (case when g % 2 = 0 then 20000 else 10000 end) * (0.85 + (g % 7) * 0.05),
+      400, 30, false, true from generate_series(1, 200) g on conflict do nothing`;
+  const trainRun = spawnSync("python", ["-m", "ytanalytics", "train"], { cwd: "..", encoding: "utf8", env: { ...process.env, DATABASE_URL: DB } });
+  const trained = /"trained": true/.test(trainRun.stdout ?? "");
+  check("prediction engine trains on the channel history", trained, (trainRun.stdout + trainRun.stderr).slice(-400));
+  const getF = (path) => fetch(`${BASE}${path}`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } });
+  const pr = await (await getF("/predict")).text();
+  check("Predict page shows its tested accuracy and the measured driver", pr.includes("Lands within 2×") && pr.includes("Numbers in the title")
+    && pr.includes("Where new uploads will land"));
+  const wi = await (await getF("/predict?title=Top+7+tips&format=long&minutes=12&day=5&hour=18")).text();
+  const wo = await (await getF("/predict?title=My+day+out&format=long&minutes=12&day=5&hour=18")).text();
+  const mult = (h) => Number((/([\d.]+)×(?:<!-- -->)? this channel/.exec(h) ?? [])[1] ?? NaN);
+  check("what-if: a title with a number is estimated higher (as the engine learned)", mult(wi) > mult(wo), `${mult(wi)} vs ${mult(wo)}`);
+  check("next moves include the engine's finding", (await (await getF("/command")).text()).includes("Lean into: numbers in the title"));
+  const [young] = await db`select video_id from video_forecast where channel_id = ${ch.id} limit 1`;
+  check("a young video shows the engine's 30-day forecast", Boolean(young) && (await (await get(`/videos/${young.video_id}`)).text()).includes("Engine forecast"));
+
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma",
     "/ask", "/ideas", `/compare?c=${ch?.id}`, "/analytics"]) {

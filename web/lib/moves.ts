@@ -32,6 +32,9 @@ export type MoveInputs = {
   typicalGapDays: number | null;
   platform?: "youtube" | "instagram";
   rivalBreakouts?: { channel: string; id: string; title: string; outlier: number }[];
+  /** Prediction engine (ytanalytics/model.py): measured drivers and 30-day forecasts for young videos. */
+  engine?: { drivers: { key: string; label: string; kind: string; effect: number }[];
+    forecasts: { video_id: string; title: string; vs_normal: number; confidence: number; views_30d: number }[] } | null;
   /** Private YouTube Analytics for connected channels. */
   owner?: { avgViewPct: number | null; ctr: number | null; videos: { id: string; title: string; views: number; avgViewPct: number }[];
     trafficShare: { source: string; label: string; share: number }[] } | null;
@@ -40,6 +43,7 @@ export type MoveInputs = {
 const enc = encodeURIComponent;
 const short = (s: string, n = 90) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const x = (v: number) => `${v >= 10 ? v.toFixed(0) : v.toFixed(1)}×`;
+const pct = (v: number) => `${v >= 0 ? "+" : "−"}${Math.round(Math.abs(v) * 100)}%`;
 
 export function buildMoves(i: MoveInputs, limit = 8): Move[] {
   const m: Move[] = [];
@@ -170,5 +174,27 @@ export function buildMoves(i: MoveInputs, limit = 8): Move[] {
     href: `/people/${enc(critic.author_channel_id)}?c=${c}`, cta: "Read their comments" });
 
   const score = (mv: Move) => mv.impact * 3 - mv.effort + (mv.kind === "growth" ? 1 : 0);
+  // Prediction engine: what it measured, and where new uploads are heading.
+  if (i.engine) {
+    const kindOf = (k: string): Move["kind"] => (k === "title" || k === "packaging" ? "packaging" : k === "timing" ? "timing" : "content");
+    const up = i.engine.drivers.find((d) => d.effect >= 0.15);
+    if (up) m.push({ id: `engine-up-${up.key}`, kind: kindOf(up.kind), title: `Lean into: ${up.label.toLowerCase()}`,
+      why: "The prediction engine measured this across your history (and it held in both older and newer videos).",
+      evidence: [`${pct(up.effect)} views vs the channel's normal`], impact: up.effect >= 0.4 ? 3 : 2, effort: 1, href: "/predict", cta: "See the engine" });
+    const down = i.engine.drivers.find((d) => d.effect <= -0.15);
+    if (down) m.push({ id: `engine-down-${down.key}`, kind: "fix", title: `Drop: ${down.label.toLowerCase()}`,
+      why: "The prediction engine found this costs views on your channel, consistently over time.",
+      evidence: [`${pct(down.effect)} views vs the channel's normal`], impact: down.effect <= -0.4 ? 3 : 2, effort: 1, href: "/predict", cta: "See the engine" });
+    const hot = i.engine.forecasts.filter((f) => f.vs_normal >= 2 && f.confidence >= 0.3).sort((a, b) => b.vs_normal - a.vs_normal)[0];
+    if (hot) m.push({ id: `engine-hot-${hot.video_id}`, kind: "growth", title: `Ride the wave: “${short(hot.title, 46)}”`,
+      why: `It's on course for well above your normal. Pin a comment, post about it, and plan a follow-up while interest is high.`,
+      evidence: [`Forecast: ${x(hot.vs_normal)} your normal (~${hot.views_30d.toLocaleString("en")} views in 30 days)`],
+      impact: 3, effort: 1, href: `/studio?topic=${enc(hot.title)}`, cta: "Plan a follow-up" });
+    const cold = i.engine.forecasts.filter((f) => f.vs_normal <= 0.5 && f.confidence >= 0.5).sort((a, b) => a.vs_normal - b.vs_normal)[0];
+    if (cold) m.push({ id: `engine-cold-${cold.video_id}`, kind: "fix", title: `Rescue “${short(cold.title, 46)}”`,
+      why: "It's heading for well under your normal. A sharper title or thumbnail now, while YouTube is still testing it, can turn it around.",
+      evidence: [`Forecast: ${x(cold.vs_normal)} your normal`], impact: 2, effort: 1, href: `/videos/${enc(cold.video_id)}`, cta: "Open the video" });
+  }
+
   return m.sort((a, b) => score(b) - score(a)).slice(0, limit);
 }
