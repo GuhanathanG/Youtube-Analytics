@@ -23,7 +23,7 @@ export function ConnectChannel({ configured, connections, notice }: { configured
         <ul className="mt-4 divide-y divide-line">
           {connections.map((c) => (
             <li key={c.channel_id} className="flex items-center gap-3 py-2.5 text-[13.5px]">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+              <span className="h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_8px_#22d3ee]" />
               <span className="min-w-0 flex-1"><span className="block truncate text-ink">{c.title ?? c.channel_id}</span>
                 <span className={`block truncate text-[12px] ${c.error ? "text-neg" : "text-ink-3"}`}>{c.error ?? (c.pulled_at ? "numbers up to date" : "waiting for the first pull")}</span></span>
               <button disabled={pending} onClick={() => start(() => disconnectChannel(c.channel_id))}

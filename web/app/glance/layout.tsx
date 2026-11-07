@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   manifest: "/glance.webmanifest",
   appleWebApp: { capable: true, title: "Glance", statusBarStyle: "black-translucent" },
 };
-export const viewport: Viewport = { themeColor: "#0c0c0d", colorScheme: "dark", viewportFit: "cover" };
+export const viewport: Viewport = { themeColor: "#03040a", colorScheme: "dark", viewportFit: "cover" };
 export const dynamic = "force-dynamic";
 
 export default function GlanceLayout({ children }: { children: React.ReactNode }) {

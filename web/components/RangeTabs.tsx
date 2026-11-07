@@ -21,7 +21,7 @@ export function RangeTabs({ current, basePath, params = {} }: { current: string;
         const on = r.key === current;
         return (
           <Link key={r.key} href={`${basePath}?${q}`} scroll={false} role="tab" aria-selected={on}
-            className={`rounded-full px-3 py-1.5 text-[12px] transition ${on ? "bg-white/[0.09] text-ink" : "text-ink-3 hover:text-ink-2"}`}>
+            className={`rounded-lg px-3 py-1.5 font-mono text-[12px] transition ${on ? "bg-white/[0.09] text-ink shadow-[0_0_0_1px_rgba(34,211,238,0.35)]" : "text-ink-3 hover:text-ink-2"}`}>
             {r.label}
           </Link>
         );

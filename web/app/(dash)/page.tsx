@@ -72,7 +72,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         <>
           <Reveal delay={0.1} className="mt-8">
             <div className="mb-3 flex items-end justify-between">
-              <h2 className="text-lg font-medium">Channels</h2>
+              <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">Channels</h2>
               <span className="label">{allChs.length} watching</span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -92,11 +92,11 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                   <div className="mt-5 flex items-end justify-between">
                     <div>
                       <div className="label">Sentiment</div>
-                      <div className="mt-1 text-2xl font-light tabular">{score(c.avg_sentiment)}</div>
+                      <div className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold tabular">{score(c.avg_sentiment)}</div>
                     </div>
                     <div className="text-right">
                       <div className="label">Comments</div>
-                      <div className="mt-1 text-2xl font-light tabular">{compact(c.comments)}</div>
+                      <div className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold tabular">{compact(c.comments)}</div>
                     </div>
                   </div>
                   <div className="mt-4"><MixBar mix={c} size="sm" /></div>

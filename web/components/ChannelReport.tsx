@@ -52,7 +52,7 @@ export async function ChannelReport({ channelId, mode, footer }: { channelId: st
         {ch.thumbnail_url && <img src={ch.thumbnail_url} alt="" className="h-14 w-14 rounded-full object-cover ring-1 ring-white/10" />}
         <div className="min-w-0">
           <div className="label">{share ? "Shared channel report" : "Weekly report"} · {weekOf}</div>
-          <h1 className="truncate font-serif-display text-2xl text-ink">{ch.title}</h1>
+          <h1 className="truncate font-[family-name:var(--font-display)] text-2xl font-semibold text-ink">{ch.title}</h1>
           <div className="text-[13px] text-ink-3">{compact(ch.subscriber_count)} subscribers · {compact(ch.video_count)} videos · {compact(ch.comments)} comments analysed</div>
         </div>
       </header>

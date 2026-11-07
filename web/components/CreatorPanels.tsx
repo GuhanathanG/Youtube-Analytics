@@ -6,7 +6,7 @@ import { ago, compact, score } from "@/lib/format";
 import { Sparkline } from "./AnalyticsParts";
 import { Empty, Panel, Tag } from "./ui";
 
-const ring = (s: number | null) => (s === null ? "#7c869b" : s >= 80 ? "#8db39a" : s >= 65 ? "#c8a97e" : s >= 45 ? "#d3a657" : "#c98479");
+const ring = (s: number | null) => (s === null ? "#7c869b" : s >= 80 ? "#0ca30c" : s >= 65 ? "#22d3ee" : s >= 45 ? "#fab219" : "#e66767");
 
 /** 7. Channel health: one 0–100 score from six parts, with the last 8 weeks. */
 export function HealthCard({ h }: { h: Health }) {
@@ -21,7 +21,7 @@ export function HealthCard({ h }: { h: Health }) {
             <circle cx="18" cy="18" r="15.9" fill="none" stroke={c} strokeWidth="3" strokeLinecap="round" strokeDasharray={`${pct} 100`} />
           </svg>
           <div className="absolute inset-0 grid place-items-center text-center">
-            <div><div className="text-3xl font-light tabular text-ink">{h.score ?? "–"}</div>
+            <div><div className="font-[family-name:var(--font-display)] text-3xl font-semibold tabular text-ink">{h.score ?? "–"}</div>
               <div className="text-[11.5px]" style={{ color: c }}>{h.grade}</div></div>
           </div>
         </div>
@@ -39,7 +39,7 @@ export function HealthCard({ h }: { h: Health }) {
           ) : <Empty>Builds up as data is collected.</Empty>}
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[12px] text-ink-3">
             <span className="flex items-center gap-2">Mood, last 8 weeks <Sparkline values={h.weekly.map((w) => (w.mood === null ? 0 : (w.mood + 1) * 50))} /></span>
-            <span className="flex items-center gap-2">Comments per week <Sparkline values={h.weekly.map((w) => w.comments)} color="#9c8467" /></span>
+            <span className="flex items-center gap-2">Comments per week <Sparkline values={h.weekly.map((w) => w.comments)} color="#8b7cf6" /></span>
             <span>Uploads: {h.weekly.map((w) => w.uploads).join(" · ")}</span>
           </div>
         </div>
