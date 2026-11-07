@@ -5,7 +5,8 @@ import { AXIS, GRID } from "./colors";
 import { GlassTooltip } from "./Tooltip";
 
 // Fixed categorical order (never cycled): a channel keeps its colour whatever else is selected.
-export const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500"];
+import { SERIES } from "./series";
+export { SERIES };
 
 export function CompareChart({ data, channels }: { data: Record<string, string | number | null>[]; channels: { id: string; title: string }[] }) {
   return (

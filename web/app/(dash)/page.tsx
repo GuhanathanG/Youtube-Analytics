@@ -5,7 +5,7 @@ import { focusChannel } from "@/lib/focus";
 import { summaries } from "@/lib/summary";
 import Link from "next/link";
 import { MixBar } from "@/components/charts/MixBar";
-import { TrendChart } from "@/components/charts/TrendChart";
+import { TrendChart } from "@/components/charts/lazy";
 import { RangeTabs, rangeSince } from "@/components/RangeTabs";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Stat } from "@/components/ui";
@@ -28,20 +28,21 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   // Channel focus (top bar): everything below is about that one channel unless "All channels" is chosen.
   const focus = await focusChannel(allChs.filter((c) => c.active).map((c) => c.id));
   const chs = focus ? allChs.filter((c) => c.id === focus) : allChs;
-  const sums = await within(summaries(), 8000, new Map());
-  const [kAll, daily, briefs, latest] = await Promise.all([
+  // Everything below loads at once (it used to wait in three rounds).
+  const [sums, kAll, daily, briefs, latest, progAll, alertList, preds, live] = await Promise.all([
+    within(summaries(), 8000, new Map()),
     within(kpis(), 10_000, { channels: 0, videos: 0, comments: 0, analyzed: 0, ai_read: 0, videos_backfilling: 0, last_fetch: null,
       quota_used_today: 0, comments_24h: 0 }),
     within(focus ? panel("daily", focus, key) : overviewDaily(key), 12_000, []),
     within(recentInsights(4, focus), 8000, []), within(comments({ hideSpam: true, channelId: focus }, "newest", 8), 8000, []),
+    within(progress(), 15000, []), within(recentAlerts(8, focus), 8000, []), within(predictions(focus ?? undefined), 10000, []),
+    within(liveNow(), 8000, []),
   ]);
   const one = focus ? sums.get(focus) : null;
   const fc = focus ? allChs.find((c) => c.id === focus) : null;
   const k = one && fc ? { ...kAll, channels: 1, comments: one.comments, analyzed: one.analyzed, ai_read: one.ai_read, comments_24h: one.comments_24h,
     videos: fc.videos_stored, videos_backfilling: Math.max(0, fc.videos_stored - fc.videos_backfilled) } : kAll;
-  const prog = (await within(progress(), 15000, [])).filter((p) => !focus || p.channel_id === focus);
-  const [alertList, preds, live] = await Promise.all([within(recentAlerts(8, focus), 8000, []), within(predictions(focus ?? undefined), 10000, []),
-    within(liveNow(), 8000, [])]);
+  const prog = progAll.filter((p) => !focus || p.channel_id === focus);
   const historyBusy = prog.some((p) => p.comments_stored < p.comments_on_youtube * 0.98 || p.ai_read < p.comments_stored * 0.98
     || (p.videos_total ?? 0) > p.videos_known);
   const analysed = chs.reduce((s, c) => s + c.positive + c.neutral + c.negative, 0);
