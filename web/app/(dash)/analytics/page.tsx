@@ -16,7 +16,7 @@ import { channels as getChannels } from "@/lib/queries";
 export const metadata = { title: "Analytics" };
 
 const pctText = (x: number | null | undefined, digits = 1) => (x === null || x === undefined ? "–" : `${(x * 100).toFixed(digits)}%`);
-const LANG_COLORS = ["#c8a97e", "#9c8467", "#8db39a", "#d3a657", "#c98479", "#7c869b"];
+const LANG_COLORS = ["#22d3ee", "#8b7cf6", "#3987e5", "#fab219", "#e66767", "#7c869b"];
 const LANG_NAMES: Record<string, string> = { en: "English", ta: "Tamil", hi: "Hindi", te: "Telugu", ml: "Malayalam", kn: "Kannada", und: "Unknown", other: "Other" };
 
 function VideoRow({ v }: { v: VideoPerf }) {
@@ -192,7 +192,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
       <Reveal className="mt-4">
         <Panel title="Video length" subtitle="Typical result by length">
-          <BarList rows={a.lengths.map((l) => ({ label: l.label, value: l.count, hint: `typical ${times(l.outlier)} · ${compact(l.medianViews)} views` }))} color="#9c8467" empty="Needs more videos." />
+          <BarList rows={a.lengths.map((l) => ({ label: l.label, value: l.count, hint: `typical ${times(l.outlier)} · ${compact(l.medianViews)} views` }))} color="#8b7cf6" empty="Needs more videos." />
         </Panel>
       </Reveal>
 
@@ -217,7 +217,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                       <Link href={`/videos/${v.id}`} className="min-w-0 truncate text-ink-2 hover:text-accent">{v.title}</Link>
                       <span className="tabular text-ink-3">{v.returning} / {v.commenters}</span>
                     </div>
-                    <SplitBar a={v.returning} b={v.newPeople} aColor="#9c8467" bColor="#c8a97e" max={maxPeople} />
+                    <SplitBar a={v.returning} b={v.newPeople} aColor="#8b7cf6" bColor="#22d3ee" max={maxPeople} />
                   </li>
                 ))}
               </ul>
@@ -232,7 +232,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                   <li key={m.month}>
                     <div className="mb-1 flex justify-between text-[13px]"><span className="text-ink-2">{m.month}</span>
                       <span className="tabular text-ink-3">{compact(m.commenters)} people · {pctText(m.returning / Math.max(1, m.commenters), 0)} returning</span></div>
-                    <SplitBar a={m.returning} b={m.commenters - m.returning} aColor="#9c8467" bColor="#c8a97e" max={maxMonth} />
+                    <SplitBar a={m.returning} b={m.commenters - m.returning} aColor="#8b7cf6" bColor="#22d3ee" max={maxMonth} />
                   </li>
                 ))}
               </ul>
@@ -295,7 +295,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                       {t.keywords && <div className="mt-1 text-[12.5px] text-ink-3">{t.keywords}</div>}
                       {t.examples[0] && <div className="mt-1.5 truncate text-[13px] text-ink-2">“{t.examples[0].text}”</div>}
                     </div>
-                    <Sparkline values={weeks} color={(t.sentiment ?? 0) < -0.1 ? "#c98479" : "#c8a97e"} />
+                    <Sparkline values={weeks} color={(t.sentiment ?? 0) < -0.1 ? "#e66767" : "#22d3ee"} />
                   </li>
                 );
               })}

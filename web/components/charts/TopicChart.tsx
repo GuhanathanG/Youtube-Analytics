@@ -4,7 +4,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { AXIS, GRID } from "./colors";
 import { GlassTooltip } from "./Tooltip";
 
-const COLORS = ["#8db39a", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"]; // fixed order, dark-mode steps
+const COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"]; // fixed order, dark-mode steps
 
 /** Monthly mentions per topic (aspect) — what viewers talk about, over the last 12 months. */
 export function TopicChart({ months, series }: { months: string[]; series: { key: string; label: string; counts: number[] }[] }) {
@@ -20,7 +20,7 @@ export function TopicChart({ months, series }: { months: string[]; series: { key
         <Legend wrapperStyle={{ fontSize: 12, color: "#b4bccd" }} />
         {series.map((s, i) => (
           <Line key={s.key} type="monotone" dataKey={s.key} name={s.label} stroke={COLORS[i]} strokeWidth={2} dot={false}
-            activeDot={{ r: 4, stroke: "#0c0c0d", strokeWidth: 2 }} />
+            activeDot={{ r: 4, stroke: "#05070d", strokeWidth: 2 }} />
         ))}
       </LineChart>
     </ResponsiveContainer>

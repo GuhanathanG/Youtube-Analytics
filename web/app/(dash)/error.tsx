@@ -6,7 +6,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   return (
     <div className="panel mx-auto mt-10 max-w-xl p-8">
       <div className="label">Something went wrong</div>
-      <h1 className="mt-2 font-serif-display text-2xl">{db ? "Can't reach the database" : "This page hit an error"}</h1>
+      <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold">{db ? "Can't reach the database" : "This page hit an error"}</h1>
       <p className="mt-3 text-[14px] text-ink-2">
         {db ? "Check the DATABASE_URL setting in Vercel (Project → Settings → Environment Variables). Use Supabase's Transaction pooler address (port 6543) with your real password, then redeploy."
           : "Try again in a moment. If it keeps happening, the background run may still be setting up the database."}

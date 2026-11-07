@@ -21,7 +21,7 @@ export function OwnerPanel({ r }: { r: OwnerReport & { updated_at: string } }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {tiles.map(([k, v]) => (
           <div key={k} className="rounded-xl border border-accent/20 bg-accent/[0.04] px-3 py-2.5">
-            <div className="label">{k}</div><div className="mt-1 text-[18px] font-light tabular">{v}</div>
+            <div className="label">{k}</div><div className="mt-1 font-[family-name:var(--font-display)] text-[18px] font-semibold tabular">{v}</div>
           </div>
         ))}
       </div>

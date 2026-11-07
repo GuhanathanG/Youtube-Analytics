@@ -74,7 +74,7 @@ export function PredictionBadge({ p }: { p: Prediction }) {
   return (
     <div className="rounded-xl border border-line bg-white/[0.02] p-4">
       <div className="label">Early performance · {Math.round(p.age_hours)} h old</div>
-      <div className={`mt-1 text-xl font-medium ${color}`}>{label}{idx != null && ` (${idx.toFixed(1)}×)`}</div>
+      <div className={`mt-1 font-[family-name:var(--font-display)] text-xl font-semibold ${color}`}>{label}{idx != null && ` (${idx.toFixed(1)}×)`}</div>
       <div className="mt-1 text-[12.5px] text-ink-2 tabular">
         {compact(p.views)} views now{p.expected_views_now != null && ` · usual at this age ≈ ${compact(p.expected_views_now)}`}
         {p.projected_7d != null && ` · ≈ ${compact(p.projected_7d)} by day 7`}

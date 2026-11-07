@@ -16,10 +16,10 @@ export function ShareLinks({ channels, links, site }: { channels: { id: string; 
   return (
     <div className="space-y-4">
       <form action={createShareAction} className="flex flex-wrap items-center gap-2">
-        <select name="channel" aria-label="Channel to share" className="h-10 rounded-xl border border-line-2 bg-[#141416] px-3 text-[13.5px] text-ink">
+        <select name="channel" aria-label="Channel to share" className="h-10 rounded-xl border border-line-2 bg-[#0a0e1a] px-3 text-[13.5px] text-ink">
           {channels.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
         </select>
-        <select name="days" aria-label="Link stops working after" defaultValue="30" className="h-10 rounded-xl border border-line-2 bg-[#141416] px-3 text-[13.5px] text-ink">
+        <select name="days" aria-label="Link stops working after" defaultValue="30" className="h-10 rounded-xl border border-line-2 bg-[#0a0e1a] px-3 text-[13.5px] text-ink">
           <option value="7">for 7 days</option><option value="30">for 30 days</option><option value="90">for 90 days</option><option value="0">until I turn it off</option>
         </select>
         <button className="inline-flex h-10 items-center gap-2 rounded-xl bg-accent/15 px-4 text-[13.5px] text-accent ring-1 ring-accent/30 hover:bg-accent/25"><Link2 size={15} />Create link</button>

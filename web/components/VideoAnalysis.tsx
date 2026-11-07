@@ -15,7 +15,7 @@ function Tile({ label, value, sub, note }: { label: string; value: string; sub?:
   return (
     <div className="rounded-xl border border-line bg-white/[0.02] p-4">
       <div className="label">{label}</div>
-      <div className="mt-1.5 text-2xl font-light tabular text-ink">{value}</div>
+      <div className="mt-1.5 font-[family-name:var(--font-display)] text-2xl font-semibold tabular text-ink">{value}</div>
       {sub && <div className="mt-1 text-[12.5px] text-ink-2">{sub}</div>}
       {note && <div className="mt-1 text-[11.5px] text-ink-3">{note}</div>}
     </div>
@@ -30,17 +30,17 @@ function AdvancedRow({ adv }: { adv: VideoAdvanced }) {
     <div className="mt-3 grid gap-3 sm:grid-cols-3">
       <div className="rounded-xl border border-line bg-white/[0.02] p-4">
         <div className="label">Outlier score</div>
-        <div className="mt-1.5 flex items-center gap-2"><span className="text-2xl font-light tabular text-ink">{times(adv.outlier)}</span><OutlierBadge value={adv.outlier} /></div>
+        <div className="mt-1.5 flex items-center gap-2"><span className="font-[family-name:var(--font-display)] text-2xl font-semibold tabular text-ink">{times(adv.outlier)}</span><OutlierBadge value={adv.outlier} /></div>
         <div className="mt-1 text-[12.5px] text-ink-2">{adv.outlier === null ? "Shown once the video is 3 days old" : `vs a typical ${adv.format.toLowerCase()} here (${compact(adv.typicalViews)} views)`}</div>
       </div>
       <div className="rounded-xl border border-line bg-white/[0.02] p-4">
         <div className="label">First 24 hours</div>
-        <div className="mt-1.5 text-2xl font-light tabular text-ink">{adv.views24 !== null ? compact(adv.views24) : "–"}</div>
+        <div className="mt-1.5 font-[family-name:var(--font-display)] text-2xl font-semibold tabular text-ink">{adv.views24 !== null ? compact(adv.views24) : "–"}</div>
         <div className="mt-1 text-[12.5px] text-ink-2">{early !== null ? `${times(early)} the channel's usual ${compact(adv.median24)}` : "Needs a snapshot from around 24 h after upload"}</div>
       </div>
       <div className="rounded-xl border border-line bg-white/[0.02] p-4">
         <div className="label">View forecast</div>
-        <div className="mt-1.5 text-2xl font-light tabular text-ink">{adv.forecast ? compact(adv.forecast.d30) : "–"}</div>
+        <div className="mt-1.5 font-[family-name:var(--font-display)] text-2xl font-semibold tabular text-ink">{adv.forecast ? compact(adv.forecast.d30) : "–"}</div>
         <div className="mt-1 text-[12.5px] text-ink-2">{adv.forecast ? `by day 30 · ${compact(adv.forecast.d7)} a week from now` : adv.ageDays >= 30 ? "Forecasts are for videos under 30 days old" : "Needs a few more hours of tracking"}</div>
         <div className="mt-1 text-[11.5px] text-ink-3">Rough trend from this video&apos;s own view history</div>
       </div>

@@ -516,7 +516,7 @@ try {
   const chOwner = await (await get(`/channels/${ch.id}`)).text();
   check("the channel page shows private analytics", chOwner.includes("Private analytics · connected") && chOwner.includes("Subscriptions feed") && chOwner.includes("41%") && chOwner.includes("Click-through"));
   const vOwner = await (await get("/videos/livevid0001")).text();
-  check("the video page shows % watched and flags fast drop-off", vOwner.includes("Private analytics · last 28 days") && vOwner.includes("loses viewers faster"));
+  check("the video page shows % watched and flags fast drop-off", vOwner.includes("PRIVATE ANALYTICS") && vOwner.includes("loses viewers faster"));
   const cmdO = await (await fetch(`${BASE}/command`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } })).text();
   check("private analytics become next moves", cmdO.includes("Fix the opening of") && cmdO.includes("Lift click-through") && cmdO.includes("Reach beyond your subscribers"));
   check("Manage lists the connected channel", (await (await get("/manage")).text()).includes("numbers up to date"));
@@ -524,7 +524,7 @@ try {
   // Pulse Glance: the widget-style home-screen app
   const gl = await (await get("/glance")).text();
   check("Glance shows every channel with its mood, the dock and its own home-screen manifest",
-    gl.includes("Creator Pulse · Glance") && gl.includes("Live Creator") && gl.includes("Mood") && gl.includes("Ask AI") && gl.includes("/glance.webmanifest"));
+    gl.includes("PULSE // GLANCE") && gl.includes("Live Creator") && gl.includes("MOOD") && gl.includes("Ask AI") && gl.includes("/glance.webmanifest"));
   check("Glance needs sign-in", (await get("/glance", false)).status === 307);
   const gm = await (await fetch(`${BASE}/glance.webmanifest`)).json().catch(() => ({}));
   check("Glance installs as its own app (opens on /glance)", gm.start_url === "/glance" && gm.short_name === "Glance");

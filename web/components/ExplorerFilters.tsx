@@ -11,7 +11,7 @@ function Select({ name, value, options, onChange, label }: { name: string; value
     <label className="flex flex-col gap-1">
       <span className="label">{label}</span>
       <select value={value} onChange={(e) => onChange(name, e.target.value)}
-        className="h-10 rounded-xl border border-line bg-[#141416] px-3 text-[13.5px] text-ink outline-none transition hover:border-line-2 focus:border-accent/60">
+        className="h-10 rounded-xl border border-line bg-[#0a0e1a] px-3 text-[13.5px] text-ink outline-none transition hover:border-line-2 focus:border-accent/60">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </label>
