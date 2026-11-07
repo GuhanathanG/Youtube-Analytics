@@ -1,5 +1,5 @@
 import "server-only";
-import { sql, ensureRls, ensureColumns, ensureIndex } from "./db";
+import { sql, ensureRls, ensureColumns } from "./db";
 import { aiSlots, labelBacklog, labelComments } from "./ai";
 import { writeDueIdeas, writeDueInsights } from "./insights";
 import { ensureVideoTables } from "./video";
@@ -61,8 +61,7 @@ async function ensureLiveTable() {
     id integer primary key, last_tick_at timestamp, last_uploads_at timestamp, last_result text)`;
   await ensureColumns("live_state", [["last_cron_at", "timestamp"]]);
   await ensureRls("live_state");
-  // Fast "what should the AI read next" without sorting the whole backlog.
-  await ensureIndex("ix_comments_ai_pending", "create index if not exists ix_comments_ai_pending on comments (published_at desc) where ai_at is null");
+  // "What should the AI read next" uses ix_comments_ai_next, built by the worker (db.py EXTRA_INDEXES).
   await db`insert into live_state (id) values (1) on conflict do nothing`;
   await ensureInstagram(); // channels.platform (null = YouTube), used by the YouTube-only steps below
   await ensureColumns("channels", [["role", "text"]]); // "competitor": videos and stats only, no comments

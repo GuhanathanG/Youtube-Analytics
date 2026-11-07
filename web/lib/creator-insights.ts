@@ -1,5 +1,5 @@
 import "server-only";
-import { stored } from "./stored";
+import { stored, sizedAge } from "./stored";
 import { sql } from "./db";
 import { channelAnalytics, audienceAnalytics } from "./analytics";
 import { median } from "./analytics-math";
@@ -15,7 +15,7 @@ export type OpenQuestion = {
 
 /** Top-level viewer questions from the last 6 months that the creator never replied to, most liked first. */
 export function unansweredQuestions(channelId: string, limit = 40): Promise<OpenQuestion[]> {
-  return stored(`questions:${channelId}:${limit}`, TTL, async () => {
+  return sizedAge(channelId, TTL).then((age) => stored(`questions:${channelId}:${limit}`, age, async () => {
     const db = sql();
     // Step 1: the most-liked recent questions (uses the channel index).
     const candidates = (await db`
@@ -33,7 +33,7 @@ export function unansweredQuestions(channelId: string, limit = 40): Promise<Open
       where channel_id = ${channelId} and author_channel_id = ${channelId} and parent_id in ${db(candidates.map((q) => q.id))}`)
       .map((r) => r.parent_id as string));
     return candidates.filter((q) => !answered.has(q.id)).slice(0, limit);
-  });
+  }));
 }
 
 /* ================================================================== 7. channel health score */
@@ -42,7 +42,7 @@ export type Health = ReturnType<typeof healthScore> & {
 };
 
 export function channelHealth(channelId: string): Promise<Health> {
-  return stored(`health:${channelId}`, TTL, () => computeHealth(channelId));
+  return sizedAge(channelId, TTL).then((age) => stored(`health:${channelId}`, age, () => computeHealth(channelId)));
 }
 
 export async function computeHealth(channelId: string): Promise<Health> {
@@ -97,7 +97,7 @@ export async function computeHealth(channelId: string): Promise<Health> {
 export type BrandRow = { name: string; videos: number; sponsored: number; mentions: number; mood: number | null; examples: { id: string; title: string }[] };
 
 export function brandTracker(channelId: string): Promise<BrandRow[]> {
-  return stored(`brands:${channelId}`, TTL, () => computeBrands(channelId));
+  return sizedAge(channelId, TTL).then((age) => stored(`brands:${channelId}`, age, () => computeBrands(channelId)));
 }
 
 export async function computeBrands(channelId: string): Promise<BrandRow[]> {

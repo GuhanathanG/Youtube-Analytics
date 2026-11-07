@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "./db";
+import { stored, sizedAge } from "./stored";
 import { ASPECT_LABELS } from "./queries-shared";
 
 /* ================================================================== 5. superfans & critics */
@@ -170,7 +171,14 @@ export type CompareRow = {
   comments_per_video: number | null; questions: number; requests: number;
 };
 
+/** Saved per set of channels (the totals scan every comment of each channel). */
 export async function compareChannels(ids: string[]) {
+  const base = Number(process.env.PAGE_CACHE_SECONDS ?? 600) * 1000;
+  const age = Math.min(...(await Promise.all(ids.map((id) => sizedAge(id, base)))), base * 24);
+  return stored(`compare:${[...ids].sort().join(",")}`, age, () => computeCompare(ids));
+}
+
+async function computeCompare(ids: string[]) {
   const db = sql();
   if (!ids.length) return { rows: [] as CompareRow[], weekly: [] as Record<string, string | number | null>[], overlap: [] as { a: string; b: string; shared: number; jaccard: number }[] };
   const rows = (await db`
