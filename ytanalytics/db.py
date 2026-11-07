@@ -339,7 +339,14 @@ EXTRA_INDEXES = {
     "ix_comments_parent": "ON comments (parent_id, author_channel_id) WHERE parent_id IS NOT NULL",
     # Commenter pages and loyal-viewer counts.
     "ix_comments_author": "ON comments (channel_id, author_channel_id)",
+    # "Newest comments" lists (Overview, channel pages, Glance, Comments): ORDER BY published_at DESC NULLS LAST.
+    # Without these the database sorted every comment of the channel on each visit (4-7 s on 770k comments).
+    "ix_comments_channel_newest": "ON comments (channel_id, published_at DESC NULLS LAST)",
+    "ix_comments_newest": "ON comments (published_at DESC NULLS LAST)",
 }
+
+# Unused duplicates, removed without blocking writers (ix_comments_ai_next does the same job).
+DROP_CONCURRENTLY = ["ix_comments_ai_pending"]
 
 
 def ensure_extra_indexes(engine: Engine) -> None:
@@ -354,6 +361,15 @@ def ensure_extra_indexes(engine: Engine) -> None:
                                  "(quote_ident(schemaname) || '.' || quote_ident(indexname))::regclass) AS valid "
                                  "FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'comments'")).all()
     have = {r[0]: r[1] for r in rows}
+    for name in DROP_CONCURRENTLY:  # first, so the space is free for the new ones
+        if name in have:
+            try:
+                with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                    conn.execute(text("SET lock_timeout = '3s'"))
+                    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {name}"))
+                logging.getLogger(__name__).info("Dropped unused index %s", name)
+            except Exception as e:
+                logging.getLogger(__name__).warning("Index %s not dropped yet: %s", name, str(e).splitlines()[0])
     for name, spec in EXTRA_INDEXES.items():
         if have.get(name) is True:
             continue

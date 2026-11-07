@@ -1,5 +1,5 @@
 import "server-only";
-import { stored, refreshStored } from "./stored";
+import { stored, refreshStored, sizedAge } from "./stored";
 import { aspectCounts, dailySentiment, emotionCounts, languageCounts, sentimentMix, type Filters } from "./queries";
 import { commenters, predictions, topicTrends } from "./features";
 import { computeAudience, computeChannel } from "./analytics";
@@ -34,7 +34,7 @@ type Result<N extends Name> = Awaited<ReturnType<(typeof defs)[N]>>;
 const key = (name: Name, channelId: string, range: string) => `ch:${channelId}:${["mix", "daily", "langs", "emos", "aspects"].includes(name) ? range : "-"}:${name}`;
 
 export function panel<N extends Name>(name: N, channelId: string, range = "all"): Promise<Result<N>> {
-  return stored(key(name, channelId, range), AGE(), () => defs[name](channelId, range) as Promise<Result<N>>);
+  return sizedAge(channelId, AGE()).then((age) => stored(key(name, channelId, range), age, () => defs[name](channelId, range) as Promise<Result<N>>));
 }
 
 export const overviewDaily = (range: string) =>
@@ -43,6 +43,7 @@ export const overviewDaily = (range: string) =>
 /** Engine: refresh one channel's saved sections that are due (default range only). Returns how many ran. */
 export async function warmChannel(channelId: string, timeLeft: () => boolean): Promise<number> {
   let n = 0;
+  const [age, ana] = await Promise.all([sizedAge(channelId, AGE()), sizedAge(channelId, Number(process.env.ANALYTICS_CACHE_SECONDS ?? 600) * 1000)]);
   const jobs: [string, () => Promise<unknown>][] = [
     ...(Object.keys(defs) as Name[]).map((name) => [key(name, channelId, "all"), () => defs[name](channelId, "all")] as [string, () => Promise<unknown>]),
     // Same keys as the Analytics page uses (analytics.ts, creator-insights.ts).
@@ -53,7 +54,7 @@ export async function warmChannel(channelId: string, timeLeft: () => boolean): P
   ];
   for (const [k, fn] of jobs) {
     if (!timeLeft()) break;
-    if (await refreshStored(k, AGE(), fn).catch((e) => { console.log("[warm]", k, e instanceof Error ? e.message : e); return false; })) n++;
+    if (await refreshStored(k, k.startsWith("ch:") ? age : ana, fn).catch((e) => { console.log("[warm]", k, e instanceof Error ? e.message : e); return false; })) n++;
   }
   return n;
 }

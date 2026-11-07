@@ -1,5 +1,5 @@
 import "server-only";
-import { stored } from "./stored";
+import { stored, sizedAge } from "./stored";
 import { sql } from "./db";
 import {
   LENGTH_BUCKETS, TITLE_FEATURES, durationSeconds, forecastViews, isShort, median, titleWords,
@@ -53,7 +53,7 @@ function dayHour(iso: string, tz: string): { day: number; hour: number } {
 }
 
 export function channelAnalytics(channelId: string): Promise<ChannelAnalytics> {
-  return stored(`analytics:${channelId}`, TTL, () => computeChannel(channelId));
+  return sizedAge(channelId, TTL).then((age) => stored(`analytics:${channelId}`, age, () => computeChannel(channelId)));
 }
 
 export async function computeChannel(channelId: string): Promise<ChannelAnalytics> {
@@ -167,7 +167,7 @@ export type AudienceAnalytics = {
 };
 
 export function audienceAnalytics(channelId: string): Promise<AudienceAnalytics> {
-  return stored(`audience:${channelId}`, TTL, () => computeAudience(channelId));
+  return sizedAge(channelId, TTL).then((age) => stored(`audience:${channelId}`, age, () => computeAudience(channelId)));
 }
 
 export async function computeAudience(channelId: string): Promise<AudienceAnalytics> {

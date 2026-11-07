@@ -75,12 +75,14 @@ export async function refreshSummary(channelId: string) {
       languages = excluded.languages, emotions = excluded.emotions`;
 }
 
-/** Engine step: refresh the stalest channel summary if it's older than SUMMARY_EVERY_MINUTES (default 3). */
+/** Engine step: refresh the stalest channel summary if it's older than SUMMARY_EVERY_MINUTES (default 10; big channels
+ *  up to 6× that, since each recount scans all their comments). */
 export async function refreshDueSummaries(timeLeft: () => boolean, max = 1): Promise<number> {
   await ensureSummary();
   const every = Number(process.env.SUMMARY_EVERY_MINUTES ?? 10);
   const due = await sql()`select ch.id from channels ch left join channel_summary s on s.channel_id = ch.id
-    where ch.active and (s.updated_at is null or s.updated_at < (now() at time zone 'utc') - make_interval(mins => ${every}))
+    where ch.active and (s.updated_at is null or s.updated_at < (now() at time zone 'utc')
+      - make_interval(mins => ${every}) * greatest(1, least(6, coalesce(s.comments, 0) / 50000.0)))
     order by s.updated_at asc nulls first limit ${max}`;
   let n = 0;
   for (const c of due) {

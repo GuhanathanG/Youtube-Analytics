@@ -69,3 +69,23 @@ export async function clearStored(prefix = "") {
   await ensureTable();
   await sql()`delete from panel_cache where key like ${prefix.replace(/[%_]/g, "\\$&") + "%"}`;
 }
+
+/**
+ * How long a channel's all-time sections stay fresh, by channel size. A channel with 770k comments
+ * gains a few hundred an hour, so re-scanning everything every 10 minutes changed nothing on screen but
+ * kept the database busy (each scan 1-12 s) and slowed every page. Up to 50k comments: the base age;
+ * above that it grows with size (about 2.5 hours at 750k), capped at 24× the base.
+ */
+const sizes = { at: 0, map: new Map<string, number>() };
+export async function sizedAge(channelId: string | null | undefined, baseMs: number): Promise<number> {
+  if (baseMs <= 0 || !channelId) return baseMs;
+  if (Date.now() - sizes.at > 300_000) {
+    try {
+      const rows = await sql()`select channel_id, comments from channel_summary`;
+      sizes.map = new Map(rows.map((r) => [r.channel_id as string, Number(r.comments) || 0]));
+    } catch { /* table not there yet: base age */ }
+    sizes.at = Date.now();
+  }
+  const n = sizes.map.get(channelId) ?? 0;
+  return Math.round(baseMs * Math.min(24, Math.max(1, n / 50_000)));
+}
