@@ -10,6 +10,7 @@ import { panel } from "./panels";
 import { buildMoves, type Move } from "./moves";
 import { radar } from "./radar";
 import { ownerReport, TRAFFIC_LABELS } from "./owner";
+import { engineFor, forecastsFor } from "./engine-model";
 
 /**
  * Command Center data: the channel's next moves (rule-based, from everything the platform already
@@ -36,7 +37,8 @@ export async function nextMoves(channelId: string): Promise<{ moves: Move[]; hea
     within(panel("trend", channelId), 8000, { months: [], series: [], rising: [] }), within(panel("people", channelId), 8000, empty),
     within(panel("preds", channelId), 8000, []), within(uploadRhythm(channelId), 5000, { last: null, gap: null }),
   ]);
-  const rivals = await within(radar(channelId), 8000, null);
+  const [rivals, eng, fcs] = await Promise.all([within(radar(channelId), 8000, null), within(engineFor(channelId), 5000, null),
+    within(forecastsFor(channelId, 10), 5000, [])]);
   const own = await within(ownerReport(channelId), 5000, null);
   let owner = null;
   if (own) {
@@ -59,6 +61,8 @@ export async function nextMoves(channelId: string): Promise<{ moves: Move[]; hea
     platform: channelId.startsWith("ig_") ? "instagram" : "youtube",
     rivalBreakouts: (rivals?.breakouts ?? []).map((b) => ({ channel: b.channel, id: b.id, title: b.title, outlier: b.outlier })),
     owner,
+    engine: eng ? { drivers: eng.drivers, forecasts: fcs.map((f) => ({ video_id: f.video_id, title: f.title, vs_normal: Number(f.vs_normal),
+      confidence: Number(f.confidence), views_30d: Number(f.views_30d) })) } : null,
   });
   return { moves, health: health ? { score: health.score, grade: health.grade, parts: health.parts } : null };
 }

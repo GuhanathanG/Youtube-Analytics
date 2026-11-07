@@ -61,7 +61,6 @@ const face = featureLift(items, THUMB_FEATURES).find((f) => f.label === "Shows a
 assert.equal(face.lift, 2); assert.equal(face.with, 4);
 assert.ok(!featureLift(items, THUMB_FEATURES).some((f) => f.label === "Has text")); // no "without" group -> not shown
 
-console.log("logic unit tests: all passed");
 
 // Next moves: evidence-backed actions, ranked by impact and effort
 const base: MoveInputs = { channelId: "UCx", questions: [], ideas: [], heatmapBest: null, titleFeatures: [], lengths: [], formats: null, topVideos: [],
@@ -110,3 +109,17 @@ const ownMoves = buildMoves({ ...base, owner: { avgViewPct: 45, ctr: 2.8,
   trafficShare: [{ source: "SUBSCRIBER", label: "Subscriptions feed", share: 0.6 }] } });
 assert.ok(ownMoves.some((m) => m.id === "retention-v1") && !ownMoves.some((m) => m.id === "retention-v2"));
 assert.ok(ownMoves.some((m) => m.id === "ctr" && m.impact === 3) && ownMoves.some((m) => m.id === "reach"));
+
+// Prediction engine what-if (mirror of ytanalytics/model.py features)
+{
+  const { draftFeatures, estimateDraft } = await import("../lib/whatif.ts");
+  const f = draftFeatures({ title: "Top 10 BEST phones?! 🔥 (2026) | Review", short: false, minutes: 12, day: 5, hour: 18 });
+  for (const k of ["has_number", "has_question", "has_exclaim", "has_emoji", "has_brackets", "has_caps_word", "has_pipe", "is_weekend"]) assert.equal(f[k], 1, k);
+  assert.equal(draftFeatures({ title: "a calm vlog", short: true, minutes: 1, day: 1, hour: 9 }).has_number, 0);
+  const m = { features: ["has_number", "is_short"], mean: [0.5, 0.5], scale: [0.5, 0.5], coef: [0.35, 0], intercept: 0, baseline: 10000 };
+  const withNum = estimateDraft(m, { title: "5 tips", short: false, minutes: 10, day: 1, hour: 18 });
+  const without = estimateDraft(m, { title: "tips", short: false, minutes: 10, day: 1, hour: 18 });
+  assert.ok(withNum.multiple > 1 && without.multiple < 1 && withNum.views! > without.views!);
+  assert.ok(Math.abs(withNum.multiple / without.multiple - Math.exp(0.7)) < 1e-9);
+}
+console.log("logic unit tests: all passed");
