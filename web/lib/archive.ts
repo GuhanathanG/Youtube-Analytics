@@ -1,31 +1,52 @@
 import "server-only";
 import postgres from "postgres";
 import { sql } from "./db";
+import { cached } from "./cache";
 
 /**
- * Read access to the comment archive (ARCHIVE_DATABASE_URL, e.g. a free Neon database). The
- * background job moves old, already-analysed comments there when the main database fills up;
- * search, Ask AI and commenter pages look there too, so nothing is "lost" from the website.
+ * Read access to the comment archive: one or more free databases (e.g. Neon projects) that hold old
+ * comments, so the main database stays small and fast. They come from ARCHIVE_DATABASE_URLS /
+ * ARCHIVE_DATABASE_URL and from rows named "archive_db_*" in app_secrets (added without touching
+ * Vercel settings). Search, Ask AI and commenter pages look in all of them.
  */
 declare global {
   // eslint-disable-next-line no-var
-  var __pgArchive: ReturnType<typeof postgres> | undefined;
+  var __pgArchives: Map<string, ReturnType<typeof postgres>> | undefined;
 }
 
-export const archiveConfigured = () => !!process.env.ARCHIVE_DATABASE_URL;
+type Pg = ReturnType<typeof postgres>;
 
-function archive() {
-  if (!process.env.ARCHIVE_DATABASE_URL) return null;
-  if (!globalThis.__pgArchive) {
-    const url = process.env.ARCHIVE_DATABASE_URL;
-    globalThis.__pgArchive = postgres(url, {
+function client(url: string): Pg {
+  globalThis.__pgArchives ??= new Map();
+  let c = globalThis.__pgArchives.get(url);
+  if (!c) {
+    c = postgres(url, {
       prepare: false, max: 2, idle_timeout: 5, connect_timeout: 15,
       ssl: url.includes("localhost") || url.includes("127.0.0.1") ? false : "require",
       types: { date: { to: 1184, from: [1082, 1083, 1114, 1184], serialize: (x: string) => x, parse: (x: string) => x } },
       transform: { undefined: null }, onnotice: () => {},
     });
+    globalThis.__pgArchives.set(url, c);
   }
-  return globalThis.__pgArchive;
+  return c;
+}
+
+/** Every archive database (cached for 5 minutes). */
+function archiveUrls(): Promise<string[]> {
+  return cached("archive-urls", 300_000, async () => {
+    const env = [process.env.ARCHIVE_DATABASE_URLS ?? "", process.env.ARCHIVE_DATABASE_URL ?? ""]
+      .flatMap((x) => x.split(/[,\n]/)).map((x) => x.trim()).filter(Boolean);
+    const rows = await sql()`select value from app_secrets where name like 'archive_db_%' order by name`.catch(() => []);
+    return [...new Set([...rows.map((r) => String(r.value).trim()).filter(Boolean), ...env])];
+  });
+}
+
+async function archives(): Promise<Pg[]> {
+  return (await archiveUrls()).map(client);
+}
+
+export async function archiveConfigured(): Promise<boolean> {
+  return (await archiveUrls()).length > 0;
 }
 
 type Row = Record<string, unknown>;
@@ -43,33 +64,38 @@ async function withTitles(rows: Row[]): Promise<Row[]> {
 
 /** Archived comments matching any of the search terms (text or English translation). */
 export async function searchArchive(terms: string[], channelId: string | null, limit = 40): Promise<Row[]> {
-  const a = archive();
-  if (!a || !terms.length) return [];
-  try {
-    const likes = terms.map((t) => "%" + t.replace(/[%_\\]/g, "\\$&") + "%");
-    const rows = await a`select * from comments where ${channelId ? a`channel_id = ${channelId}` : a`true`}
-      and (${likes.map((l) => a`(text ilike ${l} or translation ilike ${l})`).reduce((x, y) => a`${x} or ${y}`)})
-      order by like_count desc nulls last limit ${limit}`;
-    return withTitles(rows as unknown as Row[]);
-  } catch (e) {
-    if (!String(e).includes("does not exist")) console.log("[archive] search failed:", e instanceof Error ? e.message : e); // (empty until the first move)
-    return [];
-  }
+  if (!terms.length) return [];
+  const likes = terms.map((t) => "%" + t.replace(/[%_\\]/g, "\\$&") + "%");
+  const parts = await Promise.all((await archives()).map(async (a) => {
+    try {
+      return await a`select * from comments where ${channelId ? a`channel_id = ${channelId}` : a`true`}
+        and (${likes.map((l) => a`(text ilike ${l} or translation ilike ${l})`).reduce((x, y) => a`${x} or ${y}`)})
+        order by like_count desc nulls last limit ${limit}` as unknown as Row[];
+    } catch (e) {
+      if (!String(e).includes("does not exist")) console.log("[archive] search failed:", e instanceof Error ? e.message : e); // (empty until the first move)
+      return [] as Row[];
+    }
+  }));
+  const rows = parts.flat().sort((x, y) => Number(y.like_count ?? 0) - Number(x.like_count ?? 0)).slice(0, limit);
+  return withTitles(rows);
 }
 
 /** One commenter's archived comments (newest or most liked) and their archived count. */
 export async function archivedByAuthor(authorId: string, channelId: string | null, order: "newest" | "most_liked", limit: number) {
-  const a = archive();
-  if (!a) return { rows: [] as Row[], count: 0 };
-  try {
-    const scope = channelId ? a`channel_id = ${channelId} and author_channel_id = ${authorId}` : a`author_channel_id = ${authorId}`;
-    const [c] = await a`select count(*)::int as n from comments where ${scope}`;
-    const rows = await a`select * from comments where ${scope}
-      order by ${order === "most_liked" ? a`like_count desc nulls last, published_at desc` : a`published_at desc nulls last`} limit ${limit}`;
-    return { rows: await withTitles(rows as unknown as Row[]), count: c.n as number };
-  } catch {
-    return { rows: [] as Row[], count: 0 };
-  }
+  const parts = await Promise.all((await archives()).map(async (a) => {
+    try {
+      const scope = channelId ? a`channel_id = ${channelId} and author_channel_id = ${authorId}` : a`author_channel_id = ${authorId}`;
+      const [c] = await a`select count(*)::int as n from comments where ${scope}`;
+      const rows = await a`select * from comments where ${scope}
+        order by ${order === "most_liked" ? a`like_count desc nulls last, published_at desc` : a`published_at desc nulls last`} limit ${limit}`;
+      return { rows: rows as unknown as Row[], count: c.n as number };
+    } catch {
+      return { rows: [] as Row[], count: 0 };
+    }
+  }));
+  const key = (r: Row) => order === "most_liked" ? Number(r.like_count ?? 0) : Date.parse(String(r.published_at ?? "").replace(" ", "T") + "Z") || 0;
+  const rows = parts.flatMap((p) => p.rows).sort((x, y) => key(y) - key(x)).slice(0, limit);
+  return { rows: await withTitles(rows), count: parts.reduce((n, p) => n + p.count, 0) };
 }
 
 /** Totals of archived comments per channel (kept in the main database by the background job). */

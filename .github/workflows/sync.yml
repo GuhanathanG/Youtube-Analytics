@@ -102,8 +102,8 @@ jobs:
         if: steps.alive.outputs.alive != '1'
         run: python -m ytanalytics ai --until ${{ steps.plan.outputs.ai_until }}
 
-      - name: Archive old analysed comments (only when the main database is getting full)
-        if: steps.alive.outputs.alive != '1' && (env.ARCHIVE_DATABASE_URL != '')
+      - name: Move comments older than 90 days to the archive databases (keeps the main database small and fast)
+        if: steps.alive.outputs.alive != '1'
         continue-on-error: true
         run: python -m ytanalytics archive --until $(( $(date +%s) + 300 ))
 

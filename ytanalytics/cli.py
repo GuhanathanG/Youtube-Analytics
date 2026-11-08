@@ -155,12 +155,12 @@ def main(argv: list[str] | None = None) -> int:
             t = build_topics(session, router=router, deadline=deadline)
             print(json.dumps({"emotions": n, "topic_channels": t}))
         elif args.cmd == "archive":
-            from .archive import archive_old_comments, should_archive
+            from .archive import archive_old_comments, archive_urls, should_archive
 
             go, why = should_archive(session)
             print(f"Archive: {why}")
             if go:
-                n = archive_old_comments(session, os.environ["ARCHIVE_DATABASE_URL"],
+                n = archive_old_comments(session, archive_urls(session),
                                          deadline=time.monotonic() + settings.max_run_minutes * 60)
                 print(json.dumps({"archived": n}))
         elif args.cmd == "topics-due":

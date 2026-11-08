@@ -308,7 +308,7 @@ export async function comments(f: Filters, order: CommentOrder = "newest", limit
     order by ${orderSql}
     limit ${Math.min(limit, 5000)}`) as unknown as CommentRow[];
   // A text search also looks in the comment archive (old comments moved out of the main database).
-  if (!f.search || !archiveConfigured() || f.videoId || f.sentiment || f.language || f.emotion || f.flag) return live;
+  if (!f.search || f.videoId || f.sentiment || f.language || f.emotion || f.flag || !(await archiveConfigured())) return live;
   const old = (await searchArchive([f.search], f.channelId ?? null, Math.min(limit, 200))) as unknown as CommentRow[];
   if (!old.length) return live;
   const key = (c: CommentRow) => (order === "most_liked" ? c.like_count : Date.parse(String(c.published_at ?? 0)) * (order === "oldest" ? -1 : 1));

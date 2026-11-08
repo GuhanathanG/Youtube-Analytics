@@ -191,9 +191,24 @@ export async function computeCompare(ids: string[]) {
       (100.0 * sum(d.ai_read) / nullif(sum(d.comments), 0))::float8 as ai_pct,
       (coalesce(sum(d.comments), 0)::float8 / nullif((select count(*) from videos v where v.channel_id = ch.id), 0)) as comments_per_video,
       coalesce(sum(d.questions), 0)::int as questions, coalesce(sum(d.requests), 0)::int as requests
+    from channels ch left join (
+      -- live comments (running totals) plus comments moved to the archive (their counts are kept)
+      select channel_id, comments, positive, neutral, negative, ai_read, sent_sum, sent_n, questions, requests from comment_day
+      union all
+      select channel_id, comments, positive, neutral, negative, ai_read, sentiment_sum, sentiment_n, 0, 0 from archive_stats
+    ) d on d.channel_id = ch.id
+    where ch.id in ${db(ids)}
+    group by ch.id, ch.title, ch.thumbnail_url, ch.subscriber_count, ch.view_count`.catch(() => db`
+    select ch.id, ch.title, ch.thumbnail_url, ch.subscriber_count::float8 as subscriber_count, ch.view_count::float8 as view_count,
+      (select count(*) from videos v where v.channel_id = ch.id)::int as videos,
+      coalesce(sum(d.comments), 0)::int as comments, (sum(d.sent_sum) / nullif(sum(d.sent_n), 0))::float8 as avg_sentiment,
+      (100.0 * sum(d.negative) / nullif(sum(d.positive + d.neutral + d.negative), 0))::float8 as negative_pct,
+      (100.0 * sum(d.ai_read) / nullif(sum(d.comments), 0))::float8 as ai_pct,
+      (coalesce(sum(d.comments), 0)::float8 / nullif((select count(*) from videos v where v.channel_id = ch.id), 0)) as comments_per_video,
+      coalesce(sum(d.questions), 0)::int as questions, coalesce(sum(d.requests), 0)::int as requests
     from channels ch left join comment_day d on d.channel_id = ch.id
     where ch.id in ${db(ids)}
-    group by ch.id, ch.title, ch.thumbnail_url, ch.subscriber_count, ch.view_count`) as unknown as CompareRow[] : (await db`
+    group by ch.id, ch.title, ch.thumbnail_url, ch.subscriber_count, ch.view_count`)) as unknown as CompareRow[] : (await db`
     select ch.id, ch.title, ch.thumbnail_url, ch.subscriber_count::float8 as subscriber_count, ch.view_count::float8 as view_count,
       (select count(*) from videos v where v.channel_id = ch.id)::int as videos,
       count(c.id)::int as comments, avg(c.sentiment_value)::float8 as avg_sentiment,
@@ -208,8 +223,13 @@ export async function computeCompare(ids: string[]) {
 
   const weeklyRows = totals ? await db`
     select channel_id, to_char(date_trunc('week', day), 'YYYY-MM-DD') as week, (sum(sent_sum) / nullif(sum(sent_n), 0))::float8 as s, sum(sent_n)::int as n
+    from (select channel_id, day, sent_sum, sent_n from comment_day where channel_id in ${db(ids)}
+          union all select channel_id, day, sentiment_sum, sentiment_n from archive_stats where channel_id in ${db(ids)}) t
+    where day >= (now() at time zone 'utc')::date - 182
+    group by 1, 2 having sum(sent_n) > 0 order by 2`.catch(() => db`
+    select channel_id, to_char(date_trunc('week', day), 'YYYY-MM-DD') as week, (sum(sent_sum) / nullif(sum(sent_n), 0))::float8 as s, sum(sent_n)::int as n
     from comment_day where channel_id in ${db(ids)} and day >= (now() at time zone 'utc')::date - 182
-    group by 1, 2 having sum(sent_n) > 0 order by 2` : await db`
+    group by 1, 2 having sum(sent_n) > 0 order by 2`) : await db`
     select channel_id, to_char(date_trunc('week', published_at), 'YYYY-MM-DD') as week, avg(sentiment_value)::float8 as s, count(*)::int as n
     from comments where channel_id in ${db(ids)} and sentiment_value is not null
       and published_at >= (now() at time zone 'utc') - interval '26 weeks'
