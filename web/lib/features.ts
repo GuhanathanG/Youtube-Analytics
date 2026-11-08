@@ -178,7 +178,7 @@ export async function compareChannels(ids: string[]) {
   return stored(`compare:${[...ids].sort().join(",")}`, age, () => computeCompare(ids));
 }
 
-async function computeCompare(ids: string[]) {
+export async function computeCompare(ids: string[]) {
   const db = sql();
   if (!ids.length) return { rows: [] as CompareRow[], weekly: [] as Record<string, string | number | null>[], overlap: [] as { a: string; b: string; shared: number; jaccard: number }[] };
   const rows = (await db`

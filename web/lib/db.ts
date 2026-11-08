@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -33,9 +34,29 @@ function makeClient() {
   });
 }
 
-export function sql() {
+type Sql = ReturnType<typeof postgres>;
+const longRun = new AsyncLocalStorage<Sql>();
+
+function root(): Sql {
   if (!globalThis.__pg) globalThis.__pg = makeClient();
   return globalThis.__pg;
+}
+
+export function sql(): Sql {
+  return longRun.getStore() ?? root();
+}
+
+/**
+ * Run a heavy read (e.g. a section that groups every comment of a 770k-comment channel) with a longer
+ * time limit than the website's usual 25 s per query. Everything inside uses one connection in one
+ * transaction ("set local" only affects this transaction, so it's safe with the pooler).
+ * Only the background jobs use this; pages never do.
+ */
+export async function withLongQueries<T>(seconds: number, fn: () => Promise<T>): Promise<T> {
+  return (await root().begin(async (tx) => {
+    await tx.unsafe(`set local statement_timeout = '${Math.max(1, Math.round(seconds))}s'`);
+    return longRun.run(tx as unknown as Sql, fn);
+  })) as T;
 }
 
 export { utc } from "./db-time";
@@ -69,7 +90,7 @@ export async function ensureIndex(name: string, create: string) {
  *  every other query on that table queues behind it, which freezes pages. A later run tries again. */
 async function carefulDdl(statement: string) {
   try {
-    await sql().begin(async (tx) => {
+    await root().begin(async (tx) => { // its own connection, even when called during a long read
       await tx`set local lock_timeout = '3s'`;
       await tx.unsafe(statement);
     });

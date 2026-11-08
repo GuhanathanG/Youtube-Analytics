@@ -1,3 +1,12 @@
+import { after } from "next/server";
+
+/** A promise we stop waiting for may still be using a database connection. Keep the server copy running
+ *  until it settles (the database stops any query after 25 s), so the connection is never left
+ *  half-way through a query when Vercel pauses the copy, which would block that connection for minutes. */
+function letFinish(p: Promise<unknown>) {
+  try { after(() => p.then(() => undefined, () => undefined)); } catch { /* outside a request: nothing pauses us */ }
+}
+
 /**
  * Tiny in-memory cache for heavy summary queries (counts over every comment). Server copies are
  * reused between requests, so repeated page views within the TTL skip the database scan.
@@ -27,6 +36,7 @@ function withLimit<T>(p: Promise<T>, key: string, entry: Entry): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => {
       if (store.get(key) === entry && !entry.settled) store.delete(key); // don't hand a stuck result to the next visitor
+      letFinish(p);
       reject(new Error("This is taking too long; try again in a moment."));
     }, WAIT_MS);
     p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
@@ -36,7 +46,7 @@ function withLimit<T>(p: Promise<T>, key: string, entry: Entry): Promise<T> {
 /** Give up on a slow promise after `ms` and use `fallback` (for optional page sections). */
 export function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
   return new Promise<T>((resolve) => {
-    const t = setTimeout(() => resolve(fallback), ms);
+    const t = setTimeout(() => { letFinish(p); resolve(fallback); }, ms);
     p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
   });
 }

@@ -51,7 +51,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100",
-    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0", RADAR_CACHE_SECONDS: "0", GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "test-secret",
+    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0", RADAR_CACHE_SECONDS: "0", BIG_CHANNEL_COMMENTS: "100", GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "test-secret",
     GOOGLE_AUTH_URL: "http://localhost:4100/o/oauth2/auth", GOOGLE_TOKEN_URL: "http://localhost:4100/token", YT_ANALYTICS_BASE: "http://localhost:4100/yta/v2",
     YOUTUBE_RSS_BASE: "http://localhost:4100", WEBSUB_HUB: "http://localhost:4100/subscribe", WEBSUB_CALLBACK_BASE: `http://localhost:${PORT}` },
   stdio: ["ignore", "inherit", "inherit"],
@@ -619,6 +619,13 @@ try {
   check("next moves include the engine's finding", (await (await getF("/command")).text()).includes("Lean into: numbers in the title"));
   const [young] = await db`select video_id from video_forecast where channel_id = ${ch.id} limit 1`;
   check("a young video shows the engine's 30-day forecast", Boolean(young) && (await (await get(`/videos/${young.video_id}`)).text()).includes("Engine forecast"));
+
+  // Heavy-work run: big channels' heavy sections are worked out in the background, one run at a time
+  check("heavy-work run refuses a wrong key", (await fetch(`${BASE}/api/heavy?key=nope`)).status === 401);
+  const heavy = await (await fetch(`${BASE}/api/heavy?key=e2e-cron-secret-0123456789&wait=1`)).json();
+  check("heavy-work run works out the big channel's heavy sections", heavy.done?.some((d) => d.startsWith(`audience:${ch.id}`)), JSON.stringify(heavy).slice(0, 300));
+  const [lock] = await db`select 1 from panel_cache where key = 'lock:heavy'`;
+  check("heavy-work run releases its lock", !lock);
 
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma",

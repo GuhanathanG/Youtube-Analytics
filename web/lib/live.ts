@@ -553,6 +553,12 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     if (insightsTurn || result.newVideos) result.alerts = await checkAlerts().catch(() => 0);
     // Engine health alarm: background job stopped, AI stopped, database nearly full, quota gone early.
     if (insightsTurn && timeLeft()) result.alerts = (result.alerts ?? 0) + await checkHealth().catch((e) => { console.log("[health]", e instanceof Error ? e.message : e); return 0; });
+    // Heavy sections of big channels: start the heavy-work run (it runs on its own for up to ~4 minutes;
+    // only one at a time). Not awaited: the engine carries on with its own work.
+    if (insightsTurn && process.env.VERCEL_ENV === "production" && site && process.env.CRON_SECRET) {
+      void fetch(`https://${site}/api/heavy?key=${encodeURIComponent(process.env.CRON_SECRET)}`, { cache: "no-store", signal: AbortSignal.timeout(3000) })
+        .catch(() => null);
+    }
     // Keep the always-on server awake (free Hugging Face Spaces sleep after 48 hours without visits).
     if (insightsTurn && process.env.ALWAYS_ON_URL) {
       await fetch(process.env.ALWAYS_ON_URL, { cache: "no-store", signal: AbortSignal.timeout(5000) }).catch(() => null);
