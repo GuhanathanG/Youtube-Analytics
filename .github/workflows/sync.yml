@@ -111,7 +111,7 @@ jobs:
       - name: Move comments older than 90 days to the archive databases (keeps the main database small and fast)
         if: steps.alive.outputs.alive != '1'
         continue-on-error: true
-        run: python -m ytanalytics archive --until $(( $(date +%s) + 300 ))
+        run: python -m ytanalytics archive --until $(( $(date +%s) + 600 ))
 
       - name: Record minutes used
         if: always()
