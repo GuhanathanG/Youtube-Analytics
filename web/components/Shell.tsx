@@ -3,9 +3,12 @@
 import { BrainCircuit, ChartNoAxesCombined, Clapperboard, Gauge, Radar, Rocket, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 import { logout, setFocus } from "@/app/actions";
-import { CommandPalette } from "./CommandPalette";
+import dynamic from "next/dynamic";
+
+// The search palette (and its library) loads the first time it's opened, not with every page.
+const CommandPalette = dynamic(() => import("./CommandPalette").then((m) => m.CommandPalette), { ssr: false });
 import { LivePill } from "./LivePill";
 import { Logo } from "./Logo";
 
@@ -25,6 +28,9 @@ const NAV = [
   { href: "/manage", label: "Manage", icon: Settings2 },
   { href: "/glance", label: "Glance", icon: Gauge },
 ];
+// The pages people open most are fetched in full in the background (when their link is on screen), so
+// tapping them shows the page at once. The rest only fetch their loading frame ahead of time.
+const FULL_PREFETCH = new Set(["/command", "/", "/analytics", "/comments", "/predict", "/ask"]);
 // The phone bar has room for four items plus search.
 const MOBILE_NAV = NAV.filter((n) => ["/command", "/", "/ask", "/comments"].includes(n.href));
 
@@ -47,6 +53,15 @@ function FocusSwitcher({ channels, focus }: { channels: NavChannel[]; focus: str
 export function Shell({ children, channels, focus }: { children: ReactNode; channels: NavChannel[]; focus: string | null }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const [paletteUsed, setPaletteUsed] = useState(false); // keep it mounted after the first open (instant next time)
+  useEffect(() => { if (open) setPaletteUsed(true); }, [open]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setOpen((v) => !v); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [more, setMore] = useState(false);
   const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
@@ -57,7 +72,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
         <Link href="/" className="px-2"><Logo /></Link>
         <nav className="mt-8 space-y-1">
           {NAV.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href}
+            <Link key={href} href={href} prefetch={FULL_PREFETCH.has(href) ? true : undefined}
               className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] transition ${isActive(href) ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
               {isActive(href) && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-accent shadow-[0_0_12px_#22d3ee]" />}
               <Icon size={17} className={isActive(href) ? "text-accent" : ""} />{label}
@@ -72,7 +87,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition ${path === `/channels/${c.id}` ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
               {c.thumb ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={c.thumb} alt="" className="h-6 w-6 rounded-full object-cover ring-1 ring-white/10" />
+                <img decoding="async" src={c.thumb} alt="" className="h-6 w-6 rounded-full object-cover ring-1 ring-white/10" />
               ) : <span className="grid h-6 w-6 place-items-center rounded-full bg-white/10 text-[11px]">{c.title.slice(0, 1)}</span>}
               <span className="truncate">{c.title}</span>
               {!c.active ? <span className="ml-auto text-[10px] text-ink-3">paused</span> : c.rival ? <span className="ml-auto font-mono text-[9.5px] tracking-wider text-accent-2">RIVAL</span> : null}
@@ -103,7 +118,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
       {/* Mobile bottom nav */}
       <nav className="safe-bottom fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-[#0a0e1a]/85 p-1.5 backdrop-blur-xl lg:hidden">
         {MOBILE_NAV.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${isActive(href) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
+          <Link key={href} href={href} prefetch={FULL_PREFETCH.has(href) ? true : undefined} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${isActive(href) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
             <Icon size={18} className={isActive(href) ? "text-accent" : ""} />{label}
           </Link>
         ))}
@@ -143,7 +158,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
         </div>
       )}
 
-      <CommandPalette open={open} setOpen={setOpen} />
+      {(open || paletteUsed) && <CommandPalette open={open} setOpen={setOpen} />}
     </div>
   );
 }

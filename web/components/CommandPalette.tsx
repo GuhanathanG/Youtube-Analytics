@@ -13,14 +13,6 @@ export function CommandPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
   const [res, setRes] = useState<Results>({ channels: [], videos: [] });
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setOpen(!open); }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, setOpen]);
-
-  useEffect(() => {
     if (!open) return;
     const ctrl = new AbortController();
     const t = setTimeout(() => {

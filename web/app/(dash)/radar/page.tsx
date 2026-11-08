@@ -36,7 +36,7 @@ export default async function RadarPage() {
                       <td className="px-2 py-2"><Link href={`/channels/${x.id}`} className="flex items-center gap-2 hover:underline">
                         {x.thumb ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={x.thumb} alt="" className="h-7 w-7 rounded-full object-cover" referrerPolicy="no-referrer" />
+                          <img loading="lazy" decoding="async" src={x.thumb} alt="" className="h-7 w-7 rounded-full object-cover" referrerPolicy="no-referrer" />
                         ) : <span className="grid h-7 w-7 place-items-center rounded-full bg-white/10 text-[11px]">{x.title.slice(0, 1)}</span>}
                         <span className="truncate">{x.title}{x.id === me.id ? " (you)" : ""}</span></Link></td>
                       <td className="px-2 tabular">{compact(x.subs)}</td>
@@ -58,7 +58,7 @@ export default async function RadarPage() {
                       <div className="relative h-14 w-24 shrink-0 overflow-hidden rounded-lg bg-white/5">
                         {b.thumb && (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={b.thumb} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                          <img loading="lazy" decoding="async" src={b.thumb} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                         )}
                         <span className="absolute bottom-0.5 right-0.5 rounded bg-black/75 px-1 font-mono text-[10px] text-accent">{b.outlier.toFixed(1)}×</span>
                       </div>

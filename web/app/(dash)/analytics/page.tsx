@@ -24,7 +24,7 @@ function VideoRow({ v }: { v: VideoPerf }) {
     <li className="flex items-center gap-3 py-2">
       {v.thumbnail_url
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={v.thumbnail_url} alt="" className="h-9 w-16 shrink-0 rounded-md object-cover ring-1 ring-white/10" />
+        ? <img loading="lazy" decoding="async" src={v.thumbnail_url} alt="" className="h-9 w-16 shrink-0 rounded-md object-cover ring-1 ring-white/10" />
         : <div className="h-9 w-16 shrink-0 rounded-md bg-white/5" />}
       <Link href={`/videos/${v.id}`} className="min-w-0 flex-1 truncate text-[13.5px] text-ink hover:text-accent">{v.title}</Link>
       <span className="hidden tabular text-[12.5px] text-ink-3 sm:inline">{compact(v.views)} views</span>
