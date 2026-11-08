@@ -15,7 +15,7 @@ export function RegisterSW() {
     if (!("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/sw.js").catch(() => {});
     if (path.startsWith("/login")) {
-      try { void caches.delete("pulse-pages-v1"); } catch { /* storage blocked */ }
+      try { void caches.delete("pulse-pages-v1"); void caches.delete("pulse-pages-v2"); } catch { /* storage blocked */ }
       return;
     }
     const sw = navigator.serviceWorker.controller;

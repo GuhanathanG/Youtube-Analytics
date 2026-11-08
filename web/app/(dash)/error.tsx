@@ -31,7 +31,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   }, [tries, auto]);
 
   return (
-    <div className="panel mx-auto mt-10 max-w-xl p-8">
+    <div className="panel mx-auto mt-10 max-w-xl p-8" data-page-error="">
       <div className="label">{auto ? "One moment" : "Something went wrong"}</div>
       <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold">
         {db ? "Can't reach the database" : auto ? "Loading is taking longer than usual" : "This page didn't load"}
