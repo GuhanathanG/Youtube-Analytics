@@ -38,8 +38,47 @@ type Sql = ReturnType<typeof postgres>;
 const longRun = new AsyncLocalStorage<Sql>();
 
 function root(): Sql {
-  if (!globalThis.__pg) globalThis.__pg = makeClient();
+  if (!globalThis.__pg) { globalThis.__pg = makeClient(); trackQueries(globalThis.__pg); }
   return globalThis.__pg;
+}
+
+/**
+ * Never let Vercel pause this server copy while a query is still running. A paused copy leaves its
+ * database connection half-way through a query ("waiting for the website") for minutes, and with only a
+ * few pooled connections that makes every page wait. Every query that runs is counted; each request keeps
+ * the copy alive (after the reply) until no query is running, at most 30 s.
+ */
+let inflight = 0;
+let idleWaiters: (() => void)[] = [];
+function trackQueries(client: Sql) {
+  const proto = Object.getPrototypeOf(client`select 1`) as { handle: () => Promise<void>; __tracked?: boolean };
+  if (proto.__tracked) return;
+  proto.__tracked = true;
+  const original = proto.handle;
+  proto.handle = function (this: Promise<unknown> & { executed?: boolean }) {
+    if (!this.executed) {
+      inflight++;
+      const done = () => { inflight--; if (inflight <= 0) { inflight = 0; const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); } };
+      Promise.prototype.then.call(this, done, done);
+      keepAliveUntilIdle();
+    }
+    return original.call(this);
+  };
+}
+function whenIdle(maxMs: number): Promise<void> {
+  if (inflight <= 0) return Promise.resolve();
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, maxMs);
+    idleWaiters.push(() => { clearTimeout(t); resolve(); });
+  });
+}
+function keepAliveUntilIdle() {
+  try {
+    // Loaded lazily so plain scripts and tests (outside Next.js) never need it.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { after } = require("next/server") as typeof import("next/server");
+    after(() => whenIdle(30_000));
+  } catch { /* not inside a request: nothing will pause us */ }
 }
 
 export function sql(): Sql {
