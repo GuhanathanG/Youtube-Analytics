@@ -7,7 +7,7 @@ import { analyseDueThumbnails } from "@/lib/thumbnails";
 
 /**
  * AI video analysis (Gemini watches the video; can take 1–3 minutes).
- *  - GET ?key=CRON_SECRET  → analyse the newest not-yet-analysed video, then up to 25 thumbnails
+ *  - GET ?key=CRON_SECRET  → analyse the newest not-yet-analysed videos/reels (as many as fit in ~2.5 min), then thumbnails
  *                           (call every 2 hours from cron-job.org)
  *  - POST {videoId}        → analyse one video now (signed-in users; the button on the video page)
  */
@@ -17,7 +17,8 @@ export const maxDuration = 300;
 export async function GET(req: NextRequest) {
   if (!cronAuthorised(req)) return NextResponse.json({ error: "Wrong or missing key" }, { status: 401 });
   const started = Date.now();
-  const video = await analyseDueVideos(1);
+  // Several videos per call while time allows (each takes ~10-60 s); stop starting new ones after ~2.5 minutes.
+  const video = await analyseDueVideos(Number(process.env.VIDEO_AI_PER_CALL ?? 8), started + 150_000);
   // Thumbnails are small and quick: use the rest of the time (leave a minute of margin).
   const thumbnails = await analyseDueThumbnails(25, started + (maxDuration - 60) * 1000).catch(() => 0);
   return NextResponse.json({ ...video, thumbnails });

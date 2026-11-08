@@ -175,7 +175,7 @@ try {
     body: JSON.stringify({ videoId: "livevid0001" }) })).json();
   check("AI watched a video on request", va.ok === true, JSON.stringify(va));
   const vaTimer = await (await fetch(`${BASE}/api/video-analysis?key=e2e-cron-secret-0123456789`)).json();
-  check("timer analyses the next new video and says which", vaTimer.analysed === 1 && vaTimer.tried?.[0]?.ok === true, JSON.stringify(vaTimer));
+  check("timer analyses the new videos it has time for and says which", vaTimer.analysed >= 1 && vaTimer.tried?.length === vaTimer.analysed && vaTimer.tried.every((t) => t.ok), JSON.stringify(vaTimer));
   const [{ n: secs }] = await db`select coalesce(sum(tokens),0)::int n from llm_usage where model_key like 'video/%'`;
   check("video seconds counted against the free daily allowance", secs >= 242, `${secs} s`);
   const vp = await (await get("/videos/livevid0001")).text();

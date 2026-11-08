@@ -190,7 +190,7 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
 }
 
 /** Background: analyse the newest not-yet-analysed videos (from the last 30 days). */
-export async function analyseDueVideos(max = 1): Promise<{ analysed: number; waiting: number; tried: { videoId: string; title: string; ok: boolean; message: string }[]; note?: string }> {
+export async function analyseDueVideos(max = 1, untilMs?: number): Promise<{ analysed: number; waiting: number; tried: { videoId: string; title: string; ok: boolean; message: string }[]; note?: string }> {
   if (!process.env.GEMINI_API_KEY) return { analysed: 0, waiting: 0, tried: [], note: "GEMINI_API_KEY is not set" };
   await ensureVideoTables();
   const db = sql();
@@ -205,6 +205,7 @@ export async function analyseDueVideos(max = 1): Promise<{ analysed: number; wai
     order by (a.video_id is not null), v.published_at desc`;
   const tried = [];
   for (const v of due.slice(0, max)) {
+    if (untilMs && tried.length && Date.now() > untilMs) break; // keep watching while there's time (reels take seconds)
     const r = await analyseVideo(v.id as string);
     console.log(`[video-analysis] ${v.id} "${String(v.title).slice(0, 60)}": ${r.ok ? "done" : r.message}`);
     tried.push({ videoId: v.id as string, title: v.title as string, ...r });
