@@ -61,9 +61,23 @@ PROVIDERS = {
     # OpenRouter's ":free" models: 50 requests/day per account (shared by all its free models).
     "openrouter": ("https://openrouter.ai/api/v1/", "OPENROUTER",
                    "google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free,nvidia/nemotron-3.5-lightning:free", 50, 4.0),
+    # GitHub Models: free for every GitHub account. In GitHub Actions the job's own token works
+    # (permission "models: read"), so no extra key is needed. Low daily limits per model.
+    "github": ("https://models.github.ai/inference/", "GITHUB_MODELS",
+               "openai/gpt-4.1-mini,openai/gpt-4.1-nano,mistral-ai/mistral-small-2503", 50, 4.0),
+    # SambaNova Cloud free tier (no card): needs SAMBANOVA_API_KEY.
+    "sambanova": ("https://api.sambanova.ai/v1/", "SAMBANOVA", "Meta-Llama-3.3-70B-Instruct,Meta-Llama-3.1-8B-Instruct", 400, 3.0),
+    # NVIDIA NIM (free with the NVIDIA Developer Program, ~40 requests/minute): needs NVIDIA_API_KEY.
+    "nvidia": ("https://integrate.api.nvidia.com/v1/", "NVIDIA", "meta/llama-3.3-70b-instruct,openai/gpt-oss-20b", 500, 2.0),
 }
 
-DEFAULT_ORDER = "gemini,mistral,groq,cloudflare,openrouter"
+DEFAULT_ORDER = "gemini,mistral,groq,cloudflare,github,sambanova,nvidia,openrouter"
+
+
+def split_keys(raw: str) -> list[str]:
+    """One key, or several separated by commas or new lines (e.g. a teammate's own free key).
+    Only use keys you're allowed to use: most providers forbid opening extra accounts to get more."""
+    return [k.strip() for k in raw.replace("\n", ",").split(",") if k.strip()]
 
 
 def discover_gemini_models(api_key: str, http: requests.Session | None = None) -> list[str]:
@@ -106,7 +120,7 @@ def reasoning_for(provider: str, model: str) -> str:
     comments doesn't need it. Gemini 2.5 can switch it off; Gemini 3 only down to minimal."""
     if provider == "gemini":
         return "none" if model.startswith("gemini-2.5") else "minimal"
-    if provider in ("openrouter", "mistral", "cloudflare"):
+    if provider.split("#")[0] in ("openrouter", "mistral", "cloudflare", "github", "sambanova", "nvidia"):
         return ""  # not part of these APIs; don't send the parameter
     return "low"
 
@@ -121,7 +135,9 @@ def slots_from_env(env: dict | None = None, discover: bool = False) -> list[Mode
     GEMINI_MODELS, GROQ_MODELS              - comma-separated, tried in order
     GEMINI_DAILY_REQUESTS, GROQ_DAILY_REQUESTS
     GEMINI_SECONDS_BETWEEN, GROQ_SECONDS_BETWEEN
-    MISTRAL_API_KEY, CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID, OPENROUTER_API_KEY
+    MISTRAL_API_KEY, CLOUDFLARE_API_KEY + CLOUDFLARE_ACCOUNT_ID, OPENROUTER_API_KEY,
+    GITHUB_MODELS_API_KEY (in Actions: the job's GITHUB_TOKEN), SAMBANOVA_API_KEY, NVIDIA_API_KEY
+    Any *_API_KEY may hold several keys separated by commas (each gets its own daily allowance).
     AI_PROVIDER_ORDER                       - default DEFAULT_ORDER
     discover=True asks Google which Gemini models the key can use (when GEMINI_MODELS isn't set).
     """
@@ -132,8 +148,8 @@ def slots_from_env(env: dict | None = None, discover: bool = False) -> list[Mode
         if name not in PROVIDERS:
             continue
         base_url, prefix, models, daily, gap = PROVIDERS[name]
-        key = env.get(f"{prefix}_API_KEY", "").strip()
-        if not key:
+        keys = split_keys(env.get(f"{prefix}_API_KEY", ""))
+        if not keys:
             continue
         if "{account}" in base_url:
             account = env.get(f"{prefix}_ACCOUNT_ID", "").strip()
@@ -141,19 +157,21 @@ def slots_from_env(env: dict | None = None, discover: bool = False) -> list[Mode
                 continue
             base_url = base_url.replace("{account}", account)
         if name == "gemini" and not env.get("GEMINI_MODELS") and discover:
-            models = ",".join(discover_gemini_models(key)) or models
-        for model in [m.strip() for m in env.get(f"{prefix}_MODELS", models).split(",") if m.strip()]:
-            effort = reasoning_for(name, model)
-            extra = {"reasoning_effort": effort} if effort else {}
-            slots.append(ModelSlot(
-                provider=name,
-                base_url=base_url,
-                api_key=key,
-                model=model,
-                daily_requests=int(env.get(f"{prefix}_DAILY_REQUESTS", daily)),
-                seconds_between=float(env.get(f"{prefix}_SECONDS_BETWEEN", gap)),
-                extra=extra,
-            ))
+            models = ",".join(discover_gemini_models(keys[0])) or models
+        for i, key in enumerate(keys):
+            label = name if i == 0 else f"{name}#{i + 1}"  # each key has its own daily allowance
+            for model in [m.strip() for m in env.get(f"{prefix}_MODELS", models).split(",") if m.strip()]:
+                effort = reasoning_for(name, model)
+                extra = {"reasoning_effort": effort} if effort else {}
+                slots.append(ModelSlot(
+                    provider=label,
+                    base_url=base_url,
+                    api_key=key,
+                    model=model,
+                    daily_requests=int(env.get(f"{prefix}_DAILY_REQUESTS", daily)),
+                    seconds_between=float(env.get(f"{prefix}_SECONDS_BETWEEN", gap)),
+                    extra=extra,
+                ))
     return slots
 
 

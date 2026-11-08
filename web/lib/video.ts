@@ -1,3 +1,4 @@
+import { splitKeys } from "./ai";
 import "server-only";
 import { sql, ensureRls, ensureColumns } from "./db";
 import { quotaDay } from "./queries";
@@ -98,7 +99,7 @@ async function secondsToday(): Promise<number> {
 export async function analyseVideo(videoId: string): Promise<{ ok: boolean; message: string }> {
   await ensureVideoTables();
   const db = sql();
-  const key = process.env.GEMINI_API_KEY;
+  const key = splitKeys(process.env.GEMINI_API_KEY)[0];
   if (!key) return { ok: false, message: "Video analysis needs GEMINI_API_KEY in Vercel." };
   const ig = videoId.startsWith("ig_");
   const [v] = ig ? await db`select id, title, duration, media_url from videos where id = ${videoId}`

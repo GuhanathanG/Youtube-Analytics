@@ -1,6 +1,6 @@
 import "server-only";
 import { sql, ensureRls } from "./db";
-import { geminiModelList } from "./ai";
+import { geminiModelList, splitKeys } from "./ai";
 import { quotaDay } from "./queries";
 
 /**
@@ -50,7 +50,7 @@ function bestThumb(url: string): string {
 export async function analyseThumbnail(videoId: string, url: string): Promise<boolean> {
   await ensureTable();
   const db = sql();
-  const key = process.env.GEMINI_API_KEY;
+  const key = splitKeys(process.env.GEMINI_API_KEY)[0];
   if (!key) return false;
   let image: Buffer;
   let mime = "image/jpeg";
