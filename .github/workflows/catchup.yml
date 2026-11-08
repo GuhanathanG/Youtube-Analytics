@@ -39,8 +39,9 @@ jobs:
             round=$((round + 1))
             left=$(python -m ytanalytics history-left)
             echo "Round $round: $left videos still have history to download"
-            python -m ytanalytics sync --minutes 15 || echo "sync stopped (quota or error); continuing with the archive"
+            # Archive first: the main database stays under its free-plan size before more is downloaded.
             python -m ytanalytics archive --minutes 10 || true
+            python -m ytanalytics sync --minutes 15 || echo "sync stopped (quota or error); continuing with the archive"
             if [ "$left" = "0" ]; then
               echo "History complete; one last archive pass"
               python -m ytanalytics archive --minutes 20 || true

@@ -58,11 +58,18 @@ function trackQueries(client: Sql) {
   const original = proto.handle;
   proto.handle = function (this: Promise<unknown> & { executed?: boolean; cancel: () => unknown }) {
     if (!this.executed && !longRun.getStore()) {
-      const t = setTimeout(() => {
-        console.warn("[db] a query got no answer for", STUCK_MS / 1000, "s: starting fresh connections");
+      const q = this as typeof this & { active?: boolean };
+      let t: ReturnType<typeof setTimeout>;
+      let waited = 0;
+      const check = () => {
+        // Still waiting in line for a free connection (not sent yet): that's a busy server copy, not a
+        // dead connection. Keep waiting, up to 3 rounds, then give up on it all the same.
+        if (!q.active && waited++ < 3) { t = setTimeout(check, STUCK_MS); (t as { unref?: () => void }).unref?.(); return; }
+        console.warn("[db] a query got no answer for", (STUCK_MS / 1000) * (waited + 1), "s: starting fresh connections");
         try { this.cancel(); } catch { /* already gone */ }
         resetClient();
-      }, STUCK_MS);
+      };
+      t = setTimeout(check, STUCK_MS);
       (t as { unref?: () => void }).unref?.();
       const clear = () => clearTimeout(t);
       Promise.prototype.then.call(this, clear, clear); // also marks the query as handled
