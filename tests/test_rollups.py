@@ -85,3 +85,23 @@ def test_running_totals_follow_every_change(engine):
         s.execute(text("delete from videos where id = 'v2'"))
         s.commit()
         assert_exact(engine)
+
+
+def test_compaction_gives_space_back(engine):
+    from ytanalytics.archive import compact_if_worth_it
+    S = make_session_factory(engine)
+    now = utcnow()
+    with S() as s:
+        s.add(Channel(id="UC9", title="Z", active=True)); s.add(Video(id="v9", channel_id="UC9", title="t")); s.commit()
+        s.add_all([Comment(id=f"c{i}", video_id="v9", channel_id="UC9", text="x" * 400, published_at=now) for i in range(3000)])
+        s.commit()
+        s.execute(text("delete from comments where id <> 'c1'"))
+        s.commit()
+        s.execute(text("analyze comments"))
+        before = s.execute(text("select pg_total_relation_size('comments')")).scalar()
+        assert compact_if_worth_it(s, {"COMPACT_MAX_ROWS": "100", "COMPACT_BYTES_PER_ROW": "1000"}) is True
+        after = s.execute(text("select pg_total_relation_size('comments')")).scalar()
+        assert after < before / 3
+        assert s.execute(text("select count(*) from comments")).scalar() == 1
+        # Plenty of live rows: leaves the table alone (a rewrite would lock it for long)
+        assert compact_if_worth_it(s, {"COMPACT_MAX_ROWS": "0"}) is False

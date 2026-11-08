@@ -39,7 +39,12 @@ def test_old_read_comments_move_and_counts_stay(session, tmp_path):
                             analyzed_at=utcnow(), ai_at=utcnow() if read else None, is_question=q, sentiment=sent, sentiment_value=val))
     session.commit()
     archive_url = f"sqlite:///{tmp_path / 'archive.db'}"
-    assert archive_old_comments(session, archive_url, batch=1) == 2
+    # Strict mode: only comments the AI has already read move.
+    os.environ["ARCHIVE_NEEDS_AI"] = "1"
+    try:
+        assert archive_old_comments(session, archive_url, batch=1) == 2
+    finally:
+        del os.environ["ARCHIVE_NEEDS_AI"]
     left = {r[0] for r in session.execute(text("select id from comments"))}
     assert left == {"keep-liked", "keep-question", "keep-unread", "keep-new"}
     arch = create_engine(archive_url)
@@ -49,8 +54,26 @@ def test_old_read_comments_move_and_counts_stay(session, tmp_path):
     assert tuple(st) == (2, 1, 1, 2)
     assert session.execute(text("select archived_comments from videos where id = 'v1'")).scalar() == 2
     # Running again moves nothing new and never double-counts.
-    assert archive_old_comments(session, archive_url) == 0
+    os.environ["ARCHIVE_NEEDS_AI"] = "1"
+    try:
+        assert archive_old_comments(session, archive_url) == 0
+    finally:
+        del os.environ["ARCHIVE_NEEDS_AI"]
     assert session.execute(text("select sum(comments) from archive_stats")).scalar() == 2
+    # Default: old comments move even before the AI reads them (the main database stays small);
+    # their counts still land in archive_stats (as not yet analysed).
+    assert archive_old_comments(session, archive_url) == 1
+    assert {r[0] for r in session.execute(text("select id from comments"))} == {"keep-liked", "keep-question", "keep-new"}
+    assert session.execute(text("select sum(comments) from archive_stats")).scalar() == 3
+
+
+def test_several_archive_databases(session, tmp_path):
+    from ytanalytics.archive import archive_urls, pick_shard
+    one, two = f"sqlite:///{tmp_path / 'a1.db'}", f"sqlite:///{tmp_path / 'a2.db'}"
+    env = {"ARCHIVE_DATABASE_URLS": f"{one}, {two}", "ARCHIVE_DATABASE_URL": one}
+    assert archive_urls(None, env) == [one, two]  # listed once, in order
+    assert pick_shard([one, two]) is not None
+    assert pick_shard([one, two], limit_mb=-1) is None  # all full
 
 
 def test_archive_only_when_needed(session):

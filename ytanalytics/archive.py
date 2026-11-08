@@ -1,14 +1,21 @@
 """Archive old, already-analysed comments to a second free database (e.g. Neon) so the main
 Supabase database (500 MB free) never fills up.
 
-What moves: comments older than ARCHIVE_AFTER_DAYS (default 180) that the local model AND the AI
-have already read. What stays: questions, requests and comments with 25+ likes (the valuable ones).
+What moves: comments older than ARCHIVE_AFTER_DAYS (default 90). The main database keeps only
+recent comments plus every total (running totals, archive_stats), so it stays small and fast. Set
+ARCHIVE_NEEDS_AI=1 to move only comments the local model and the AI have already read.
+What stays: questions, requests and comments with 25+ likes (the valuable ones).
+
+Several archive databases (each a free Neon project, ~0.5-1 GB): ARCHIVE_DATABASE_URLS (comma or
+newline separated), ARCHIVE_DATABASE_URL, and rows named "archive_db_*" in the app_secrets table (so a
+new one can be added without touching GitHub or Vercel settings). Comments go to the first one with
+room (below ARCHIVE_SHARD_MB, default 450); the website searches all of them.
 What is kept in the main database: per-channel, per-day counts of everything archived
 (`archive_stats`), so totals and charts stay correct, and each video's archived count.
 The AI's understanding is kept in Creator Memory (monthly memories + profile).
 
-Runs only when ARCHIVE_DATABASE_URL is set and the main database is above ARCHIVE_AT_PERCENT
-(default 70) of ARCHIVE_DB_LIMIT_MB (default 500), or when ARCHIVE_FORCE=1.
+Runs whenever an archive database is set (ARCHIVE_AT_PERCENT, default 0, can make it wait until the
+main database is that full of ARCHIVE_DB_LIMIT_MB, default 500).
 """
 from __future__ import annotations
 
@@ -55,28 +62,79 @@ def database_mb(session: Session) -> float:
     return float(session.execute(text("select pg_database_size(current_database())")).scalar() or 0) / 1048576
 
 
+def archive_urls(session: Session | None = None, env=os.environ) -> list[str]:
+    """Every configured archive database, in fill order (the database's list first, then the environment)."""
+    urls: list[str] = []
+    # Databases listed in the main database come first (the newest, closest ones are added there).
+    if session is not None and session.get_bind().dialect.name == "postgresql":
+        try:
+            rows = session.execute(text("select value from app_secrets where name like 'archive_db_%' order by name")).scalars()
+            urls += [u.strip() for u in rows if u and u.strip()]
+        except Exception:
+            session.rollback()  # no app_secrets table yet
+    for raw in (env.get("ARCHIVE_DATABASE_URLS", ""), env.get("ARCHIVE_DATABASE_URL", "")):
+        urls += [u.strip() for u in raw.replace("\n", ",").split(",") if u.strip()]
+    seen: set[str] = set()
+    return [u for u in urls if not (u in seen or seen.add(u))]
+
+
 def should_archive(session: Session, env=os.environ) -> tuple[bool, str]:
-    if not env.get("ARCHIVE_DATABASE_URL"):
-        return False, "ARCHIVE_DATABASE_URL is not set"
+    if not archive_urls(session, env):
+        return False, "no archive database is set (ARCHIVE_DATABASE_URL or app_secrets archive_db_*)"
     if env.get("ARCHIVE_FORCE") == "1":
         return True, "forced"
     limit = float(env.get("ARCHIVE_DB_LIMIT_MB", "500"))
-    at = float(env.get("ARCHIVE_AT_PERCENT", "70"))
+    # Default 0: keep the main database to recent comments all the time (old ones always move), so it
+    # stays small and fast. A higher value waits until the database is that full.
+    at = float(env.get("ARCHIVE_AT_PERCENT", "0"))
     mb = database_mb(session)
     if mb < limit * at / 100:
         return False, f"main database {mb:.0f} MB is under {at:.0f}% of {limit:.0f} MB"
     return True, f"main database {mb:.0f} MB is over {at:.0f}% of {limit:.0f} MB"
 
 
-def archive_old_comments(session: Session, archive_url: str, *, batch: int = 5000, max_rows: int = 100_000,
-                         after_days: int | None = None, deadline: float | None = None) -> int:
-    """Move eligible comments in batches: copy to the archive, record their counts, then delete."""
-    after_days = after_days if after_days is not None else int(os.environ.get("ARCHIVE_AFTER_DAYS", "180"))
-    archive = create_engine(normalize_db_url(archive_url), pool_pre_ping=True)
-    with archive.begin() as conn:
+def _open_shard(url: str):
+    engine = create_engine(normalize_db_url(url), pool_pre_ping=True)
+    with engine.begin() as conn:
         for stmt in ARCHIVE_TABLE.strip().split(";"):
             if stmt.strip():
                 conn.execute(text(stmt))
+    return engine
+
+
+def _shard_mb(engine) -> float:
+    with engine.connect() as conn:
+        if engine.dialect.name != "postgresql":
+            return 0.0
+        return float(conn.execute(text("select pg_database_size(current_database())")).scalar() or 0) / 1048576
+
+
+def pick_shard(urls: list[str], limit_mb: float | None = None):
+    """The first archive database with room left, or None when all are full."""
+    limit_mb = limit_mb if limit_mb is not None else float(os.environ.get("ARCHIVE_SHARD_MB", "450"))
+    for url in urls:
+        try:
+            engine = _open_shard(url)
+        except Exception as e:  # unreachable: try the next one
+            log.warning("Archive database not reachable: %s", str(e).splitlines()[0])
+            continue
+        if _shard_mb(engine) < limit_mb:
+            return engine
+        engine.dispose()
+    return None
+
+
+def archive_old_comments(session: Session, archive_url: str | list[str], *, batch: int = 5000, max_rows: int = 300_000,
+                         after_days: int | None = None, deadline: float | None = None) -> int:
+    """Move eligible comments in batches: copy to the archive, record their counts, then delete."""
+    after_days = after_days if after_days is not None else int(os.environ.get("ARCHIVE_AFTER_DAYS", "90"))
+    urls = [archive_url] if isinstance(archive_url, str) else list(archive_url)
+    archive = pick_shard(urls)
+    if archive is None:
+        log.warning("Every archive database is full: add another (a free Neon project) as an archive_db_* row in app_secrets")
+        return 0
+    needs_ai = os.environ.get("ARCHIVE_NEEDS_AI", "0") == "1"
+    read_filter = "and analyzed_at is not null and ai_at is not null" if needs_ai else ""
     dialect = session.get_bind().dialect.name
     session.execute(text(MAIN_TABLES))
     if dialect == "sqlite":  # tests
@@ -96,7 +154,7 @@ def archive_old_comments(session: Session, archive_url: str, *, batch: int = 500
     while moved < max_rows and (deadline is None or time.monotonic() < deadline):
         rows = session.execute(text(f"""
             select {cols} from comments
-            where published_at < :cutoff and analyzed_at is not null and ai_at is not null
+            where published_at < :cutoff {read_filter}
               and coalesce(like_count, 0) < 25 and coalesce(is_question, false) = false and coalesce(is_suggestion, false) = false
             order by published_at limit :n"""), {"cutoff": _cutoff(after_days), "n": batch}).mappings().all()
         if not rows:
@@ -138,8 +196,44 @@ def archive_old_comments(session: Session, archive_url: str, *, batch: int = 500
         session.commit()
         moved += len(data)
         log.info("Archived %d comments so far", moved)
+        if moved % (batch * 10) == 0 and _shard_mb(archive) >= float(os.environ.get("ARCHIVE_SHARD_MB", "450")):
+            archive.dispose()  # this one is full: carry on in the next
+            archive = pick_shard(urls)
+            if archive is None:
+                log.warning("Every archive database is full: add another")
+                return moved
     archive.dispose()
+    if moved:
+        compact_if_worth_it(session)
     return moved
+
+
+def compact_if_worth_it(session: Session, env=os.environ) -> bool:
+    """Postgres keeps the space of deleted rows for reuse but doesn't give it back, so the database still
+    counts as full. Once most comments have moved out, rewrite the table (VACUUM FULL) to return the space.
+    Only when few rows remain (fast, a few seconds of lock), and give up at once if the table is busy."""
+    bind = session.get_bind()
+    if bind.dialect.name != "postgresql":
+        return False
+    live, total = session.execute(text("""select coalesce(s.n_live_tup, 0), pg_total_relation_size('comments')
+        from pg_stat_user_tables s where s.relname = 'comments'""")).one()
+    max_rows = int(env.get("COMPACT_MAX_ROWS", "150000"))
+    bytes_per_row = total / max(live, 1)
+    if live > max_rows or bytes_per_row < float(env.get("COMPACT_BYTES_PER_ROW", "1500")):
+        return False  # still lots of live rows (slow to rewrite), or not much space to win
+    session.commit()
+    log.info("Compacting the comments table (%d rows, %.0f MB) to give the freed space back", live, total / 1048576)
+    try:
+        with bind.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(text("set lock_timeout = '5s'"))
+            conn.execute(text("set statement_timeout = 0"))
+            conn.execute(text("vacuum full comments"))
+            conn.execute(text("vacuum (analyze) comments"))
+        log.info("Compacted: comments now %.0f MB", float(session.execute(text("select pg_total_relation_size('comments')")).scalar()) / 1048576)
+        return True
+    except Exception as e:
+        log.warning("Compaction skipped this time: %s", str(e).splitlines()[0])
+        return False
 
 
 def _cutoff(days: int):
