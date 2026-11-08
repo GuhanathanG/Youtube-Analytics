@@ -156,7 +156,7 @@ def archive_old_comments(session: Session, archive_url: str | list[str], *, batc
             select {cols} from comments
             where published_at < :cutoff {read_filter}
               and coalesce(like_count, 0) < 25 and coalesce(is_question, false) = false and coalesce(is_suggestion, false) = false
-            order by published_at limit :n"""), {"cutoff": _cutoff(after_days), "n": batch}).mappings().all()
+            order by published_at asc nulls first limit :n"""), {"cutoff": _cutoff(after_days), "n": batch}).mappings().all()
         if not rows:
             break
         data = [dict(r) for r in rows]
