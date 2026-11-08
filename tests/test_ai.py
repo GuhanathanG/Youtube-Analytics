@@ -360,3 +360,14 @@ def test_busy_model_is_skipped_with_its_reason(session):
     assert "capacity exceeded" in router.errors["mistral/mistral-small-latest"]
     # Not marked as used up for the day: a temporary problem, so the next run tries it again.
     assert not session.scalars(select(LlmUsage).where(LlmUsage.model_key == "mistral/mistral-small-latest")).one().exhausted
+
+
+def test_several_keys_and_new_free_providers():
+    from ytanalytics.llm import slots_from_env, split_keys
+    assert split_keys(" a, b\nc ,") == ["a", "b", "c"]
+    env = {"MISTRAL_API_KEY": "k1,k2", "MISTRAL_MODELS": "m", "GITHUB_MODELS_API_KEY": "ghs_x", "GITHUB_MODELS_MODELS": "openai/gpt-4.1-mini",
+           "NVIDIA_API_KEY": "nv", "NVIDIA_MODELS": "meta/llama-3.3-70b-instruct", "AI_PROVIDER_ORDER": "mistral,github,nvidia"}
+    slots = slots_from_env(env)
+    assert [(s.provider, s.api_key) for s in slots] == [("mistral", "k1"), ("mistral#2", "k2"), ("github", "ghs_x"), ("nvidia", "nv")]
+    assert len({s.key for s in slots}) == len(slots)  # each key has its own daily count
+    assert slots[2].base_url == "https://models.github.ai/inference/" and not slots[2].extra  # no reasoning parameter

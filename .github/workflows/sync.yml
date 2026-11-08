@@ -17,6 +17,9 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: read
+      models: read     # free GitHub Models AI with the job's own token (no key needed)
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
@@ -26,6 +29,9 @@ jobs:
       MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
       CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GITHUB_MODELS_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+      SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       ARCHIVE_DATABASE_URL: ${{ secrets.ARCHIVE_DATABASE_URL }}
       # Engine-stopped alarm (optional; same values as in Vercel)
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

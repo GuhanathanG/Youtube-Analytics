@@ -22,12 +22,21 @@ const PROVIDERS: Record<string, { base: string; prefix: string; models: string; 
   // OpenRouter ":free" models: 50 requests/day per account, shared across its free models.
   openrouter: { base: "https://openrouter.ai/api/v1/", prefix: "OPENROUTER",
     models: "google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free,nvidia/nemotron-3.5-lightning:free", daily: 50 },
+  // GitHub Models (free; on the website it needs a GitHub token with "models: read" as GITHUB_MODELS_API_KEY).
+  github: { base: "https://models.github.ai/inference/", prefix: "GITHUB_MODELS",
+    models: "openai/gpt-4.1-mini,openai/gpt-4.1-nano,mistral-ai/mistral-small-2503", daily: 50 },
+  // SambaNova Cloud free tier and NVIDIA NIM (NVIDIA Developer Program): free keys.
+  sambanova: { base: "https://api.sambanova.ai/v1/", prefix: "SAMBANOVA", models: "Meta-Llama-3.3-70B-Instruct,Meta-Llama-3.1-8B-Instruct", daily: 400 },
+  nvidia: { base: "https://integrate.api.nvidia.com/v1/", prefix: "NVIDIA", models: "meta/llama-3.3-70b-instruct,openai/gpt-oss-20b", daily: 500 },
 };
+
+/** One key, or several separated by commas (each gets its own daily allowance). */
+export const splitKeys = (raw: string | undefined) => (raw ?? "").split(/[,\n]/).map((k) => k.trim()).filter(Boolean);
 
 // Gemini model names change; ask Google which ones this key can use (cached for 6 hours).
 let geminiFound: { at: number; models: string[] } | null = null;
 async function discoverGemini() {
-  const key = process.env.GEMINI_API_KEY?.trim();
+  const key = splitKeys(process.env.GEMINI_API_KEY)[0];
   if (!key || process.env.GEMINI_MODELS || (geminiFound && Date.now() - geminiFound.at < 6 * 3600_000)) return;
   try {
     const base = process.env.GEMINI_NATIVE_BASE ?? "https://generativelanguage.googleapis.com/v1beta";
@@ -48,12 +57,12 @@ export async function geminiModelList(): Promise<string[]> {
 
 export function aiSlots(): Slot[] {
   const env = process.env;
-  const order = (env.AI_PROVIDER_ORDER ?? "gemini,mistral,groq,cloudflare,openrouter").split(",").map((s) => s.trim());
+  const order = (env.AI_PROVIDER_ORDER ?? "gemini,mistral,groq,cloudflare,github,sambanova,nvidia,openrouter").split(",").map((s) => s.trim());
   const slots: Slot[] = [];
   for (const name of order) {
     const p = PROVIDERS[name];
-    const key = p && env[`${p.prefix}_API_KEY`]?.trim();
-    if (!p || !key) continue;
+    const keys = p ? splitKeys(env[`${p.prefix}_API_KEY`]) : [];
+    if (!p || !keys.length) continue;
     let base = env[`${p.prefix}_BASE_URL`] ?? p.base;
     if (base.includes("{account}")) {
       const account = env[`${p.prefix}_ACCOUNT_ID`]?.trim();
@@ -61,9 +70,11 @@ export function aiSlots(): Slot[] {
       base = base.replace("{account}", encodeURIComponent(account));
     }
     const found = name === "gemini" && !env.GEMINI_MODELS && geminiFound?.models.length ? geminiFound.models.join(",") : null;
-    for (const model of (found ?? env[`${p.prefix}_MODELS`] ?? p.models).split(",").map((m) => m.trim()).filter(Boolean)) {
-      slots.push({ provider: name, baseUrl: base, key, model, daily: Number(env[`${p.prefix}_DAILY_REQUESTS`] ?? p.daily) });
-    }
+    keys.forEach((key, i) => {
+      for (const model of (found ?? env[`${p.prefix}_MODELS`] ?? p.models).split(",").map((m) => m.trim()).filter(Boolean)) {
+        slots.push({ provider: i ? `${name}#${i + 1}` : name, baseUrl: base, key, model, daily: Number(env[`${p.prefix}_DAILY_REQUESTS`] ?? p.daily) });
+      }
+    });
   }
   return slots;
 }
@@ -97,8 +108,9 @@ export function parseJson(content: string): Record<string, unknown> {
 
 /** Least "thinking" each model allows: thinking makes answers slow and labelling doesn't need it. */
 function reasoningFor(s: Slot): string | null {
-  if (s.provider === "gemini") return s.model.startsWith("gemini-2.5") ? "none" : "minimal";
-  if (["openrouter", "mistral", "cloudflare"].includes(s.provider)) return null; // not part of these APIs
+  const base = s.provider.split("#")[0];
+  if (base === "gemini") return s.model.startsWith("gemini-2.5") ? "none" : "minimal";
+  if (["openrouter", "mistral", "cloudflare", "github", "sambanova", "nvidia"].includes(base)) return null; // not part of these APIs
   return "low";
 }
 
