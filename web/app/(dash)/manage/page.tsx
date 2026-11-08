@@ -210,7 +210,7 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
                   <li key={c.id} className="flex items-center gap-3 py-3">
                     {c.thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.thumbnail_url} alt="" className="h-9 w-9 rounded-full object-cover ring-1 ring-white/10" />
+                      <img loading="lazy" decoding="async" src={c.thumbnail_url} alt="" className="h-9 w-9 rounded-full object-cover ring-1 ring-white/10" />
                     ) : <div className="grid h-9 w-9 place-items-center rounded-full bg-white/10">{c.title.slice(0, 1)}</div>}
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-[14px] text-ink">{c.title}</div>

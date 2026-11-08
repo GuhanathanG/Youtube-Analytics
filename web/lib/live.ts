@@ -377,6 +377,13 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
   const result: TickResult = { status: "ok", ...empty, source };
   const fresh: string[] = [];
 
+  // Keep the page server warm: a fresh copy has to start up (~1-2 s) before it can draw a page. Loading the
+  // light sign-in page every 2 minutes keeps a copy of the page server ready for real visits. Not awaited.
+  const site = process.env.SITE_HOST ?? process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (process.env.VERCEL_ENV === "production" && site) {
+    void fetch(`https://${site}/login?warm=1`, { cache: "no-store", signal: AbortSignal.timeout(4000) }).catch(() => null);
+  }
+
   // 0. Auto-clean: end database connections left hanging for minutes (their pages gave up long ago).
   //    They keep tables "in use", so any table change waits for them and every page queues behind it.
   result.unstuck = await unstickConnections().catch(() => 0);

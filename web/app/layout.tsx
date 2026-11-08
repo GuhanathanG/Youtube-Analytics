@@ -1,3 +1,4 @@
+import { preconnect } from "react-dom";
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
@@ -20,6 +21,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#05070d", colorScheme: "dark", viewportFit: "cover" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Start connecting to the thumbnail servers while the page is still loading, so images arrive sooner.
+  preconnect("https://i.ytimg.com");
+  preconnect("https://yt3.ggpht.com");
   return (
     <html lang="en" className={`${inter.variable} ${grotesk.variable} ${mono.variable}`}>
       <body>

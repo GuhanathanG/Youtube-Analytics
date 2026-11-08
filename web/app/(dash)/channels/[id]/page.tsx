@@ -46,7 +46,7 @@ export default async function ChannelPage({ params, searchParams }:
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
             {c.thumbnail_url ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={c.thumbnail_url} alt="" className="h-20 w-20 rounded-2xl object-cover ring-2 ring-white/10" />
+              <img decoding="async" src={c.thumbnail_url} alt="" className="h-20 w-20 rounded-2xl object-cover ring-2 ring-white/10" />
             ) : <div className="grid h-20 w-20 place-items-center rounded-2xl bg-gradient-to-br from-accent/30 to-accent-2/30 text-2xl font-semibold">{c.title.slice(0, 1)}</div>}
             <div className="min-w-0 flex-1">
               <div className="label">{isInstagram(c.id) ? "Instagram account" : "Channel"}</div>
@@ -179,7 +179,7 @@ async function VideoTable({ id, all }: { id: string; all: boolean }) {
                           <div className="relative h-12 w-20 shrink-0 overflow-hidden rounded-lg bg-white/5">
                             {v.thumbnail_url && (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={v.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                              <img loading="lazy" decoding="async" src={v.thumbnail_url} alt="" className="h-full w-full object-cover" />
                             )}
                             <span className="absolute bottom-0.5 right-0.5 rounded bg-black/70 px-1 font-mono text-[10px]">{duration(v.duration)}</span>
                             <Play size={16} className="absolute inset-0 m-auto text-white opacity-0 transition group-hover:opacity-100" />

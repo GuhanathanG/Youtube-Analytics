@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
     ],
   },
   poweredByHeader: false,
+  experimental: {
+    // Pages you've just seen are reused when you go back to them (no wait), and pages fetched ahead of
+    // time stay usable for 3 minutes. Live mode refreshes the page you're on every minute anyway.
+    staleTimes: { dynamic: 30, static: 180 },
+  },
   async headers() {
     // Content Security Policy: only this site's scripts, YouTube's player in an iframe, and
     // YouTube's thumbnail hosts for images. 'unsafe-inline' is needed by Next.js's inline bootstrap.

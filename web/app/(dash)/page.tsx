@@ -82,7 +82,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
                   <div className="flex items-center gap-3">
                     {c.thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.thumbnail_url} alt="" className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10" />
+                      <img decoding="async" src={c.thumbnail_url} alt="" className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10" />
                     ) : <div className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-accent/30 to-accent-2/30 font-semibold">{c.title.slice(0, 1)}</div>}
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium text-ink">{c.title}</div>
