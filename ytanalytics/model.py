@@ -345,7 +345,7 @@ def fit_linear(train: list[Example]) -> dict:
     y = np.array([e.target for e in train])
     mean = X.mean(axis=0)
     scale = X.std(axis=0)
-    scale[scale == 0] = 1
+    scale[scale < 0.05] = 1  # (almost) never varies: don't let a draft's different value blow up the estimate
     r = Ridge(alpha=3.0).fit((X - mean) / scale, y)
     names = LINEAR_FEATURES + ["log_age"]
     return {"features": names, "mean": mean.round(5).tolist(), "scale": scale.round(5).tolist(),

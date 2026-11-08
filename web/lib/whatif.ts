@@ -33,7 +33,12 @@ export function draftFeatures(d: Draft): Record<string, number> {
 export function estimateDraft(m: LinearModel, d: Draft): { multiple: number; views: number | null } {
   const f = draftFeatures(d);
   let y = m.intercept;
-  m.features.forEach((name, i) => { y += m.coef[i] * (((f[name] ?? m.mean[i]) - m.mean[i]) / (m.scale[i] || 1)); });
-  const multiple = Math.exp(y);
+  m.features.forEach((name, i) => {
+    // A draft far outside what the channel has done (e.g. an hour it never posts at) is held to 3 spreads from usual,
+    // so one unfamiliar setting can't produce a silly estimate.
+    const z = Math.max(-3, Math.min(3, ((f[name] ?? m.mean[i]) - m.mean[i]) / (m.scale[i] || 1)));
+    y += m.coef[i] * z;
+  });
+  const multiple = Math.exp(Math.max(-3, Math.min(3, y))); // between ~0.05× and 20× the channel's normal
   return { multiple, views: m.baseline ? Math.round(m.baseline * multiple) : null };
 }

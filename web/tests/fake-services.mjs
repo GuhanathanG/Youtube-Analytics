@@ -154,7 +154,8 @@ export function startFake(port = 4100) {
       const at = (h) => new Date(Date.now() - h * 3600e3).toISOString();
       const post = (code, h, comments, caption) => ({ id: `9${code}`, shortCode: code, type: "Image", caption, displayUrl: `http://localhost:4100/thumbs/${code}.jpg`,
         timestamp: at(h), likesCount: 120, commentsCount: comments, ownerUsername: "pulsecreator", hashtags: ["phones"] });
-      const posts = [post("IGPOST0001", 5, 3, "New phone unboxing 📱\nmore soon"), post("IGPOST0002", 30, 0, "Weekend vlog"), post("IGPOST0003", 400, 2, "Old review")];
+      const posts = [{ ...post("IGPOST0001", 5, 3, "New phone unboxing 📱\nmore soon"), type: "Video", productType: "clips", videoDuration: 42,
+          videoPlayCount: 9000, videoUrl: "http://localhost:4100/media/IGPOST0001.mp4" }, post("IGPOST0002", 30, 0, "Weekend vlog"), post("IGPOST0003", 400, 2, "Old review")];
       if (input.resultsType === "details") {
         if (String(input.directUrls?.[0]).includes("nobody_here")) return send([{ error: "not_found", errorDescription: "Profile does not exist" }]);
         return send([{ id: "777", username: "pulsecreator", fullName: "Pulse Creator", biography: "Tech in Tamil", followersCount: 5000,
@@ -177,6 +178,10 @@ export function startFake(port = 4100) {
     if (p.startsWith("/thumbs/")) { // tiny JPEG-like bytes for thumbnail analysis
       res.writeHead(200, { "Content-Type": "image/jpeg" }); return res.end(Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
     }
+    if (p.startsWith("/media/")) { // a reel's video file (a few bytes are enough for the stand-in AI)
+      sent.reelDownloads = (sent.reelDownloads ?? 0) + 1;
+      res.writeHead(200, { "Content-Type": "video/mp4" }); return res.end(Buffer.from("fake-mp4-bytes"));
+    }
     if (p.startsWith("/votes")) return send({ id: u.searchParams.get("videoId"), likes: 50, dislikes: 42, viewCount: 1000 });
     if (p.includes(":generateContent")) {
       let body = "";
@@ -184,6 +189,16 @@ export function startFake(port = 4100) {
       req.on("end", () => {
         const parsed = JSON.parse(body);
         const img = parsed.contents?.[0]?.parts?.[0]?.inline_data;
+        if (img && String(img.mime_type).startsWith("video/")) { // a reel handed over as a file
+          sent.reels = (sent.reels ?? 0) + 1;
+          const reel = { summary: "A quick reel unboxing a new phone with a punchy reveal.", format: "reel", languages: ["Tamil"], tone: "playful",
+            hook: { first_30s: "Phone flips into frame in the first second", strength: "strong", why: "Instant visual payoff" },
+            chapters: [{ start: "0:00", title: "Reveal", summary: "Phone appears" }], key_moments: [{ time: "0:12", what: "Camera zoom test", why: "Wow moment" }],
+            topics: ["phone unboxing"], people_brands_products: ["PhoneX"], sponsor_segments: [], calls_to_action: ["comment PRICE for the link"],
+            production: { editing: "fast", audio: "trending sound", visuals: "bright" }, title_thumbnail_promise: "Delivers",
+            strengths: ["fast hook"], weaknesses: ["no captions"], audience_fit: "phone fans" };
+          return send({ candidates: [{ content: { parts: [{ text: JSON.stringify(reel) }] } }], usageMetadata: { totalTokenCount: 4000 } });
+        }
         if (img) { // thumbnail analysis
           sent.thumbnails = (sent.thumbnails ?? 0) + 1;
           const thumb = { faces: 1, face_emotion: "surprised", text: "BEST PHONE?", text_words: 2, main_colors: ["yellow", "black"],

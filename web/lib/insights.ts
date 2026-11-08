@@ -136,7 +136,8 @@ export async function writeDueInsights(deadline: number, max = 2): Promise<numbe
   }
 
   const dueChannels = await db`
-    with totals as (select channel_id, count(*)::int n from comments group by channel_id having count(*) >= ${MIN_COMMENTS}),
+    -- Saved channel totals (summary.ts) instead of counting every comment on each engine run (~6 s on 770k comments).
+    with totals as (select channel_id, comments as n from channel_summary where comments >= ${MIN_COMMENTS}),
          last as (select distinct on (target_id) target_id, comment_count, created_at from insights where scope = 'channel' order by target_id, created_at desc)
     select ch.id, ch.title, ch.handle, ch.subscriber_count, t.n
     from totals t join channels ch on ch.id = t.channel_id left join last l on l.target_id = ch.id

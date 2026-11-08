@@ -21,7 +21,7 @@ export async function ensureVideoTables() {
     data text, error text, created_at timestamp not null default (now() at time zone 'utc'))`;
   await ensureRls("video_analysis");
   await ensureColumns("videos", [["tags", "text"], ["category_id", "text"], ["definition", "text"], ["has_captions", "boolean"],
-    ["default_language", "text"], ["topic_categories", "text"], ["ryd_dislikes", "bigint"], ["ryd_fetched_at", "timestamp"]]);
+    ["default_language", "text"], ["topic_categories", "text"], ["ryd_dislikes", "bigint"], ["ryd_fetched_at", "timestamp"], ["media_url", "text"]]);
   ready = true;
 }
 
@@ -57,6 +57,38 @@ Use at most 12 chapters and 8 key moments. Use [] when there is nothing.`;
 
 const GEMINI = "https://generativelanguage.googleapis.com/v1beta";
 
+const REEL_PROMPT = VIDEO_PROMPT.replace("You are a YouTube content analyst. Watch this video", "You are an Instagram content analyst. Watch this reel")
+  .replace('"format": "e.g. review, vlog, tutorial, reaction, short, interview, live stream"', '"format": "e.g. reel, tutorial, skit, vlog, reaction, trend/meme, talking head"')
+  .replace('"first_30s": "what happens in the first 30 seconds"', '"first_30s": "what happens in the first 3 seconds (the scroll-stopper)"')
+  .replace('"title_thumbnail_promise": "does the video deliver what the title promises? one or two sentences"',
+    '"title_thumbnail_promise": "does the reel deliver what the caption and cover promise? one or two sentences"')
+  .replace("e.g. subscribe ask at 0:45, link in description", "e.g. follow ask at 0:12, link in bio, comment a keyword");
+
+const INLINE_MAX = 14 * 1024 * 1024; // larger files go through Gemini's file upload (requests are capped at ~20 MB)
+
+/** Download a reel (Instagram's own video link) and give it to Gemini: inline when small, else via the Files API. */
+async function reelPart(url: string, key: string): Promise<Record<string, unknown>> {
+  const maxMb = Number(process.env.IG_VIDEO_MAX_MB ?? 60);
+  const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
+  if (res.status === 403 || res.status === 410) throw new Error("Instagram's video link has expired; it refreshes on the next scan of this account");
+  if (!res.ok) throw new Error(`download failed (${res.status})`);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  if (bytes.length > maxMb * 1024 * 1024) throw new Error(`reel is larger than ${maxMb} MB`);
+  const mime = (res.headers.get("content-type") ?? "video/mp4").split(";")[0].startsWith("video/") ? (res.headers.get("content-type") ?? "video/mp4").split(";")[0] : "video/mp4";
+  if (bytes.length <= INLINE_MAX) return { inline_data: { mime_type: mime, data: bytes.toString("base64") } };
+  const base = (process.env.GEMINI_NATIVE_BASE ?? GEMINI).replace(/\/v1beta$/, "");
+  const up = await fetch(`${base}/upload/v1beta/files?uploadType=media`, {
+    method: "POST", headers: { "x-goog-api-key": key, "Content-Type": mime }, body: bytes, signal: AbortSignal.timeout(120000) });
+  if (!up.ok) throw new Error(`upload to Gemini failed (${up.status})`);
+  let file = (await up.json()).file as { name: string; uri: string; state?: string; mimeType?: string };
+  for (let i = 0; i < 20 && file.state === "PROCESSING"; i++) { // Gemini prepares videos before they can be used
+    await new Promise((r) => setTimeout(r, 3000));
+    file = await (await fetch(`${base}/v1beta/${file.name}`, { headers: { "x-goog-api-key": key } })).json();
+  }
+  if (file.state && file.state !== "ACTIVE") throw new Error(`Gemini couldn't process the reel (${file.state})`);
+  return { file_data: { mime_type: file.mimeType ?? mime, file_uri: file.uri } };
+}
+
 /** Seconds of video analysed today (free tier: 8 hours/day of YouTube video). */
 async function secondsToday(): Promise<number> {
   const [r] = await sql()`select coalesce(sum(tokens), 0)::int as s from llm_usage where day = ${quotaDay()} and model_key like 'video/%'`;
@@ -68,10 +100,12 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
   const db = sql();
   const key = process.env.GEMINI_API_KEY;
   if (!key) return { ok: false, message: "Video analysis needs GEMINI_API_KEY in Vercel." };
-  const [v] = await db`select id, title, duration from videos where id = ${videoId}`;
-  if (videoId.startsWith("ig_")) return { ok: false, message: "Watching the video with AI works for YouTube videos only." };
+  const ig = videoId.startsWith("ig_");
+  const [v] = ig ? await db`select id, title, duration, media_url from videos where id = ${videoId}`
+    : await db`select id, title, duration from videos where id = ${videoId}`;
   if (!v) return { ok: false, message: "Video not found." };
-  const seconds = durationSeconds(v.duration as string);
+  if (ig && !v.media_url) return { ok: false, message: "Only reels and video posts can be watched (this post has no video, or its link hasn't arrived yet)." };
+  const seconds = durationSeconds(v.duration as string) || (ig ? 60 : 0);
   const maxMinutes = Number(process.env.VIDEO_AI_MAX_MINUTES ?? 60);
   if (seconds > maxMinutes * 60) {
     await db`insert into video_analysis (video_id, status, error) values (${videoId}, 'skipped', ${`Longer than ${maxMinutes} minutes`})
@@ -81,6 +115,18 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
   const dailyCap = Number(process.env.VIDEO_AI_DAILY_SECONDS ?? 7 * 3600); // keep under Google's 8 h/day
   if ((await secondsToday()) + seconds > dailyCap) return { ok: false, message: "Today's free video-analysis allowance is used up; try again tomorrow." };
 
+  // YouTube: Gemini fetches the video by its link. Instagram: we download the reel and hand Gemini the file.
+  let videoPart: Record<string, unknown> = { file_data: { file_uri: `https://www.youtube.com/watch?v=${videoId}` } };
+  if (ig) {
+    try {
+      videoPart = await reelPart(String(v.media_url), key);
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      await db`insert into video_analysis (video_id, status, error) values (${videoId}, 'error', ${why.slice(0, 500)})
+        on conflict (video_id) do update set status = 'error', error = excluded.error, created_at = (now() at time zone 'utc')`;
+      return { ok: false, message: `Couldn't get the reel: ${why.slice(0, 160)}` };
+    }
+  }
   const models = (process.env.GEMINI_VIDEO_MODELS ?? "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3.5-flash-lite").split(",").map((m) => m.trim());
   const base = process.env.GEMINI_NATIVE_BASE ?? GEMINI; // overridable only for tests
   let lastError = "";
@@ -93,7 +139,7 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
       await new Promise((r) => setTimeout(r, Number(process.env.VIDEO_AI_RETRY_MS ?? 4000)));
     }
     const body = {
-      contents: [{ parts: [{ file_data: { file_uri: `https://www.youtube.com/watch?v=${videoId}` } }, { text: VIDEO_PROMPT }] }],
+      contents: [{ parts: [videoPart, { text: ig ? REEL_PROMPT : VIDEO_PROMPT }] }],
       generationConfig: {
         responseMimeType: "application/json", temperature: 0.3, maxOutputTokens: 6000,
         mediaResolution: "MEDIA_RESOLUTION_LOW", // ~100 tokens per second of video instead of ~300
@@ -151,10 +197,11 @@ export async function analyseDueVideos(max = 1): Promise<{ analysed: number; wai
   const due = await db`
     select v.id, v.title from videos v join channels c on c.id = v.channel_id
     left join video_analysis a on a.video_id = v.id
-    where c.active and c.platform is null and v.published_at >= (now() at time zone 'utc') - interval '30 days'
+    where c.active and (c.platform is null or v.media_url is not null)
+      and v.published_at >= (now() at time zone 'utc') - interval '30 days'
       and (a.video_id is null -- never tried, or a temporary failure (Google busy) at least 3 hours ago
         or (a.status = 'error' and a.created_at < (now() at time zone 'utc') - interval '3 hours'
-            and a.error ~ '(429|500|502|503|504|no answer|unreadable)'))
+            and a.error ~ '(429|500|502|503|504|no answer|unreadable|expired)'))
     order by (a.video_id is not null), v.published_at desc`;
   const tried = [];
   for (const v of due.slice(0, max)) {
