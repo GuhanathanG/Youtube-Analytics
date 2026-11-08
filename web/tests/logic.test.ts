@@ -122,4 +122,9 @@ assert.ok(ownMoves.some((m) => m.id === "ctr" && m.impact === 3) && ownMoves.som
   assert.ok(withNum.multiple > 1 && without.multiple < 1 && withNum.views! > without.views!);
   assert.ok(Math.abs(withNum.multiple / without.multiple - Math.exp(0.7)) < 1e-9);
 }
+{
+  const { estimateDraft } = await import("../lib/whatif.ts");
+  const wild = estimateDraft({ features: ["hour_sin"], mean: [0], scale: [0.001], coef: [5], intercept: 0, baseline: 1000 }, { title: "x", short: false, minutes: 10, day: 1, hour: 6 });
+  assert.ok(Number.isFinite(wild.multiple) && wild.multiple <= Math.exp(3) + 1e-9, String(wild.multiple));
+}
 console.log("logic unit tests: all passed");

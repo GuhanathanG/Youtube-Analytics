@@ -130,7 +130,7 @@ export default async function VideoPage({ params, searchParams }:
       {chat && <Reveal className="mt-6"><LiveChatPanel s={chat} /></Reveal>}
       {perf && <Reveal delay={0.05} className="mt-6"><PerformancePanel perf={perf} adv={adv} /></Reveal>}
       {thumb && <Reveal delay={0.05} className="mt-4"><ThumbnailPanel t={thumb} /></Reveal>}
-      {!isInstagram(id) && <Reveal delay={0.1} className="mt-4"><AIWatchPanel videoId={id} analysis={analysis} hasKey={!!process.env.GEMINI_API_KEY} /></Reveal>}
+      {(!isInstagram(id) || v.duration || analysis) && <Reveal delay={0.1} className="mt-4"><AIWatchPanel videoId={id} analysis={analysis} hasKey={!!process.env.GEMINI_API_KEY} /></Reveal>}
       {!isInstagram(id) && <Reveal delay={0.1} className="mt-4"><MomentsPanel videoId={id} durationS={durS} moments={momentData.moments} histogram={momentData.histogram} chapters={chapters} /></Reveal>}
       <Reveal delay={0.1} className="mt-4"><InsightPanel insight={insight} scope="video" /></Reveal>
       {perf && <Reveal delay={0.1} className="mt-4"><DetailsPanel perf={perf} /></Reveal>}

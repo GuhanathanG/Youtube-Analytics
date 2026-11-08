@@ -413,6 +413,17 @@ try {
   check("Instagram account page shows followers and an Instagram link", igPage.includes("Followers") && igPage.includes("instagram.com/pulsecreator"));
   const igPost = await (await get("/videos/ig_IGPOST0001")).text();
   check("Instagram post page shows the post and its comments", igPost.includes("Instagram post") && igPost.includes("instagram.com/p/IGPOST0001"));
+  // Instagram reels: the engine downloads the reel and the AI watches it, like a YouTube video.
+  const [reel] = await db`select media_url, duration from videos where id = 'ig_IGPOST0001'`;
+  check("a reel's video link is saved with the post", reel?.media_url === "http://localhost:4100/media/IGPOST0001.mp4" && reel.duration === "PT42S", JSON.stringify(reel));
+  const watchReel = await (await fetch(`${BASE}/api/video-analysis`, { method: "POST", headers: { cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ videoId: "ig_IGPOST0001" }) })).json();
+  check("the AI watches an Instagram reel (downloaded and handed over as a file)", watchReel.ok === true && sent.reelDownloads >= 1 && sent.reels >= 1, JSON.stringify(watchReel));
+  const reelPage = await (await get("/videos/ig_IGPOST0001")).text();
+  check("the reel page shows what the AI saw", reelPage.includes("A quick reel unboxing a new phone"));
+  const photo = await (await fetch(`${BASE}/api/video-analysis`, { method: "POST", headers: { cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ videoId: "ig_IGPOST0002" }) })).json();
+  check("a photo post is not sent to the video AI", photo.ok === false && /Only reels/.test(photo.message), JSON.stringify(photo));
   const mg = await (await get("/manage")).text();
   check("Manage shows the Instagram form and budget", mg.includes("Watch on Instagram") && mg.includes("Instagram budget"));
 
@@ -595,14 +606,16 @@ try {
   const trainRun = spawnSync("python", ["-m", "ytanalytics", "train"], { cwd: "..", encoding: "utf8", env: { ...process.env, DATABASE_URL: DB } });
   const trained = /"trained": true/.test(trainRun.stdout ?? "");
   check("prediction engine trains on the channel history", trained, (trainRun.stdout + trainRun.stderr).slice(-400));
-  const getF = (path) => fetch(`${BASE}${path}`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } });
+  // Training kept this script busy for a while, so the server may have closed the idle connection: retry once.
+  const getF = (path) => fetch(`${BASE}${path}`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } })
+    .catch(() => fetch(`${BASE}${path}`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}`, connection: "close" } }));
   const pr = await (await getF("/predict")).text();
   check("Predict page shows its tested accuracy and the measured driver", pr.includes("Lands within 2×") && pr.includes("Numbers in the title")
     && pr.includes("Where new uploads will land"));
   const wi = await (await getF("/predict?title=Top+7+tips&format=long&minutes=12&day=5&hour=18")).text();
   const wo = await (await getF("/predict?title=My+day+out&format=long&minutes=12&day=5&hour=18")).text();
   const mult = (h) => Number((/([\d.]+)×(?:<!-- -->)? this channel/.exec(h) ?? [])[1] ?? NaN);
-  check("what-if: a title with a number is estimated higher (as the engine learned)", mult(wi) > mult(wo), `${mult(wi)} vs ${mult(wo)}`);
+  check("what-if: a title with a number is estimated higher (as the engine learned)", mult(wi) > mult(wo), `${mult(wi)} vs ${mult(wo)} ${wi.slice(wi.indexOf("Expected after"), wi.indexOf("Expected after") + 300)}`);
   check("next moves include the engine's finding", (await (await getF("/command")).text()).includes("Lean into: numbers in the title"));
   const [young] = await db`select video_id from video_forecast where channel_id = ${ch.id} limit 1`;
   check("a young video shows the engine's 30-day forecast", Boolean(young) && (await (await get(`/videos/${young.video_id}`)).text()).includes("Engine forecast"));

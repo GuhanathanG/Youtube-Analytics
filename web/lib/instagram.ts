@@ -30,6 +30,8 @@ export async function ensureInstagram() {
   if (ready) return;
   const db = sql();
   await ensureColumns("channels", [["platform", "text"]]);
+  // Direct link to a reel's video file (from the scraper; Instagram's links expire after a few days, each scan refreshes them).
+  await ensureColumns("videos", [["media_url", "text"]]);
   await db`create table if not exists ig_runs (
     id text primary key, channel_id text not null, kind text not null, targets text, status text not null,
     dataset_id text, started_at timestamp not null, finished_at timestamp, items integer, cost_usd double precision,
@@ -125,7 +127,7 @@ export async function addInstagramNow(input: string): Promise<{ ok: boolean; mes
 type IgPost = {
   id?: string; shortCode?: string; url?: string; type?: string; caption?: string; displayUrl?: string; timestamp?: string;
   likesCount?: number; commentsCount?: number; videoViewCount?: number; videoPlayCount?: number; videoDuration?: number;
-  productType?: string; isCommentsDisabled?: boolean; hashtags?: string[]; ownerUsername?: string; error?: string;
+  productType?: string; isCommentsDisabled?: boolean; hashtags?: string[]; ownerUsername?: string; error?: string; videoUrl?: string;
 };
 type IgComment = {
   id?: string; postUrl?: string; text?: string; ownerUsername?: string; owner?: { id?: string; username?: string };
@@ -152,6 +154,7 @@ async function savePosts(channelId: string, posts: IgPost[]): Promise<number> {
     thumbnail_url: p.displayUrl ?? null, view_count: num(p.videoPlayCount ?? p.videoViewCount), like_count: num(p.likesCount),
     comment_count: num(p.commentsCount) ?? 0, stats_updated_at: nowSql(), comments_disabled: !!p.isCommentsDisabled,
     comments_backfilled: true, tags: p.hashtags?.length ? p.hashtags.join("|").slice(0, 2000) : null,
+    media_url: p.videoUrl && /^https?:\/\//.test(p.videoUrl) ? p.videoUrl.slice(0, 2000) : null,
   }));
   if (!rows.length) return 0;
   const db = sql();
@@ -160,7 +163,7 @@ async function savePosts(channelId: string, posts: IgPost[]): Promise<number> {
     on conflict (id) do update set title = excluded.title, description = excluded.description, thumbnail_url = excluded.thumbnail_url,
       view_count = coalesce(excluded.view_count, videos.view_count), like_count = coalesce(excluded.like_count, videos.like_count),
       comment_count = excluded.comment_count, stats_updated_at = excluded.stats_updated_at, comments_disabled = excluded.comments_disabled,
-      tags = coalesce(excluded.tags, videos.tags)
+      tags = coalesce(excluded.tags, videos.tags), media_url = coalesce(excluded.media_url, videos.media_url)
     returning id, (xmax = 0) as inserted`;
   // Growth over time, like YouTube (at most every 30 minutes per post).
   await db`insert into video_snapshots (video_id, taken_at, view_count, like_count, comment_count)
