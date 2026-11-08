@@ -28,9 +28,6 @@ const NAV = [
   { href: "/manage", label: "Manage", icon: Settings2 },
   { href: "/glance", label: "Glance", icon: Gauge },
 ];
-// The pages people open most are fetched in full in the background (when their link is on screen), so
-// tapping them shows the page at once. The rest only fetch their loading frame ahead of time.
-const FULL_PREFETCH = new Set(["/command", "/", "/analytics", "/comments", "/predict", "/ask"]);
 // The phone bar has room for four items plus search.
 const MOBILE_NAV = NAV.filter((n) => ["/command", "/", "/ask", "/comments"].includes(n.href));
 
@@ -72,7 +69,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
         <Link href="/" className="px-2"><Logo /></Link>
         <nav className="mt-8 space-y-1">
           {NAV.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} prefetch={FULL_PREFETCH.has(href) ? true : undefined}
+            <Link key={href} href={href}
               className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] transition ${isActive(href) ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
               {isActive(href) && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-accent shadow-[0_0_12px_#22d3ee]" />}
               <Icon size={17} className={isActive(href) ? "text-accent" : ""} />{label}
@@ -118,7 +115,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
       {/* Mobile bottom nav */}
       <nav className="safe-bottom fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-[#0a0e1a]/85 p-1.5 backdrop-blur-xl lg:hidden">
         {MOBILE_NAV.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} prefetch={FULL_PREFETCH.has(href) ? true : undefined} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${isActive(href) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
+          <Link key={href} href={href} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${isActive(href) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
             <Icon size={18} className={isActive(href) ? "text-accent" : ""} />{label}
           </Link>
         ))}
