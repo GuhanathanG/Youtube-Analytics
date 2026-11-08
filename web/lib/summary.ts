@@ -1,4 +1,5 @@
 import "server-only";
+import { rollupsReady } from "./queries";
 import { sql, ensureRls, ensureIndex } from "./db";
 import { archivedTotals } from "./archive";
 
@@ -36,6 +37,7 @@ export async function ensureSummary() {
 /** Recount one channel (three scans of that channel's comments, using the channel index). */
 export async function refreshSummary(channelId: string) {
   await ensureSummary();
+  if (await rollupsReady()) return refreshSummaryFromTotals(channelId);
   const db = sql();
   const [r] = await db`
     select count(*)::int as comments, count(analyzed_at)::int as analyzed, count(ai_at)::int as ai_read,
@@ -57,6 +59,39 @@ export async function refreshSummary(channelId: string) {
     from comments where channel_id = ${channelId} group by video_id
     on conflict (video_id) do update set comments = excluded.comments, positive = excluded.positive, neutral = excluded.neutral,
       negative = excluded.negative, avg_sentiment = excluded.avg_sentiment`;
+  await saveSummary(channelId, r, langs, emos);
+}
+
+
+/** Same numbers from the running totals (a few small reads instead of three scans of every comment);
+ *  only the last-hour and last-24-hour counts look at comments, through their time indexes. */
+async function refreshSummaryFromTotals(channelId: string) {
+  const db = sql();
+  const [[t], [recent], langs, emos] = await Promise.all([
+    db`select coalesce(sum(comments), 0)::int as comments, coalesce(sum(analyzed), 0)::int as analyzed, coalesce(sum(ai_read), 0)::int as ai_read,
+         coalesce(sum(positive), 0)::int as positive, coalesce(sum(neutral), 0)::int as neutral, coalesce(sum(negative), 0)::int as negative,
+         (sum(sent_sum) / nullif(sum(sent_n), 0))::float8 as avg_sentiment
+       from comment_day where channel_id = ${channelId}`,
+    db`select
+         (select count(*) from comments where channel_id = ${channelId} and published_at >= (now() at time zone 'utc') - interval '24 hours')::int as comments_24h,
+         (select count(*) from comments where ai_at >= (now() at time zone 'utc') - interval '1 hour' and channel_id = ${channelId})::int as ai_hour,
+         (select count(*) from comments where analyzed_at >= (now() at time zone 'utc') - interval '1 hour' and channel_id = ${channelId})::int as sentiment_hour,
+         (select count(*) from comments where fetched_at >= (now() at time zone 'utc') - interval '1 hour' and channel_id = ${channelId})::int as saved_hour,
+         (select max(comments_checked_at) from videos where channel_id = ${channelId}) as last_fetch`,
+    db`select language as code, comments, (sent_sum / nullif(sent_n, 0))::float8 as avg from comment_lang
+       where channel_id = ${channelId} and comments > 0 order by comments desc limit 12`,
+    db`select emotion, comments from comment_emotion where channel_id = ${channelId} and comments > 0 order by comments desc limit 16`,
+  ]);
+  await db`insert into video_summary (video_id, channel_id, comments, positive, neutral, negative, avg_sentiment)
+    select video_id, channel_id, comments, positive, neutral, negative, (sent_sum / nullif(sent_n, 0))::float8
+    from comment_video where channel_id = ${channelId}
+    on conflict (video_id) do update set comments = excluded.comments, positive = excluded.positive, neutral = excluded.neutral,
+      negative = excluded.negative, avg_sentiment = excluded.avg_sentiment`;
+  await saveSummary(channelId, { ...t, ...recent }, langs, emos);
+}
+
+async function saveSummary(channelId: string, r: Record<string, unknown>, langs: unknown[], emos: unknown[]) {
+  const db = sql();
   // Comments moved to the archive still count (their totals are kept in archive_stats).
   const ar = await archivedTotals(channelId);
   if (ar && ar.comments) {
@@ -82,7 +117,7 @@ export async function refreshDueSummaries(timeLeft: () => boolean, max = 1): Pro
   const every = Number(process.env.SUMMARY_EVERY_MINUTES ?? 10);
   const due = await sql()`select ch.id from channels ch left join channel_summary s on s.channel_id = ch.id
     where ch.active and (s.updated_at is null or s.updated_at < (now() at time zone 'utc')
-      - make_interval(mins => ${every}) * greatest(1, least(6, coalesce(s.comments, 0) / 50000.0)))
+      - make_interval(mins => ${every}) * greatest(1, least(${(await rollupsReady()) ? 1 : 6}, coalesce(s.comments, 0) / 50000.0)))
     order by s.updated_at asc nulls first limit ${max}`;
   let n = 0;
   for (const c of due) {

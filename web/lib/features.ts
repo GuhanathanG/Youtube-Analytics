@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import { stored, sizedAge } from "./stored";
+import { rollupsReady } from "./queries";
 import { ASPECT_LABELS } from "./queries-shared";
 
 /* ================================================================== 5. superfans & critics */
@@ -181,7 +182,18 @@ export async function compareChannels(ids: string[]) {
 export async function computeCompare(ids: string[]) {
   const db = sql();
   if (!ids.length) return { rows: [] as CompareRow[], weekly: [] as Record<string, string | number | null>[], overlap: [] as { a: string; b: string; shared: number; jaccard: number }[] };
-  const rows = (await db`
+  const totals = await rollupsReady();
+  const rows = totals ? (await db`
+    select ch.id, ch.title, ch.thumbnail_url, ch.subscriber_count::float8 as subscriber_count, ch.view_count::float8 as view_count,
+      (select count(*) from videos v where v.channel_id = ch.id)::int as videos,
+      coalesce(sum(d.comments), 0)::int as comments, (sum(d.sent_sum) / nullif(sum(d.sent_n), 0))::float8 as avg_sentiment,
+      (100.0 * sum(d.negative) / nullif(sum(d.positive + d.neutral + d.negative), 0))::float8 as negative_pct,
+      (100.0 * sum(d.ai_read) / nullif(sum(d.comments), 0))::float8 as ai_pct,
+      (coalesce(sum(d.comments), 0)::float8 / nullif((select count(*) from videos v where v.channel_id = ch.id), 0)) as comments_per_video,
+      coalesce(sum(d.questions), 0)::int as questions, coalesce(sum(d.requests), 0)::int as requests
+    from channels ch left join comment_day d on d.channel_id = ch.id
+    where ch.id in ${db(ids)}
+    group by ch.id, ch.title, ch.thumbnail_url, ch.subscriber_count, ch.view_count`) as unknown as CompareRow[] : (await db`
     select ch.id, ch.title, ch.thumbnail_url, ch.subscriber_count::float8 as subscriber_count, ch.view_count::float8 as view_count,
       (select count(*) from videos v where v.channel_id = ch.id)::int as videos,
       count(c.id)::int as comments, avg(c.sentiment_value)::float8 as avg_sentiment,
@@ -194,7 +206,10 @@ export async function computeCompare(ids: string[]) {
     where ch.id in ${db(ids)}
     group by ch.id, ch.title, ch.thumbnail_url, ch.subscriber_count, ch.view_count`) as unknown as CompareRow[];
 
-  const weeklyRows = await db`
+  const weeklyRows = totals ? await db`
+    select channel_id, to_char(date_trunc('week', day), 'YYYY-MM-DD') as week, (sum(sent_sum) / nullif(sum(sent_n), 0))::float8 as s, sum(sent_n)::int as n
+    from comment_day where channel_id in ${db(ids)} and day >= (now() at time zone 'utc')::date - 182
+    group by 1, 2 having sum(sent_n) > 0 order by 2` : await db`
     select channel_id, to_char(date_trunc('week', published_at), 'YYYY-MM-DD') as week, avg(sentiment_value)::float8 as s, count(*)::int as n
     from comments where channel_id in ${db(ids)} and sentiment_value is not null
       and published_at >= (now() at time zone 'utc') - interval '26 weeks'

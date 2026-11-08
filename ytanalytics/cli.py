@@ -83,6 +83,11 @@ def main(argv: list[str] | None = None) -> int:
         from .db import ensure_extra_indexes, guard_website_queries
         guard_website_queries(engine)
         ensure_extra_indexes(engine)
+        from .rollups import ensure_rollups
+        try:
+            ensure_rollups(engine)  # running totals (one-time fill, then kept exact by the database)
+        except Exception as e:  # never stop the job over it; the next run tries again
+            logging.getLogger(__name__).warning("Running totals not built yet: %s", str(e).splitlines()[0])
     Session = make_session_factory(engine)
 
     with Session() as session:
