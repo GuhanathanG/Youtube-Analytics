@@ -541,14 +541,9 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 8. otherwise the AI works through the backlog of comments it hasn't read yet.
     const everyMin = Math.max(1, Number(process.env.INSIGHTS_EVERY_MINUTES ?? 10));
     const insightsTurn = Math.floor(Date.now() / 60000) % everyMin < 2;
-    if (insightsTurn && timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
-    if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await writeDueIdeas(deadline).catch(() => 0));
-    if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await summariseEndedChats(deadline).catch(() => 0));
-    // Creator Memory: one monthly memory or creator profile per turn (builds up the long-term picture).
-    if (insightsTurn && timeLeft()) result.memory = await writeDueMemory(deadline).catch((e) => { console.log("[memory]", e instanceof Error ? e.message : e); return 0; });
-    if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, Number(process.env.AI_BACKLOG_PER_RUN ?? 150)).catch(() => 0);
-
-    // 9. Alerts (new uploads, negative spikes, viral comments): checked on the same ~10-minute turn,
+    // 9. Quick upkeep first (alerts, health alarm, backup job start, reports): they must not wait
+    //    behind the AI backlog below, which uses whatever time is left.
+    // Alerts (new uploads, negative spikes, viral comments): checked on the same ~10-minute turn,
     //    since the checks aggregate recent comments.
     if (insightsTurn || result.newVideos) result.alerts = await checkAlerts().catch(() => 0);
     // Engine health alarm: background job stopped, AI stopped, database nearly full, quota gone early.
@@ -571,6 +566,15 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     if (insightsTurn && timeLeft()) result.job = await kickBackgroundJob().catch(() => "error");
     // 10. Monday-morning weekly report on Telegram (once per channel per week).
     if (insightsTurn && timeLeft()) result.alerts = (result.alerts ?? 0) + await sendWeeklyReports().catch(() => 0);
+    // AI briefings and Creator Memory (about every 10 minutes; ~10-15 s each).
+    if (insightsTurn && timeLeft()) result.insights = await writeDueInsights(deadline, 1).catch(() => 0);
+    if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await writeDueIdeas(deadline).catch(() => 0));
+    if (insightsTurn && timeLeft()) result.insights = (result.insights ?? 0) + (await summariseEndedChats(deadline).catch(() => 0));
+    // Creator Memory: one monthly memory or creator profile per turn (builds up the long-term picture).
+    if (insightsTurn && timeLeft()) result.memory = await writeDueMemory(deadline).catch((e) => { console.log("[memory]", e instanceof Error ? e.message : e); return 0; });
+    // Last: the AI works through the backlog of comments it hasn't read yet, with the time left.
+    if (timeLeft()) result.aiBacklog = await labelBacklog(deadline, Number(process.env.AI_BACKLOG_PER_RUN ?? 150)).catch(() => 0);
+
   } catch (e) {
     if (result.status === "ok") { result.status = "error"; result.message = e instanceof Error ? e.message.slice(0, 300) : "Unknown error"; }
   }
