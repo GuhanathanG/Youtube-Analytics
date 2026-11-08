@@ -42,6 +42,15 @@ function refreshLater<T>(key: string, fn: () => Promise<T>) {
   try { after(run); } catch { void run(); } // outside a request (engine, tests): just run it
 }
 
+/**
+ * Sections that scan a channel's whole history. On big channels these take from several seconds to
+ * minutes, so pages never recompute them (that tied up the few database connections and froze every
+ * page). Pages read the saved copy; the background keeps them fresh (warmChannel for small channels,
+ * the heavy-work run, /api/heavy, for big ones). A page still works one out the very first time.
+ */
+export const isHeavy = (key: string) =>
+  /^(ch:[^:]+:(all|-):(daily|aspects|people|trend)|analytics:|audience:|health:|brands:|overview:all:|compare:)/.test(key);
+
 export function stored<T>(key: string, maxAgeMs: number, fn: () => Promise<T>): Promise<T> {
   if (process.env.STORED_PANELS === "0") return fn();
   if (maxAgeMs <= 0) return ensureTable().then(() => compute(key, fn)); // "always fresh" (tests, or a setting of 0)
@@ -50,7 +59,7 @@ export function stored<T>(key: string, maxAgeMs: number, fn: () => Promise<T>): 
     const [row] = await sql()`select data, extract(epoch from ((now() at time zone 'utc') - computed_at)) * 1000 as age
       from panel_cache where key = ${key}`;
     if (!row) return compute(key, fn);
-    if (Number(row.age) > maxAgeMs) refreshLater(key, fn);
+    if (Number(row.age) > maxAgeMs && !isHeavy(key)) refreshLater(key, fn);
     return JSON.parse(row.data as string) as T;
   });
 }
@@ -88,4 +97,23 @@ export async function sizedAge(channelId: string | null | undefined, baseMs: num
   }
   const n = sizes.map.get(channelId) ?? 0;
   return Math.round(baseMs * Math.min(24, Math.max(1, n / 50_000)));
+}
+
+/** The comment count above which a channel's heavy sections go to the heavy-work run. */
+export async function isBigChannel(channelId: string): Promise<boolean> {
+  const [r] = await sql()`select comments from channel_summary where channel_id = ${channelId}`.catch(() => []);
+  return Number(r?.comments ?? 0) >= Number(process.env.BIG_CHANNEL_COMMENTS ?? 50_000);
+}
+
+/** Simple lock row so only one heavy-work run happens at a time (expires after `seconds`). */
+export async function takeLock(name: string, seconds: number): Promise<boolean> {
+  await ensureTable();
+  const rows = await sql()`insert into panel_cache (key, data, computed_at, ms) values (${"lock:" + name}, '{}', (now() at time zone 'utc'), 0)
+    on conflict (key) do update set computed_at = excluded.computed_at
+      where panel_cache.computed_at < (now() at time zone 'utc') - make_interval(secs => ${seconds})
+    returning key`;
+  return rows.length > 0;
+}
+export async function releaseLock(name: string) {
+  await sql()`delete from panel_cache where key = ${"lock:" + name}`;
 }
