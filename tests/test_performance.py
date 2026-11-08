@@ -5,6 +5,11 @@ import os
 from datetime import timedelta
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def full_history(monkeypatch):
+    monkeypatch.setenv("HISTORY_DAYS", "36500")  # these tests download a whole (past-dated) history
 from sqlalchemy import event, func, select
 
 from tests.fakes import BASE, FakeYouTube

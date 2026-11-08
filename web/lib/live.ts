@@ -304,6 +304,8 @@ async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<
     select v.id, v.channel_id, v.comments_page_token, v.comment_count, v.latest_comment_at, v.published_at
     from videos v join channels c on c.id = v.channel_id
     where c.active and c.platform is null and coalesce(c.role, '') <> 'competitor' and not v.comments_backfilled and not v.comments_disabled
+      -- Lean mode: the engine only fills in recent videos; older history is the background job's (or skipped).
+      and v.published_at >= (now() at time zone 'utc') - make_interval(days => ${Number(process.env.HISTORY_DAYS ?? 90)})
     order by v.published_at desc nulls last limit ${parallel}`;
   const results = await Promise.all(videos.map((v) => backfillVideo(v, perVideo, timeLeft).catch((e) => {
     if (e instanceof QuotaExhausted) return 0;
@@ -345,7 +347,9 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
   if (!youtubeConfigured()) return { status: "off", message: "Add YOUTUBE_API_KEY in Vercel to turn on live mode.", ...empty };
   await ensureLiveTable();
   const db = sql();
-  const interval = Math.max(30, Number(process.env.LIVE_INTERVAL_SECONDS ?? 60) || 60);
+  // Lean mode: a full engine cycle at most every 4 minutes (the timer calls every 2), leaving the small
+  // database free for pages most of the time. Uploads also arrive instantly by push (WebSub).
+  const interval = Math.max(30, Number(process.env.LIVE_INTERVAL_SECONDS ?? 240) || 240);
 
   // The 2-minute timer runs the engine. An open tab only steps in when the timer has stopped
   // (no run for 6+ minutes); otherwise it just shows the last result. Fewer heavy runs = faster pages.

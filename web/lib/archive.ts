@@ -111,3 +111,39 @@ export async function archivedTotals(channelId: string) {
     return null; // nothing archived yet (table doesn't exist)
   }
 }
+
+/** One month of a channel's archived comments, for Creator Memory: counts, languages and a balanced
+ *  sample (most liked, most liked negative, questions/requests, random), merged across every archive. */
+export async function archiveMonth(channelId: string, mon: string) {
+  const start = `${mon}-01 00:00:00`;
+  const parts = await Promise.all((await archives()).map(async (a) => {
+    try {
+      const where = a`channel_id = ${channelId} and published_at >= ${start}::timestamp and published_at < ${start}::timestamp + interval '1 month'`;
+      const [st] = await a`select count(*)::int as n, coalesce(sum(sentiment_value), 0)::float8 as s, count(sentiment_value)::int as sn,
+          count(*) filter (where sentiment = 'negative')::int as neg, count(distinct author_channel_id)::int as people,
+          count(*) filter (where is_question)::int as questions, count(*) filter (where is_suggestion)::int as requests
+        from comments where ${where}`;
+      if (!st?.n) return null;
+      const langs = await a`select split_part(coalesce(language, 'und'), '-', 1) as l, count(*)::int as n from comments where ${where} group by 1`;
+      const sample = [
+        ...await a`select text, translation, like_count, sentiment from comments where ${where} and (is_spam is null or not is_spam) order by like_count desc nulls last limit 70`,
+        ...await a`select text, translation, like_count, sentiment from comments where ${where} and sentiment = 'negative' order by like_count desc nulls last limit 30`,
+        ...await a`select text, translation, like_count, sentiment from comments where ${where} and (is_question or is_suggestion) order by like_count desc nulls last limit 30`,
+        ...await a`select text, translation, like_count, sentiment from comments where ${where} order by random() limit 40`,
+      ];
+      return { st, langs, sample };
+    } catch {
+      return null; // archive not reachable or empty: the main database's part still counts
+    }
+  }));
+  const ok = parts.filter((p): p is NonNullable<typeof p> => p !== null);
+  const sum = (k: string) => ok.reduce((n, p) => n + Number(p.st[k] ?? 0), 0);
+  const langs = new Map<string, number>();
+  for (const p of ok) for (const l of p.langs) langs.set(String(l.l), (langs.get(String(l.l)) ?? 0) + Number(l.n));
+  return {
+    n: sum("n"), sentimentSum: sum("s"), sentimentN: sum("sn"), neg: sum("neg"), people: sum("people"),
+    questions: sum("questions"), requests: sum("requests"),
+    langs: [...langs.entries()].map(([l, n]) => ({ l, n })),
+    sample: ok.flatMap((p) => p.sample as unknown as Record<string, unknown>[]),
+  };
+}

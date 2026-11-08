@@ -2,6 +2,7 @@ import "server-only";
 import { sql } from "./db";
 import { chatJson } from "./ai";
 import { cached } from "./cache";
+import { archiveMonth } from "./archive";
 
 /**
  * Creator Memory: how the AI "knows" a creator without re-reading every comment.
@@ -51,7 +52,7 @@ function dueMonths(): Promise<Row[]> {
       -- Months are found from the small videos table (comment counts from YouTube), not by scanning every comment.
       select v.channel_id, to_char(date_trunc('month', v.published_at), 'YYYY-MM') as mon, sum(coalesce(v.comment_count, 0))::int as n
       from videos v join channels ch on ch.id = v.channel_id
-      where ch.active and v.published_at >= date_trunc('month', (now() at time zone 'utc')) - interval '23 months'
+      where ch.active and v.published_at >= date_trunc('month', (now() at time zone 'utc')) - make_interval(months => ${Number(process.env.MEMORY_MONTHS ?? 120)})
       group by 1, 2 having sum(coalesce(v.comment_count, 0)) >= 20),
     last as (select distinct on (target_id) target_id, comment_count, created_at from insights
              where scope = 'month' order by target_id, created_at desc)
@@ -67,17 +68,27 @@ async function writeMonth(channelId: string, mon: string, deadline: number): Pro
   const db = sql();
   const start = `${mon}-01 00:00:00`;
   const where = db`c.channel_id = ${channelId} and c.published_at >= ${start}::timestamp and c.published_at < ${start}::timestamp + interval '1 month'`;
-  const [st] = await db`select count(*)::int as n, avg(sentiment_value)::float8 as mood,
+  const [live] = await db`select count(*)::int as n, coalesce(sum(sentiment_value), 0)::float8 as s, count(sentiment_value)::int as sn,
       count(*) filter (where sentiment = 'negative')::int as neg, count(distinct author_channel_id)::int as people,
       count(*) filter (where is_question)::int as questions, count(*) filter (where is_suggestion)::int as requests
     from comments c where ${where}`;
-  const langs = await db`select split_part(coalesce(language, 'und'), '-', 1) as l, count(*)::int as n from comments c where ${where} group by 1 order by 2 desc limit 6`;
+  const liveLangs = await db`select split_part(coalesce(language, 'und'), '-', 1) as l, count(*)::int as n from comments c where ${where} group by 1`;
+  // Older months live mostly in the archive (Lean mode keeps ~90 days in the main database): read both,
+  // so the memory of every month since the start is built from its real comments.
+  const old = await archiveMonth(channelId, mon).catch(() => null);
+  const n = Number(live.n) + (old?.n ?? 0), sn = Number(live.sn) + (old?.sentimentN ?? 0);
+  const st = { n, mood: sn ? (Number(live.s) + (old?.sentimentSum ?? 0)) / sn : null, neg: Number(live.neg) + (old?.neg ?? 0),
+    people: Number(live.people) + (old?.people ?? 0), questions: Number(live.questions) + (old?.questions ?? 0), requests: Number(live.requests) + (old?.requests ?? 0) };
+  const langMap = new Map<string, number>();
+  for (const l of [...liveLangs, ...(old?.langs ?? [])]) langMap.set(String(l.l), (langMap.get(String(l.l)) ?? 0) + Number(l.n));
+  const langs = [...langMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([l, v]) => ({ l, n: v }));
   const comments = [
     ...await db`select text, translation, like_count, sentiment from comments c where ${where} and (c.is_spam is null or not c.is_spam) order by like_count desc limit 70`,
     ...await db`select text, translation, like_count, sentiment from comments c where ${where} and sentiment = 'negative' order by like_count desc limit 30`,
     ...await db`select text, translation, like_count, sentiment from comments c where ${where} and (is_question or is_suggestion) order by like_count desc limit 30`,
     ...await db`select text, translation, like_count, sentiment from comments c where ${where} order by random() limit 40`,
-  ];
+    ...(old?.sample ?? []),
+  ].sort((a, b) => Number(b.like_count ?? 0) - Number(a.like_count ?? 0));
   const seen = new Set<string>();
   const sample = comments.filter((c) => !seen.has(c.text as string) && seen.add(c.text as string)).slice(0, 160);
   const videos = await db`

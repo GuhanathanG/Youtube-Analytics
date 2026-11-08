@@ -312,7 +312,9 @@ async function labelChunk(chunkIds: string[], deadline: number | undefined, star
 export async function labelBacklog(deadline: number, maxComments = 100): Promise<number> {
   const db = sql();
   // Short reactions never need the AI: clear them from the newest part of the backlog first.
-  const short = await db`select id from comments where ai_at is null and length(text) <= 60
+  // Lean mode: only comments inside the history window (older ones move to the archive anyway).
+  const since = db`published_at >= (now() at time zone 'utc') - make_interval(days => ${Number(process.env.HISTORY_DAYS ?? 90)})`;
+  const short = await db`select id from comments where ai_at is null and length(text) <= 60 and ${since}
     order by published_at desc nulls last limit 3000`;
   let ruled = 0;
   for (let i = 0; i < short.length; i += 500) {
@@ -328,7 +330,7 @@ export async function labelBacklog(deadline: number, maxComments = 100): Promise
     select r.id from (
       select id, video_id, language, sentiment_score, published_at, like_count, length(text) as len,
              (text ~ '[?？]' or text ~* '\m(please|pls|plz|make|next video|part [0-9]|when|how|enna|eppo|eppadi|kab|kaise)\M') as ask
-      from comments where ai_at is null order by published_at desc nulls last limit 5000) r
+      from comments where ai_at is null and ${since} order by published_at desc nulls last limit 5000) r
     left join videos v on v.id = r.video_id
     order by (r.published_at >= (now() at time zone 'utc') - interval '2 days') desc nulls last,
              (v.published_at >= (now() at time zone 'utc') - interval '7 days') desc nulls last,
