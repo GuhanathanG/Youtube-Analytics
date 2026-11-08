@@ -17,14 +17,17 @@ function letFinish(p: Promise<unknown>) {
  */
 type Entry = { at: number; value: Promise<unknown>; settled: boolean };
 const store = new Map<string, Entry>();
-const WAIT_MS = Number(process.env.CACHE_WAIT_SECONDS ?? 25) * 1000;
+// The last good result of each key: when the database is busy and a fresh one takes too long, pages
+// show this instead of an error ("Something went wrong").
+const lastGood = new Map<string, unknown>();
+const WAIT_MS = Number(process.env.CACHE_WAIT_SECONDS ?? 12) * 1000;
 
 export function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const hit = store.get(key);
   if (hit && (Date.now() - hit.at < ttlMs || !hit.settled)) return withLimit(hit.value as Promise<T>, key, hit);
   const entry: Entry = { at: Date.now(), value: Promise.resolve(), settled: false };
   entry.value = fn().then(
-    (v) => { entry.settled = true; entry.at = Date.now(); return v; },
+    (v) => { entry.settled = true; entry.at = Date.now(); lastGood.set(key, v); return v; },
     (e) => { if (store.get(key) === entry) store.delete(key); throw e; },
   );
   store.set(key, entry);
@@ -37,7 +40,8 @@ function withLimit<T>(p: Promise<T>, key: string, entry: Entry): Promise<T> {
     const t = setTimeout(() => {
       if (store.get(key) === entry && !entry.settled) store.delete(key); // don't hand a stuck result to the next visitor
       letFinish(p);
-      reject(new Error("This is taking too long; try again in a moment."));
+      if (lastGood.has(key)) resolve(lastGood.get(key) as T); // slightly older data beats an error page
+      else reject(new Error("This is taking too long; try again in a moment."));
     }, WAIT_MS);
     p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
   });

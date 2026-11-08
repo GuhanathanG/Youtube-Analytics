@@ -1,0 +1,50 @@
+name: One-time catch-up (full history -> archive)
+
+# Run once from the Actions tab: downloads every remaining comment of every channel's history and
+# moves the old ones straight into the archive databases, round after round, until nothing is left
+# (or ~5 hours). Uses the same queue as the regular job, so the two never run at the same time.
+# Afterwards the regular job keeps only the last 90 days (Lean mode).
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  catchup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    permissions:
+      contents: read
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      ARCHIVE_DATABASE_URL: ${{ secrets.ARCHIVE_DATABASE_URL }}
+      HISTORY_DAYS: "36500"        # this job reads the whole history; the regular job keeps 90 days
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements.txt
+      - name: Download history and move it to the archive, round after round
+        run: |
+          end=$(( $(date +%s) + 300 * 60 ))
+          round=0
+          while [ "$(date +%s)" -lt "$end" ]; do
+            round=$((round + 1))
+            left=$(python -m ytanalytics history-left)
+            echo "Round $round: $left videos still have history to download"
+            python -m ytanalytics sync --minutes 15 || echo "sync stopped (quota or error); continuing with the archive"
+            python -m ytanalytics archive --minutes 10 || true
+            if [ "$left" = "0" ]; then
+              echo "History complete; one last archive pass"
+              python -m ytanalytics archive --minutes 20 || true
+              break
+            fi
+          done
+          echo "Videos still downloading: $(python -m ytanalytics history-left)"

@@ -16,11 +16,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import asdict, dataclass
 from datetime import timedelta
 
-from sqlalchemy import func, insert, or_, select, update
+from sqlalchemy import case, func, insert, or_, select, update
 from sqlalchemy.orm import Session
 
 from .config import Settings
@@ -43,6 +44,11 @@ log = logging.getLogger(__name__)
 COMMENT_UPDATE_COLS = [
     "text", "like_count", "reply_count", "updated_at", "fetched_at", "author_name",
 ]
+
+
+def history_days() -> int:
+    """How many days of comment history to download (Lean mode). Older comments live as totals and in the archive."""
+    return int(os.environ.get("HISTORY_DAYS", "90"))
 
 
 @dataclass
@@ -324,8 +330,20 @@ class Syncer:
         channel_ids = self._active_channel_ids()
         if not channel_ids:
             return
-        # Videos with no comments yet are "done" right away: one statement for all of them.
+        # Lean mode: only the last HISTORY_DAYS (default 90) of comments are downloaded. Older videos are
+        # marked "done" without reading their history; new comments on them still arrive through the
+        # normal "comment count went up" check, which reads only comments newer than the cutoff.
         now = utcnow()
+        cutoff = now - timedelta(days=history_days())
+        self.s.execute(
+            update(Video)
+            .where(Video.channel_id.in_(channel_ids), Video.comments_backfilled.is_(False),
+                   Video.comments_disabled.is_(False), Video.published_at < cutoff)
+            .values(comments_backfilled=True, comments_page_token=None, comment_count_checked=Video.comment_count,
+                    latest_comment_at=case((Video.latest_comment_at > cutoff, Video.latest_comment_at), else_=cutoff))
+        )
+        self.s.commit()
+        # Videos with no comments yet are "done" right away: one statement for all of them.
         self.s.execute(
             update(Video)
             .where(Video.channel_id.in_(channel_ids), Video.comments_backfilled.is_(False),
@@ -372,9 +390,15 @@ class Syncer:
                     token = None
                     continue
                 raise
-            self._save_threads(video, data.get("items", []))
+            items = data.get("items", [])
+            self._save_threads(video, items)
             self.stats.backfill_pages += 1
             token = data.get("nextPageToken")
+            # Pages come newest first: once a page reaches past the history window, the rest is older still.
+            oldest = min((parse_ts(i.get("snippet", {}).get("topLevelComment", {}).get("snippet", {}).get("publishedAt"))
+                          for i in items), default=None, key=lambda t: t or utcnow())
+            if token and oldest is not None and oldest < utcnow() - timedelta(days=history_days()):
+                token = None
             video.comments_page_token = token
             if not token:
                 video.comments_backfilled = True

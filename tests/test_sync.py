@@ -16,6 +16,12 @@ CID = "UC" + "a" * 18 + "chan"   # 24 chars
 CID2 = "UC" + "b" * 18 + "beta"
 
 
+@pytest.fixture(autouse=True)
+def full_history(monkeypatch):
+    # These tests cover downloading a channel's whole history (fake videos are dated in the past).
+    monkeypatch.setenv("HISTORY_DAYS", "36500")
+
+
 @pytest.fixture
 def settings():
     s = Settings.from_env()
@@ -188,3 +194,21 @@ def test_multiple_channels(session, settings):
     run_sync(session, settings, yt=yt)
     assert count(session, Comment, Comment.channel_id == CID) == 12
     assert count(session, Comment, Comment.channel_id == CID2) == 10
+
+
+def test_lean_mode_skips_history_older_than_the_window(session, settings, monkeypatch):
+    """Lean mode: videos older than HISTORY_DAYS aren't back-filled; their comment counts are taken as seen,
+    so only comments that arrive later are fetched."""
+    monkeypatch.setenv("HISTORY_DAYS", "1")
+    fake = make_fake(session, settings)
+    fake.add_channel(CID, "@chan", n_videos=10, comments_per_video=0)
+    for vid in fake.uploads["UU" + CID[2:]][:3]:
+        for j in range(30):
+            fake.post_comment(vid, BASE + timedelta(minutes=j))
+    session.add(ChannelRequest(query="@chan"))
+    session.commit()
+    run_sync(session, settings, yt=fake)
+    assert count(session, Comment) == 0  # every fake video is older than a day
+    vids = session.scalars(select(Video)).all()
+    assert vids and all(v.comments_backfilled for v in vids)
+    assert all(v.comment_count_checked == v.comment_count for v in vids)
