@@ -43,42 +43,37 @@ function root(): Sql {
 }
 
 /**
- * Never let Vercel pause this server copy while a query is still running. A paused copy leaves its
- * database connection half-way through a query ("waiting for the website") for minutes, and with only a
- * few pooled connections that makes every page wait. Every query that runs is counted; each request keeps
- * the copy alive (after the reply) until no query is running, at most 30 s.
+ * Watchdog: a query that hasn't answered after QUERY_STUCK_SECONDS (default 40 s; the database itself
+ * stops any website query after 25 s) is on a dead connection (e.g. the pooler dropped it while the
+ * server copy was paused). postgres.js would wait on it forever, and every later query queues behind
+ * the few pooled connections, so every page hangs until Vercel's 300 s limit. Instead: cancel it and
+ * start a fresh set of connections; the stuck queries fail at once and the next page works.
+ * Long background reads (withLongQueries) are left alone.
  */
-let inflight = 0;
-let idleWaiters: (() => void)[] = [];
+const STUCK_MS = Number(process.env.QUERY_STUCK_SECONDS ?? 40) * 1000;
 function trackQueries(client: Sql) {
-  const proto = Object.getPrototypeOf(client`select 1`) as { handle: () => Promise<void>; __tracked?: boolean };
+  const proto = Object.getPrototypeOf(client`select 1`) as { handle: () => Promise<void>; cancel: () => unknown; __tracked?: boolean };
   if (proto.__tracked) return;
   proto.__tracked = true;
   const original = proto.handle;
-  proto.handle = function (this: Promise<unknown> & { executed?: boolean }) {
-    if (!this.executed) {
-      inflight++;
-      const done = () => { inflight--; if (inflight <= 0) { inflight = 0; const w = idleWaiters; idleWaiters = []; w.forEach((f) => f()); } };
-      Promise.prototype.then.call(this, done, done);
-      keepAliveUntilIdle();
+  proto.handle = function (this: Promise<unknown> & { executed?: boolean; cancel: () => unknown }) {
+    if (!this.executed && !longRun.getStore()) {
+      const t = setTimeout(() => {
+        console.warn("[db] a query got no answer for", STUCK_MS / 1000, "s: starting fresh connections");
+        try { this.cancel(); } catch { /* already gone */ }
+        resetClient();
+      }, STUCK_MS);
+      (t as { unref?: () => void }).unref?.();
+      const clear = () => clearTimeout(t);
+      Promise.prototype.then.call(this, clear, clear); // also marks the query as handled
     }
     return original.call(this);
   };
 }
-function whenIdle(maxMs: number): Promise<void> {
-  if (inflight <= 0) return Promise.resolve();
-  return new Promise((resolve) => {
-    const t = setTimeout(resolve, maxMs);
-    idleWaiters.push(() => { clearTimeout(t); resolve(); });
-  });
-}
-function keepAliveUntilIdle() {
-  try {
-    // Loaded lazily so plain scripts and tests (outside Next.js) never need it.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { after } = require("next/server") as typeof import("next/server");
-    after(() => whenIdle(30_000));
-  } catch { /* not inside a request: nothing will pause us */ }
+function resetClient() {
+  const old = globalThis.__pg;
+  globalThis.__pg = undefined; // the next query opens new connections
+  old?.end({ timeout: 1 }).catch(() => undefined); // queued / stuck queries fail instead of waiting forever
 }
 
 export function sql(): Sql {
