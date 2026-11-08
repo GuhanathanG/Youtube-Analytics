@@ -43,6 +43,23 @@ function where(f: Filters) {
   return parts.reduce((acc, p, i) => (i === 0 ? p : db`${acc} and ${p}`));
 }
 
+/* ------------------------------------------------------------------ running totals */
+/**
+ * Running totals kept by the database (worker: ytanalytics/rollups.py): comment_day (per channel and
+ * day), comment_video, comment_author, comment_lang, comment_emotion. All-time numbers add up these few
+ * rows instead of scanning every comment. Until the worker has built them, the old way is used.
+ */
+export function rollupsReady(): Promise<boolean> {
+  if (process.env.USE_ROLLUPS === "0") return Promise.resolve(false);
+  return cached("rollups-ready", 60_000, async () => {
+    const [r] = await sql()`select value from schema_meta where key = 'rollups'`.catch(() => []);
+    return Boolean(r?.value);
+  });
+}
+/** Filters the per-day totals can answer: only channel and/or a start date. */
+const dayOnly = (f: Filters) => !f.videoId && !f.sentiment && !f.language && !f.emotion && !f.flag && !f.search && !f.topLevelOnly && !f.hideSpam;
+const sinceDay = (since: Date | null | undefined) => (since ? since.toISOString().slice(0, 10) : null);
+
 /* ------------------------------------------------------------------ overview */
 export type Kpis = {
   channels: number; videos: number; comments: number; analyzed: number; ai_read: number;
@@ -160,7 +177,13 @@ export async function dailySentiment(f: Filters): Promise<DailyRow[]> {
         and ${f.since ? db`day >= ${f.since.toISOString().slice(0, 10)}::date` : db`true`}
       group by 1`.catch(() => []);
   }
-  const rows = await db`
+  const fromTotals = dayOnly(f) && (await rollupsReady());
+  const rows = fromTotals ? await db`
+    select to_char(day, 'YYYY-MM-DD') as day, sum(positive)::int as positive, sum(neutral)::int as neutral,
+           sum(negative)::int as negative, sum(pending)::int as pending
+    from comment_day where ${f.channelId ? db`channel_id = ${f.channelId}` : db`true`}
+      and ${sinceDay(f.since) ? db`day >= ${sinceDay(f.since)}::date` : db`true`} and comments <> 0
+    group by 1 order by 1` : await db`
     select to_char(date(c.published_at), 'YYYY-MM-DD') as day,
            sum(case when c.sentiment = 'positive' then 1 else 0 end)::int as positive,
            sum(case when c.sentiment = 'neutral' then 1 else 0 end)::int as neutral,
@@ -189,6 +212,12 @@ export async function sentimentMix(f: Filters): Promise<Mix> {
     if (x) return { positive: x.positive, neutral: x.neutral, negative: x.negative, pending: Math.max(0, x.comments - x.positive - x.neutral - x.negative) };
   }
   const db = sql();
+  if (dayOnly(f) && (await rollupsReady())) {
+    const [t] = await db`select sum(positive)::int as positive, sum(neutral)::int as neutral, sum(negative)::int as negative,
+        sum(pending)::int as pending from comment_day where ${f.channelId ? db`channel_id = ${f.channelId}` : db`true`}
+        and ${sinceDay(f.since) ? db`day >= ${sinceDay(f.since)}::date` : db`true`}`;
+    return { positive: t?.positive ?? 0, neutral: t?.neutral ?? 0, negative: t?.negative ?? 0, pending: t?.pending ?? 0 };
+  }
   const [r] = await db`
     select sum(case when c.sentiment = 'positive' then 1 else 0 end)::int as positive,
            sum(case when c.sentiment = 'neutral' then 1 else 0 end)::int as neutral,

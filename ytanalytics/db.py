@@ -136,14 +136,14 @@ class Comment(Base):
     # video_id is covered by ix_comments_video_published; parent_id/language/sentiment/emotion
     # indexes were dropped: each cost ~40 bytes per comment and filters on them are rare.
     video_id: Mapped[str] = mapped_column(ForeignKey("videos.id", ondelete="CASCADE"))
-    channel_id: Mapped[str] = mapped_column(String(64), index=True)
+    channel_id: Mapped[str] = mapped_column(String(64))  # indexed via ix_comments_channel_newest / ix_comments_author
     parent_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     author_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
     author_channel_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     text: Mapped[str] = mapped_column(Text, default="")
     like_count: Mapped[int] = mapped_column(Integer, default=0)
     reply_count: Mapped[int] = mapped_column(Integer, default=0)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # indexed via ix_comments_newest (worker)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     # Filled in by the analyze step.
@@ -343,10 +343,18 @@ EXTRA_INDEXES = {
     # Without these the database sorted every comment of the channel on each visit (4-7 s on 770k comments).
     "ix_comments_channel_newest": "ON comments (channel_id, published_at DESC NULLS LAST)",
     "ix_comments_newest": "ON comments (published_at DESC NULLS LAST)",
+    # "Saved in the last hour" (progress panel): a tiny BRIN index (comments are stored roughly in fetch order).
+    "ix_comments_fetched_brin": "ON comments USING brin (fetched_at)",
 }
 
 # Unused duplicates, removed without blocking writers (ix_comments_ai_next does the same job).
-DROP_CONCURRENTLY = ["ix_comments_ai_pending"]
+DROP_CONCURRENTLY = [
+    "ix_comments_ai_pending",
+    # Same column as ix_comments_newest (a btree reads both directions, and range filters work on either).
+    "ix_comments_published_at",
+    # Covered by ix_comments_channel_newest and ix_comments_author (both start with channel_id).
+    "ix_comments_channel_id",
+]
 
 
 def ensure_extra_indexes(engine: Engine) -> None:
