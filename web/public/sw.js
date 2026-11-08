@@ -6,15 +6,26 @@
  * API calls and shared links are never kept. Signing out (or an expired session) clears the copies.
  */
 const OFFLINE = "/offline.html";
-const STATIC = "pulse-v1";
-const PAGES = "pulse-pages-v1";
+const STATIC = "pulse-v2";
+const PAGES = "pulse-pages-v2"; // v2: drops copies saved by v1, some of which were error pages
 const MAX_PAGES = 40;
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(STATIC).then((c) => c.addAll([OFFLINE, "/icons/icon-192.png"])));
   self.skipWaiting();
 });
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("activate", (e) => e.waitUntil((async () => {
+  for (const k of await caches.keys()) if (k !== STATIC && k !== PAGES) await caches.delete(k); // old versions
+  await self.clients.claim();
+})()));
+
+// A page that failed while loading still arrives as "200 OK" (the error is drawn inside it), so look
+// inside before keeping it: an error page must never become the copy shown next time.
+// Next.js writes a server error into the page data as  :E{"digest":"…"}  (escaped inside the HTML).
+const ERROR_MARK = /:E\{\\?"digest\\?":/;
+async function isGoodPage(res) {
+  try { return !ERROR_MARK.test(await res.clone().text()); } catch { return false; }
+}
 
 const keyOf = (url) => { const u = new URL(url); return u.origin + u.pathname + u.search; };
 const cacheable = (url) => {
@@ -51,8 +62,8 @@ self.addEventListener("fetch", (e) => {
     if (signedOut) { await caches.delete(PAGES); settle(key, { fromCache: true, signedOut: true }); return res; }
     if (res.ok && !res.redirected && (res.headers.get("content-type") || "").includes("text/html")) {
       const cache = await caches.open(PAGES);
-      await cache.put(key, res.clone());
-      trim(cache);
+      if (await isGoodPage(res)) { await cache.put(key, res.clone()); trim(cache); }
+      else await cache.delete(key); // don't keep showing an older copy of a page that's failing either
     }
     settle(key, { fromCache: true, fresh: true });
     return res;
