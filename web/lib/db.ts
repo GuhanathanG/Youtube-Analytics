@@ -23,7 +23,7 @@ function makeClient() {
   return postgres(url, {
     // Supabase's transaction pooler (port 6543) does not support prepared statements.
     prepare: false,
-    max: 4,          // a few connections per server copy (transaction pooler, made for this) …
+    max: CONNECTIONS, // see SLOTS below: always more connections than queries running at once          // a few connections per server copy (transaction pooler, made for this) …
     idle_timeout: 5, // … released quickly when idle
     connect_timeout: 15,
     ssl: url.includes("localhost") || url.includes("127.0.0.1") ? false : "require",
@@ -78,14 +78,51 @@ function root(): Sql {
  * Long background reads (withLongQueries) are left alone.
  */
 const STUCK_MS = Number(process.env.QUERY_STUCK_SECONDS ?? 40) * 1000;
+
+/* One query per connection at a time. postgres.js sends a query down a connection that's already busy
+ * ("pipelining") whenever all its connections are busy. Through Supabase's transaction pooler that left
+ * database connections waiting forever for the rest of a message, and every query behind them hung for
+ * 40 s (measured: sent in 50 ms, no answer for 41 s, while the database answered the same queries in
+ * milliseconds). So at most SLOTS queries run at once per server copy, with two more connections than
+ * that (room for transactions, which keep a connection to themselves): a free connection is always there. */
+const SLOTS = 4;
+const CONNECTIONS = SLOTS + 2;
+let running = 0;
+const waiting: (() => void)[] = [];
+function takeSlot(): Promise<void> {
+  if (running < SLOTS) { running++; return Promise.resolve(); }
+  return new Promise((resolve) => waiting.push(() => { running++; resolve(); }));
+}
+function freeSlot() {
+  running = Math.max(0, running - 1);
+  const next = waiting.shift();
+  if (next) next();
+}
 let inflight = 0;
+/** The pool's own query handler of each client: queries with another handler are postgres.js's internal
+ *  set-up queries on a fresh connection, or queries inside a transaction (on its own connection). Those
+ *  never wait for a slot: the set-up query must run for the connection the waiting queries need. */
+const poolHandlers = new WeakSet<object>();
 function trackQueries(client: Sql) {
-  const proto = Object.getPrototypeOf(client`select 1`) as { handle: () => Promise<void>; cancel: () => unknown; __tracked?: boolean };
+  const probe = client`select 1` as unknown as { handler?: object };
+  if (probe.handler) poolHandlers.add(probe.handler);
+  const proto = Object.getPrototypeOf(probe) as { handle: () => Promise<void>; cancel: () => unknown; __tracked?: boolean };
   if (proto.__tracked) return;
   proto.__tracked = true;
   const original = proto.handle;
-  proto.handle = function (this: Promise<unknown> & { executed?: boolean; cancel: () => unknown }) {
-    if (!this.executed && !longRun.getStore()) {
+  proto.handle = function (this: Promise<unknown> & { executed?: boolean; cancel: () => unknown; __slot?: Promise<void> }) {
+    // Inside a long background read (its own connection, in a transaction): no slot, no watchdog.
+    const h = (this as unknown as { handler?: object }).handler;
+    if (this.executed || longRun.getStore() || !h || !poolHandlers.has(h)) return original.call(this);
+    if (this.__slot) return this.__slot; // .then() was called again while it waits for a slot
+    this.__slot = takeSlot().then(() => {
+      Promise.prototype.then.call(this, freeSlot, freeSlot);
+      return start.call(this);
+    });
+    return this.__slot;
+  };
+  function start(this: Promise<unknown> & { executed?: boolean; cancel: () => unknown }) {
+    {
       const q = this as typeof this & { active?: boolean };
       const owner = globalThis.__pg; // the set of connections this query runs on
       let t: ReturnType<typeof setTimeout>;
@@ -123,7 +160,7 @@ function trackQueries(client: Sql) {
       Promise.prototype.then.call(this, clear, clear); // also marks the query as handled
     }
     return original.call(this);
-  };
+  }
 }
 function resetClient(old: Sql | undefined) {
   if (!old) return;
