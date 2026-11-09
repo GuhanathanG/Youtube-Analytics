@@ -145,6 +145,32 @@ export function startFake(port = 4100) {
       });
       return;
     }
+    // ScrapeCreators stand-in: answers for @quickreels only; for anyone else Instagram "blocks" it (500),
+    // so those accounts fall back to the Apify stand-in below (the last resort).
+    if (p === "/v1/instagram/profile" || p === "/v2/instagram/post/comments") {
+      sent.scCalls = [...(sent.scCalls ?? []), `${p}?${u.searchParams}`];
+      if (req.headers["x-api-key"] !== "sc-test") return send({ message: "bad key" }, 401);
+      const at = (h) => Math.floor((Date.now() - h * 3600e3) / 1000);
+      if (p === "/v1/instagram/profile") {
+        if (u.searchParams.get("handle") !== "quickreels") return send({ success: false, message: "Shoot, IG is blocking us" }, 500);
+        const node = (code, h, comments, caption, video) => ({ __typename: video ? "GraphVideo" : "GraphImage", id: `8${code}`, shortcode: code,
+          display_url: `http://localhost:4100/thumbs/${code}.jpg`, is_video: video, product_type: video ? "clips" : undefined,
+          video_url: video ? `http://localhost:4100/media/${code}.mp4` : undefined, video_play_count: video ? 4200 : undefined,
+          taken_at_timestamp: at(h), comments_disabled: false, edge_media_to_caption: { edges: [{ node: { text: caption } }] },
+          edge_media_to_comment: { count: comments }, edge_liked_by: { count: 64 } });
+        return send({ success: true, data: { user: { id: "888", username: "quickreels", full_name: "Quick Reels", biography: "Daily reels",
+          profile_pic_url_hd: "http://localhost:4100/thumbs/q.jpg", edge_followed_by: { count: 1234 }, edge_follow: { count: 5 },
+          edge_owner_to_timeline_media: { count: 2, edges: [{ node: node("QREEL0001", 3, 2, "Today's reel #new", true) }, { node: node("QPOST0002", 50, 0, "Old pic", false) }] } } } });
+      }
+      const code = (u.searchParams.get("url") ?? "").match(/\/p\/([^/]+)/)?.[1];
+      if (code !== "QREEL0001") return send({ success: false, message: "Shoot, IG is blocking us" }, 500);
+      const iso = (h) => new Date(Date.now() - h * 3600e3).toISOString();
+      return send({ success: true, cursor: null, comments: [
+        { id: "qc1", text: "super reel bro 🔥", created_at: iso(2), comment_like_count: 3, child_comment_count: 1,
+          user: { id: "901", username: "viewer1" }, replies: [{ id: "qc1r", text: "thanks!", created_at: iso(1), user: { id: "888", username: "quickreels" } }] },
+        { id: "qc2", text: "what phone is this?", created_at: iso(2), comment_like_count: 0, child_comment_count: 0, user: { id: "902", username: "viewer2" } },
+      ] });
+    }
     if (p.startsWith("/v2/actor-runs/")) {
       const id = p.split("/").pop();
       return send({ data: { id, status: "SUCCEEDED", defaultDatasetId: `ds-${id}`, usageTotalUsd: 0.004 } });
