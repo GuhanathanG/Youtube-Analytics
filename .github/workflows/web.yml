@@ -47,6 +47,7 @@ jobs:
           node tests/db-url.test.mjs
           node --experimental-strip-types tests/security.test.ts
           node --experimental-strip-types tests/logic.test.ts
+          node --experimental-strip-types tests/ig-sources.test.ts
       - name: Production build
         working-directory: web
         run: npx next build

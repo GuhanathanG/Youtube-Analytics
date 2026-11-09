@@ -43,6 +43,11 @@ function Meter({ label, used, total, unit }: { label: string; used: number; tota
   );
 }
 
+const SOURCE_LABEL: Record<string, string> = {
+  graph: "Instagram official API (free)", scrapecreators: "ScrapeCreators", sociavault: "SociaVault",
+  hikerapi: "HikerAPI", brightdata: "Bright Data", apify: "Apify",
+};
+
 export default async function ManagePage({ searchParams }: { searchParams: Promise<{ connected?: string; connect_error?: string }> }) {
   const sp = await searchParams;
   const [chs, reqs, k, minutes, usage, runs] = await Promise.all([
@@ -179,17 +184,33 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
           </Panel>
         </Reveal>
         <Reveal delay={0.05}>
-          <Panel title="Instagram budget" subtitle="Apify free plan: $5 a month, spread evenly over the month">
-            {!ig?.configured || !ig.budget ? <p className="text-[13px] text-ink-2">Not connected. Add <span className="font-mono">APIFY_TOKEN</span> in Vercel.</p> : (
+          <Panel title="Instagram sources" subtitle="Tried in this order; Apify (paid per result) only when the others can't answer">
+            {ig && (
+              <ol className="mb-3 space-y-1">
+                {ig.sources.map((x, i) => (
+                  <li key={x.name} className="flex items-center gap-2 text-[12.5px]">
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${!x.keys ? "bg-line" : x.resting ? "bg-warn" : "bg-good"}`} />
+                    <span className="text-ink-2">{i + 1}. {SOURCE_LABEL[x.name] ?? x.name}</span>
+                    <span className="ml-auto shrink-0 text-ink-3">{!x.keys ? "not set up" : x.resting ? "resting (credits or limit)" : `ready${x.keys > 1 ? ` · ${x.keys} keys` : ""}`}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {!ig?.configured ? <p className="text-[13px] text-ink-2">Not connected. Add a key in Vercel, e.g. <span className="font-mono">SCRAPECREATORS_API_KEY</span>, <span className="font-mono">HIKERAPI_KEY</span> or <span className="font-mono">APIFY_TOKEN</span>.</p> : (
               <>
-                <Meter label="Spent this month" used={Math.round(ig.budget.spent * 100) / 100} total={ig.budget.month} unit="USD" />
-                <p className="mt-3 text-[12.5px] text-ink-3">Left for today: ${ig.budget.today.toFixed(2)} · {ig.accounts} account{ig.accounts === 1 ? "" : "s"} watched</p>
+                {ig.budget && ig.sources.some((x) => x.name === "apify" && x.keys) && (
+                  <>
+                    <Meter label="Apify spent this month" used={Math.round(ig.budget.spent * 100) / 100} total={ig.budget.month} unit="USD" />
+                    <p className="mt-3 text-[12.5px] text-ink-3">Apify left for today: ${ig.budget.today.toFixed(2)}</p>
+                  </>
+                )}
+                <p className="mt-2 text-[12.5px] text-ink-3">{ig.accounts} account{ig.accounts === 1 ? "" : "s"} watched</p>
                 {ig.runs.length > 0 && (
                   <ul className="mt-3 space-y-1.5">
                     {ig.runs.map((r) => (
                       <li key={r.id} className="flex items-center gap-2 text-[12.5px]">
                         <span className={`h-2 w-2 shrink-0 rounded-full ${r.status === "SUCCEEDED" ? "bg-good" : r.status === "RUNNING" || r.status === "READY" ? "bg-accent" : "bg-neg"}`} />
-                        <span className="truncate text-ink-2">{r.channel_id.replace(/^ig_/, "@")} · {r.kind}</span>
+                        <span className="truncate text-ink-2">{r.channel_id.replace(/^ig_/, "@")} · {r.kind} · {SOURCE_LABEL[r.source ?? "apify"] ?? r.source}</span>
                         <span className="ml-auto shrink-0 text-ink-3" title={r.error ?? undefined}>{r.items ?? "…"} items · {ago(r.started_at)}</span>
                       </li>
                     ))}

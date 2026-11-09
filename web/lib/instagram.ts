@@ -1,8 +1,11 @@
 import "server-only";
 import { sql, ensureRls, ensureColumns, ensureIndex } from "./db";
+import { fetchComments, fetchProfile, sourceKeys, sourceOrder, ALL_SOURCES, type Attempt, type IgComment, type IgPost, type IgProfile, type SourceName } from "./ig-sources";
 
 /**
- * Instagram, collected through Apify's Instagram scraper (APIFY_TOKEN).
+ * Instagram, collected from several providers (lib/ig-sources.ts): the official API and the cheap/free
+ * scraping APIs are tried first and answer straight away; Apify's scraper (APIFY_TOKEN) is the last
+ * resort, used only when none of them could answer.
  *
  * An Instagram account is stored like a YouTube channel (id "ig_<username>", platform "instagram"),
  * its posts like videos (id "ig_<shortCode>") and their comments like comments. So everything that
@@ -16,7 +19,8 @@ import { sql, ensureRls, ensureColumns, ensureIndex } from "./db";
 
 const API = () => process.env.APIFY_API_BASE ?? "https://api.apify.com";
 const ACTOR = () => (process.env.IG_ACTOR ?? "apify~instagram-scraper").replace("/", "~");
-export const instagramConfigured = () => !!process.env.APIFY_TOKEN;
+const apifyConfigured = () => !!process.env.APIFY_TOKEN;
+export const instagramConfigured = () => apifyConfigured() || sourceOrder(process.env).length > 0;
 /** Price per result in USD (Apify's Instagram scraper is about $2.70 per 1,000 results). */
 const PRICE = () => Number(process.env.IG_PRICE_PER_RESULT ?? 0.0027);
 const MONTHLY = () => Number(process.env.IG_MONTHLY_USD ?? 4.5);
@@ -36,6 +40,7 @@ export async function ensureInstagram() {
     id text primary key, channel_id text not null, kind text not null, targets text, status text not null,
     dataset_id text, started_at timestamp not null, finished_at timestamp, items integer, cost_usd double precision,
     error text)`;
+  await ensureColumns("ig_runs", [["source", "text"]]); // which provider (null = Apify)
   await ensureIndex("ix_ig_runs_channel", "create index if not exists ix_ig_runs_channel on ig_runs (channel_id, started_at desc)");
   await ensureRls("ig_runs");
   ready = true;
@@ -101,11 +106,65 @@ async function startRun(channelId: string, kind: "details" | "posts" | "comments
 const profileUrl = (u: string) => `https://www.instagram.com/${u}/`;
 const usernameOf = (channelId: string) => channelId.replace(/^ig_/, "");
 
+/* ------------------------------------------------------------------ the other providers (tried before Apify) */
+/** A provider out of credits / rate limited rests this many hours before it's tried again. */
+const REST_HOURS = () => Number(process.env.IG_SOURCE_REST_HOURS ?? 12);
+
+/** Providers whose latest attempt said "no more" (credits, key, rate limit) within the rest period. */
+async function restingSources(): Promise<Set<SourceName>> {
+  const rows = await sql()`select distinct on (source) source, error, started_at from ig_runs where source is not null
+    order by source, started_at desc`;
+  const cutoff = Date.now() - REST_HOURS() * 3_600_000;
+  return new Set(rows.filter((r) => String(r.error ?? "").startsWith("exhausted:")
+    && new Date(String(r.started_at).replace(" ", "T") + "Z").getTime() >= cutoff).map((r) => r.source as SourceName));
+}
+
+/** Every attempt is kept in ig_runs (cost 0: these use the providers' own free credits), for the Manage page. */
+async function recordAttempts(channelId: string, kind: string, attempts: Attempt[], items: number, targets: string[] = []) {
+  const db = sql();
+  for (const [i, a] of attempts.entries()) {
+    await db`insert into ig_runs (id, channel_id, kind, targets, status, started_at, finished_at, items, cost_usd, error, source)
+      values (${`${a.source}-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`}, ${channelId}, ${kind}, ${JSON.stringify(targets)},
+              ${a.ok ? "SUCCEEDED" : "FAILED"}, ${nowSql()}, ${nowSql()}, ${a.ok ? items : 0}, ${0},
+              ${a.ok ? null : `${a.exhausted ? "exhausted: " : ""}${a.error ?? "failed"}`.slice(0, 300)}, ${a.source})`;
+  }
+}
+
+/** Profile + recent posts from the first provider that answers. Returns the number of new posts, or null if none could. */
+async function profileNow(channelId: string): Promise<number | null> {
+  if (!sourceOrder(process.env).length) return null;
+  const attempts: Attempt[] = [];
+  const r = await fetchProfile(usernameOf(channelId), process.env, { resting: await restingSources(), attempts });
+  await recordAttempts(channelId, "details", attempts, r.profile ? 1 + (r.profile.latestPosts?.length ?? 0) : 0);
+  return r.profile ? saveProfile(channelId, r.profile) : null;
+}
+
+/** Newest comments of these posts, each from the first provider that answers. Returns new comment ids and the posts no provider could read. */
+async function commentsNow(channelId: string, posts: string[], perPost: number, timeLeft: () => boolean): Promise<{ fresh: string[]; left: string[] }> {
+  const fresh: string[] = [], left: string[] = [];
+  if (!sourceOrder(process.env, "comments").length) return { fresh, left: posts };
+  const resting = await restingSources();
+  const db = sql();
+  for (const videoId of posts) {
+    if (!timeLeft()) { left.push(videoId); continue; }
+    const attempts: Attempt[] = [];
+    const r = await fetchComments(videoId.replace(/^ig_/, ""), perPost, process.env, { resting, attempts });
+    for (const a of attempts) if (a.exhausted) resting.add(a.source);
+    await recordAttempts(channelId, "comments", attempts, r.comments?.length ?? 0, [videoId]);
+    if (!r.comments) { left.push(videoId); continue; }
+    fresh.push(...(await saveComments(channelId, r.comments, [videoId])));
+    await db`update videos set comment_count_checked = comment_count, comments_checked_at = ${nowSql()},
+        latest_comment_at = coalesce((select max(published_at) from comments c where c.video_id = videos.id), latest_comment_at)
+      where id = ${videoId}`;
+  }
+  return { fresh, left };
+}
+
 /* ------------------------------------------------------------------ add an account */
 export async function addInstagramNow(input: string): Promise<{ ok: boolean; message: string; channelId?: string }> {
   const u = parseInstagram(input.replace(/^ig:/i, ""));
   if (!u) return { ok: false, message: "That doesn't look like an Instagram username. Try @name or the profile link." };
-  if (!instagramConfigured()) return { ok: false, message: "Add APIFY_TOKEN in Vercel to watch Instagram accounts." };
+  if (!instagramConfigured()) return { ok: false, message: "Add an Instagram data key in Vercel (e.g. SCRAPECREATORS_API_KEY, HIKERAPI_KEY or APIFY_TOKEN) to watch Instagram accounts." };
   await ensureInstagram();
   const db = sql();
   const id = `ig_${u}`;
@@ -113,6 +172,10 @@ export async function addInstagramNow(input: string): Promise<{ ok: boolean; mes
     values (${id}, ${"@" + u}, ${"@" + u}, 'instagram', true, true, ${nowSql()})
     on conflict (id) do update set active = true, platform = 'instagram'`;
   await db`insert into channel_requests (query, status, channel_id, created_at) values (${input}, 'done', ${id}, ${nowSql()})`;
+  // The quick providers answer at once (profile and the newest posts); Apify only if none of them can.
+  const quick = await profileNow(id).catch(() => null);
+  if (quick !== null) return { ok: true, channelId: id, message: `Now watching @${u} on Instagram. Profile and recent posts are in; comments follow within minutes.` };
+  if (!apifyConfigured()) return { ok: true, channelId: id, message: `Added @${u}, but no Instagram provider could read it right now. The engine will keep trying.` };
   const [running] = await db`select 1 from ig_runs where channel_id = ${id} and status in ('READY', 'RUNNING')`;
   if (!running) {
     const started = await startRun(id, "details", { directUrls: [profileUrl(u)], resultsType: "details", resultsLimit: 1 }, 1, [], true);
@@ -124,21 +187,6 @@ export async function addInstagramNow(input: string): Promise<{ ok: boolean; mes
 }
 
 /* ------------------------------------------------------------------ saving results */
-type IgPost = {
-  id?: string; shortCode?: string; url?: string; type?: string; caption?: string; displayUrl?: string; timestamp?: string;
-  likesCount?: number; commentsCount?: number; videoViewCount?: number; videoPlayCount?: number; videoDuration?: number;
-  productType?: string; isCommentsDisabled?: boolean; hashtags?: string[]; ownerUsername?: string; error?: string; videoUrl?: string;
-};
-type IgComment = {
-  id?: string; postUrl?: string; text?: string; ownerUsername?: string; owner?: { id?: string; username?: string };
-  ownerId?: string; likesCount?: number; repliesCount?: number; timestamp?: string; replies?: IgComment[]; error?: string;
-};
-type IgProfile = {
-  id?: string; username?: string; fullName?: string; biography?: string; followersCount?: number; followsCount?: number;
-  postsCount?: number; profilePicUrl?: string; profilePicUrlHD?: string; latestPosts?: IgPost[]; private?: boolean;
-  error?: string; errorDescription?: string;
-};
-
 export const shortCodeFromUrl = (url?: string) => url?.match(/instagram\.com\/(?:[^/]+\/)?(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/)?.[1] ?? null;
 
 function postTitle(p: IgPost) {
@@ -173,14 +221,14 @@ async function savePosts(channelId: string, posts: IgPost[]): Promise<number> {
   return res.filter((r) => r.inserted).length;
 }
 
-async function saveProfile(channelId: string, p: IgProfile): Promise<void> {
+async function saveProfile(channelId: string, p: IgProfile): Promise<number> {
   const db = sql();
   if (p.error || !p.username) {
     await db`insert into channel_requests (query, status, error, created_at)
       values (${"@" + usernameOf(channelId)}, 'error', ${`Instagram: ${p.errorDescription ?? p.error ?? "profile not found"}`.slice(0, 300)}, ${nowSql()})`;
     // Don't keep paying to look up an account that isn't there (or is private).
     await db`update channels set active = false where id = ${channelId} and last_synced_at is null`;
-    return;
+    return 0;
   }
   await db`update channels set title = ${p.fullName || "@" + p.username}, handle = ${"@" + p.username},
       description = ${p.biography ?? null}, thumbnail_url = coalesce(${p.profilePicUrlHD ?? p.profilePicUrl ?? null}, thumbnail_url),
@@ -188,7 +236,7 @@ async function saveProfile(channelId: string, p: IgProfile): Promise<void> {
     where id = ${channelId}`;
   await db`insert into channel_snapshots (channel_id, taken_at, subscriber_count, view_count, video_count)
     values (${channelId}, ${nowSql()}, ${num(p.followersCount)}, ${null}, ${num(p.postsCount)})`;
-  if (p.latestPosts?.length) await savePosts(channelId, p.latestPosts);
+  return p.latestPosts?.length ? savePosts(channelId, p.latestPosts) : 0;
 }
 
 function commentRow(c: IgComment, videoId: string, channelId: string, parentId: string | null) {
@@ -242,7 +290,9 @@ export async function instagramTick(timeLeft: () => boolean): Promise<IgTickResu
   const db = sql();
 
   // 1. Collect runs that have finished.
-  const open = await db`select id, channel_id, kind, targets, dataset_id from ig_runs where status in ('READY', 'RUNNING') order by started_at limit 6`;
+  const open = apifyConfigured()
+    ? await db`select id, channel_id, kind, targets, dataset_id from ig_runs where status in ('READY', 'RUNNING') and source is null order by started_at limit 6`
+    : [];
   for (const r of open) {
     if (!timeLeft()) break;
     const { data } = (await apify(`/v2/actor-runs/${r.id}`)) as { data: ApifyRun };
@@ -292,6 +342,9 @@ export async function instagramTick(timeLeft: () => boolean): Promise<IgTickResu
     const hoursSince = (t: unknown) => (t ? (Date.now() - new Date(String(t).replace(" ", "T") + "Z").getTime()) / 3_600_000 : Infinity);
     // Profile + newest 12 posts (one result): followers, new posts, likes and comment counts.
     if (hoursSince(last?.details_at) >= profileHours) {
+      const quick = await profileNow(id).catch((e) => { console.log("[instagram]", e instanceof Error ? e.message : e); return null; });
+      if (quick !== null) { out.collected++; out.newPosts += quick; continue; }
+      if (!apifyConfigured()) continue;
       if (await startRun(id, "details", { directUrls: [profileUrl(u)], resultsType: "details", resultsLimit: 1 }, 1)) out.started++;
       else { out.note = "Instagram budget for today is used up"; break; }
       continue;
@@ -304,10 +357,16 @@ export async function instagramTick(timeLeft: () => boolean): Promise<IgTickResu
         limit ${Number(process.env.IG_POSTS_PER_RUN ?? 8)}`;
       if (!due.length) continue;
       const perPost = Number(process.env.IG_COMMENTS_PER_POST ?? 50);
-      const urls = due.map((v) => `https://www.instagram.com/p/${String(v.id).replace(/^ig_/, "")}/`);
-      const expected = due.reduce((s, v) => s + Math.min(perPost, Number(v.comment_count ?? 0)), 0);
+      // Quick providers first, post by post; only the posts none of them could read go to Apify.
+      const quick = await commentsNow(id, due.map((v) => v.id as string), perPost, timeLeft);
+      out.newComments.push(...quick.fresh);
+      if (quick.fresh.length || quick.left.length < due.length) out.collected++;
+      const rest = due.filter((v) => quick.left.includes(v.id as string));
+      if (!rest.length || !apifyConfigured() || !timeLeft()) continue;
+      const urls = rest.map((v) => `https://www.instagram.com/p/${String(v.id).replace(/^ig_/, "")}/`);
+      const expected = rest.reduce((s, v) => s + Math.min(perPost, Number(v.comment_count ?? 0)), 0);
       if (await startRun(id, "comments", { directUrls: urls, resultsType: "comments", resultsLimit: perPost, isNewestComments: true },
-        Math.max(1, expected), due.map((v) => v.id as string))) out.started++;
+        Math.max(1, expected), rest.map((v) => v.id as string))) out.started++;
       else { out.note = "Instagram budget for today is used up"; break; }
     }
   }
@@ -317,14 +376,21 @@ export async function instagramTick(timeLeft: () => boolean): Promise<IgTickResu
 /* ------------------------------------------------------------------ status for the Manage page */
 export type IgStatus = {
   configured: boolean; budget: Awaited<ReturnType<typeof instagramBudget>> | null; accounts: number;
-  runs: { id: string; channel_id: string; kind: string; status: string; started_at: string; items: number | null; cost_usd: number | null; error: string | null }[];
+  runs: { id: string; channel_id: string; kind: string; status: string; started_at: string; items: number | null; cost_usd: number | null; error: string | null; source: string | null }[];
+  /** Providers in the order they're tried (Apify last), with whether each is set up and whether it's resting. */
+  sources: { name: string; keys: number; resting: boolean }[];
 };
 
 export async function instagramStatus(): Promise<IgStatus> {
-  if (!instagramConfigured()) return { configured: false, budget: null, accounts: 0, runs: [] };
+  const order = sourceOrder(process.env);
+  const listing = (resting: Set<SourceName>) => [
+    ...[...order, ...ALL_SOURCES.filter((x) => !order.includes(x))].map((name) => ({ name, keys: sourceKeys(process.env, name).length, resting: resting.has(name) })),
+    { name: "apify", keys: apifyConfigured() ? 1 : 0, resting: false },
+  ];
+  if (!instagramConfigured()) return { configured: false, budget: null, accounts: 0, runs: [], sources: listing(new Set()) };
   await ensureInstagram();
   const db = sql();
   const [n] = await db`select count(*)::int as n from channels where platform = 'instagram' and active`;
-  const runs = await db`select id, channel_id, kind, status, started_at, items, cost_usd, error from ig_runs order by started_at desc limit 8`;
-  return { configured: true, budget: await instagramBudget(), accounts: n.n as number, runs: runs as never };
+  const runs = await db`select id, channel_id, kind, status, started_at, items, cost_usd, error, source from ig_runs order by started_at desc limit 8`;
+  return { configured: true, budget: await instagramBudget(), accounts: n.n as number, runs: runs as never, sources: listing(await restingSources()) };
 }

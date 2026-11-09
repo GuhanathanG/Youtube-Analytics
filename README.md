@@ -255,15 +255,26 @@ The first run downloads each channel's video list and starts on past comments, b
 
 ---
 
-## Instagram (via Apify)
+## Instagram (several providers, Apify last)
 
-Watch Instagram accounts next to YouTube channels. Needs `APIFY_TOKEN` in Vercel (free Apify plan: $5 of credit a month).
+Watch Instagram accounts next to YouTube channels. The engine tries these providers in order and uses the first one that answers; Apify is only the last resort. Add any of the keys in Vercel (Settings → Environment Variables). Each key can be a comma-separated list (several free accounts), and `IG_SOURCES` changes the order (e.g. `hikerapi,scrapecreators`).
+
+| Order | Provider | Free allowance (check their pricing page) | What it reads | Vercel setting |
+|---|---|---|---|---|
+| 1 | Instagram official API (Business Discovery) | Free | Profile + latest posts of **Business/Creator** accounts (no comment text) | `IG_GRAPH_TOKEN` and `IG_GRAPH_USER_ID` (your own Instagram professional account connected to a Facebook app) |
+| 2 | ScrapeCreators | 100 free requests | Profile, posts, comments | `SCRAPECREATORS_API_KEY` |
+| 3 | SociaVault | 50 free credits | Profile, posts, comments | `SOCIAVAULT_API_KEY` |
+| 4 | HikerAPI | 100 free requests, then about $0.60 per 1,000 | Profile, posts, comments | `HIKERAPI_KEY` |
+| 5 | Bright Data Scraper API | Free trial records, then about $1.50 per 1,000 | Profile, posts, comments | `BRIGHTDATA_API_KEY` |
+| last | Apify Instagram scraper | $5 credit a month | Profile, posts, comments | `APIFY_TOKEN` |
+
+A provider that runs out of credits, rejects its key or hits a rate limit rests for `IG_SOURCE_REST_HOURS` (12) and the next one takes over. Manage → Instagram sources shows the order, which are set up or resting, and which provider served each check.
 
 1. **Manage → Watch an Instagram account**: type `@username` (or paste the profile link; an `instagram.com/…` link in the normal channel box works too).
-2. Within 1–3 minutes the profile (followers, bio), the latest 50 posts and their likes/comment counts appear. Comments follow on the next engine runs, and the AI reads them like YouTube comments, so briefings, Creator Memory, Ask AI, commenter pages and analytics include Instagram.
-3. After that the engine refreshes each account's profile + newest 12 posts every 12 hours, and fetches comments every 6 hours for posts whose comment count went up (newest posts first).
+2. With a quick provider the profile (followers, bio) and the newest posts appear at once; with Apify within 1–3 minutes (the latest 50 posts) and their likes/comment counts appear. Comments follow on the next engine runs, and the AI reads them like YouTube comments, so briefings, Creator Memory, Ask AI, commenter pages and analytics include Instagram.
+3. After that the engine refreshes each account's profile + newest 12 posts every 2 hours, and fetches comments every 6 hours for posts whose comment count went up (newest posts first).
 
-**Spending is capped.** Every Apify run has a hard limit (`maxItems` and `maxTotalChargeUsd`). The month's budget (`IG_MONTHLY_USD`, default $4.50) is spread evenly over the days left in the month, and nothing starts once today's share is spent. Manage → Instagram budget shows what was spent and the latest runs.
+**Apify spending is capped.** Every Apify run has a hard limit (`maxItems` and `maxTotalChargeUsd`). The month's budget (`IG_MONTHLY_USD`, default $4.50) is spread evenly over the days left in the month, and nothing starts once today's share is spent. Manage → Instagram sources shows what Apify spent and the latest checks.
 
 Limits of the free Apify plan: about 15 comments per post are returned, and Instagram image links expire after a few days (the newest posts' images refresh every 2 hours). Private accounts can't be read. Settings: `IG_PROFILE_HOURS` (2: new posts appear within 2 hours), `IG_COMMENT_HOURS` (6), `IG_POSTS_PER_RUN` (8), `IG_COMMENTS_PER_POST` (50), `IG_HISTORY_POSTS` (50), `IG_PRICE_PER_RESULT` (0.0027).
 

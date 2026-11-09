@@ -51,7 +51,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100",
-    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0", RADAR_CACHE_SECONDS: "0", BIG_CHANNEL_COMMENTS: "100", HISTORY_DAYS: "36500", LIVE_INTERVAL_SECONDS: "60", GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "test-secret",
+    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", SCRAPECREATORS_API_KEY: "sc-test", SCRAPECREATORS_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0", RADAR_CACHE_SECONDS: "0", BIG_CHANNEL_COMMENTS: "100", HISTORY_DAYS: "36500", LIVE_INTERVAL_SECONDS: "60", GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "test-secret",
     GOOGLE_AUTH_URL: "http://localhost:4100/o/oauth2/auth", GOOGLE_TOKEN_URL: "http://localhost:4100/token", YT_ANALYTICS_BASE: "http://localhost:4100/yta/v2",
     YOUTUBE_RSS_BASE: "http://localhost:4100", WEBSUB_HUB: "http://localhost:4100/subscribe", WEBSUB_CALLBACK_BASE: `http://localhost:${PORT}` },
   stdio: ["ignore", "inherit", "inherit"],
@@ -409,6 +409,24 @@ try {
     JSON.stringify(sent.igCaps));
   const [{ spent }] = await db`select sum(cost_usd)::float8 as spent from ig_runs`;
   check("Apify spending is recorded", spent > 0 && spent < 1, `${spent}`);
+  const [scFail] = await db`select source, status from ig_runs where channel_id = 'ig_pulsecreator' and source = 'scrapecreators' limit 1`;
+  check("the quick provider was tried first, and Apify only took over when it couldn't answer", scFail?.status === "FAILED", JSON.stringify(scFail));
+
+  // An account a quick provider can read: no Apify at all, profile and comments arrive straight away.
+  const apifyRunsBefore = sent.igRuns ?? 0;
+  await db`insert into channel_requests (query, status, created_at) values ('ig:quickreels', 'pending', now())`;
+  await tick();
+  const [qc] = await db`select title, subscriber_count::int as f from channels where id = 'ig_quickreels'`;
+  const qPosts = await db`select id, view_count::int as v, media_url from videos where channel_id = 'ig_quickreels' order by id`;
+  check("quick provider: profile and posts saved at once", qc?.title === "Quick Reels" && qc.f === 1234 && qPosts.length === 2
+    && qPosts.find((v) => v.id === "ig_QREEL0001")?.v === 4200, JSON.stringify({ qc, qPosts }));
+  if (!(await db`select 1 from comments where video_id = 'ig_QREEL0001'`).length) await tick();
+  const qCom = await db`select id, parent_id, author_name from comments where video_id = 'ig_QREEL0001' order by id`;
+  check("quick provider: comments and replies saved", qCom.length === 3 && qCom.some((c) => c.parent_id === "ig_qc1"), JSON.stringify(qCom));
+  check("Apify was not used for an account a quick provider could read", (sent.igRuns ?? 0) === apifyRunsBefore, `${sent.igRuns} vs ${apifyRunsBefore}`);
+  const manageIg = await (await get("/manage")).text();
+  check("Manage lists the Instagram sources in order, Apify last", manageIg.includes("Instagram sources") && manageIg.indexOf("ScrapeCreators") < manageIg.lastIndexOf("Apify"));
+
   const igPage = await (await get("/channels/ig_pulsecreator")).text();
   check("Instagram account page shows followers and an Instagram link", igPage.includes("Followers") && igPage.includes("instagram.com/pulsecreator"));
   const igPost = await (await get("/videos/ig_IGPOST0001")).text();
@@ -425,7 +443,7 @@ try {
     body: JSON.stringify({ videoId: "ig_IGPOST0002" }) })).json();
   check("a photo post is not sent to the video AI", photo.ok === false && /Only reels/.test(photo.message), JSON.stringify(photo));
   const mg = await (await get("/manage")).text();
-  check("Manage shows the Instagram form and budget", mg.includes("Watch on Instagram") && mg.includes("Instagram budget"));
+  check("Manage shows the Instagram form, sources and Apify budget", mg.includes("Watch on Instagram") && mg.includes("Instagram sources") && mg.includes("Apify spent this month"));
 
   // Instant uploads: the free RSS feed finds new videos on every run, without the quota-costing upload list
   await db`update live_state set last_uploads_at = (now() at time zone 'utc') where id = 1`;
