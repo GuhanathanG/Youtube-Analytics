@@ -78,6 +78,7 @@ function root(): Sql {
  * Long background reads (withLongQueries) are left alone.
  */
 const STUCK_MS = Number(process.env.QUERY_STUCK_SECONDS ?? 40) * 1000;
+let inflight = 0;
 function trackQueries(client: Sql) {
   const proto = Object.getPrototypeOf(client`select 1`) as { handle: () => Promise<void>; cancel: () => unknown; __tracked?: boolean };
   if (proto.__tracked) return;
@@ -99,7 +100,26 @@ function trackQueries(client: Sql) {
       };
       t = setTimeout(check, STUCK_MS);
       (t as { unref?: () => void }).unref?.();
-      const clear = () => clearTimeout(t);
+      // Timing of slow queries (over 1 s): how long it waited to be sent (a connection to open, or a free
+      // one) and how long the answer took after that (pooler + database). Logged as [db-slow].
+      const t0 = Date.now();
+      inflight++;
+      let sentAt = 0;
+      const watch = setTimeout(function poll() {
+        if (q.active) { sentAt = Date.now(); return; }
+        const p = setTimeout(poll, 50); (p as { unref?: () => void }).unref?.();
+      }, 0);
+      (watch as { unref?: () => void }).unref?.();
+      const startInflight = inflight;
+      const clear = () => {
+        clearTimeout(t);
+        inflight--;
+        const total = Date.now() - t0;
+        if (total > 1000) {
+          const text = String((q as unknown as { strings?: string[] }).strings?.join("?") ?? "").replace(/\s+/g, " ").slice(0, 90);
+          console.log(`[db-slow] ${total}ms total, waited to send ${sentAt ? sentAt - t0 : "?"}ms, answer ${sentAt ? Date.now() - sentAt : "?"}ms, ${startInflight} in flight: ${text}`);
+        }
+      };
       Promise.prototype.then.call(this, clear, clear); // also marks the query as handled
     }
     return original.call(this);
