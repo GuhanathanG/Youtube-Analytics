@@ -280,7 +280,8 @@ export async function instagramTick(timeLeft: () => boolean): Promise<IgTickResu
   const accounts = await db`select c.id from channels c where c.active and c.platform = 'instagram'
     and not exists (select 1 from ig_runs r where r.channel_id = c.id and r.status in ('READY', 'RUNNING'))
     order by c.last_synced_at nulls first`;
-  const profileHours = Number(process.env.IG_PROFILE_HOURS ?? 12);
+  // New posts show up within 2 hours (each check is one result, about $0.003: ~$2/month for two accounts).
+  const profileHours = Number(process.env.IG_PROFILE_HOURS ?? 2);
   const commentHours = Number(process.env.IG_COMMENT_HOURS ?? 6);
   for (const a of accounts) {
     if (!timeLeft()) break;

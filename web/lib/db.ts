@@ -37,7 +37,34 @@ function makeClient() {
 type Sql = ReturnType<typeof postgres>;
 const longRun = new AsyncLocalStorage<Sql>();
 
+/* Vercel pauses an idle server copy and wakes it for the next visit. Its old connections may be dead by
+ * then, and timers from before the pause all fire at once on waking. A 1-second heartbeat tells us a pause
+ * happened (a big gap since the last beat): the first query after it starts with fresh connections. */
+let lastBeat = Date.now();
+let beating = false;
+function heartbeat() {
+  if (beating) return;
+  beating = true;
+  const t = setInterval(() => {
+    const now = Date.now();
+    // On waking, timers run before any new visit is handled: start fresh connections right here.
+    if (now - lastBeat > 10_000 && globalThis.__pg) {
+      console.warn("[db] woke up after a pause of", Math.round((now - lastBeat) / 1000), "s: fresh connections");
+      resetClient(globalThis.__pg);
+    }
+    lastBeat = now;
+  }, 1000);
+  (t as { unref?: () => void }).unref?.();
+}
+
 function root(): Sql {
+  const now = Date.now();
+  if (globalThis.__pg && beating && now - lastBeat > 10_000) {
+    console.warn("[db] woke up after a pause of", Math.round((now - lastBeat) / 1000), "s: fresh connections");
+    resetClient(globalThis.__pg);
+  }
+  lastBeat = now;
+  heartbeat();
   if (!globalThis.__pg) { globalThis.__pg = makeClient(); trackQueries(globalThis.__pg); }
   return globalThis.__pg;
 }
@@ -59,6 +86,7 @@ function trackQueries(client: Sql) {
   proto.handle = function (this: Promise<unknown> & { executed?: boolean; cancel: () => unknown }) {
     if (!this.executed && !longRun.getStore()) {
       const q = this as typeof this & { active?: boolean };
+      const owner = globalThis.__pg; // the set of connections this query runs on
       let t: ReturnType<typeof setTimeout>;
       let waited = 0;
       const check = () => {
@@ -67,7 +95,7 @@ function trackQueries(client: Sql) {
         if (!q.active && waited++ < 3) { t = setTimeout(check, STUCK_MS); (t as { unref?: () => void }).unref?.(); return; }
         console.warn("[db] a query got no answer for", (STUCK_MS / 1000) * (waited + 1), "s: starting fresh connections");
         try { this.cancel(); } catch { /* already gone */ }
-        resetClient();
+        resetClient(owner); // never the newer set a later visit already uses
       };
       t = setTimeout(check, STUCK_MS);
       (t as { unref?: () => void }).unref?.();
@@ -77,10 +105,10 @@ function trackQueries(client: Sql) {
     return original.call(this);
   };
 }
-function resetClient() {
-  const old = globalThis.__pg;
-  globalThis.__pg = undefined; // the next query opens new connections
-  old?.end({ timeout: 1 }).catch(() => undefined); // queued / stuck queries fail instead of waiting forever
+function resetClient(old: Sql | undefined) {
+  if (!old) return;
+  if (globalThis.__pg === old) globalThis.__pg = undefined; // the next query opens new connections
+  old.end({ timeout: 1 }).catch(() => undefined); // its queued / stuck queries fail instead of waiting forever
 }
 
 export function sql(): Sql {

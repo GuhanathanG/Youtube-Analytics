@@ -265,7 +265,7 @@ Watch Instagram accounts next to YouTube channels. Needs `APIFY_TOKEN` in Vercel
 
 **Spending is capped.** Every Apify run has a hard limit (`maxItems` and `maxTotalChargeUsd`). The month's budget (`IG_MONTHLY_USD`, default $4.50) is spread evenly over the days left in the month, and nothing starts once today's share is spent. Manage → Instagram budget shows what was spent and the latest runs.
 
-Limits of the free Apify plan: about 15 comments per post are returned, and Instagram image links expire after a few days (the newest posts' images refresh every 12 hours). Private accounts can't be read. Settings: `IG_PROFILE_HOURS` (12), `IG_COMMENT_HOURS` (6), `IG_POSTS_PER_RUN` (8), `IG_COMMENTS_PER_POST` (50), `IG_HISTORY_POSTS` (50), `IG_PRICE_PER_RESULT` (0.0027).
+Limits of the free Apify plan: about 15 comments per post are returned, and Instagram image links expire after a few days (the newest posts' images refresh every 2 hours). Private accounts can't be read. Settings: `IG_PROFILE_HOURS` (2: new posts appear within 2 hours), `IG_COMMENT_HOURS` (6), `IG_POSTS_PER_RUN` (8), `IG_COMMENTS_PER_POST` (50), `IG_HISTORY_POSTS` (50), `IG_PRICE_PER_RESULT` (0.0027).
 
 ## Engine power-ups
 
