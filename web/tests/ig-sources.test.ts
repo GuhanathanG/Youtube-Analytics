@@ -1,7 +1,7 @@
 // Instagram providers: order, fallback and each provider's answer format (shapes from their API docs).
 // Run: node --experimental-strip-types tests/ig-sources.test.ts
 import assert from "node:assert/strict";
-import { fetchComments, fetchProfile, sourceOrder, type Attempt } from "../lib/ig-sources.ts";
+import { fetchComments, fetchPostHistory, fetchProfile, sourceOrder, type Attempt } from "../lib/ig-sources.ts";
 
 type Reply = { status?: number; body: unknown };
 /** A fake network: the first route whose text appears in the URL answers. Records every URL asked. */
@@ -154,6 +154,26 @@ assert.deepEqual(sourceOrder({ APIFY_TOKEN: "x" }), []); // Apify isn't one of t
   assert.deepEqual([r.source, r.comments?.[0].id, r.comments?.[0].ownerUsername, r.comments?.[0].likesCount], ["brightdata", "c9", "bd", 4]);
   assert.ok(asked[0].url.includes("dataset_id=gd_ltppn085pokosxh13"));
   assert.equal(asked[0].headers.Authorization, "Bearer bd");
+}
+
+// 9. Back catalogue: ScrapeCreators' posts feed, paged with next_max_id, in Instagram's own format.
+{
+  let page = 0;
+  const item = (code: string, t: number) => ({ code, taken_at: t, media_type: 2, product_type: "clips", like_count: 10, comment_count: 2, play_count: 500,
+    caption: { text: "old reel #throwback" }, display_uri: `https://x/${code}.jpg`, video_versions: [{ url: `https://x/${code}.mp4` }] });
+  const { f, asked } = fakeFetch([["/v2/instagram/user/posts", () => (page++ === 0
+    ? { body: { items: [item("OLD1", 1736000000), item("OLD2", 1735000000)], next_max_id: "c2", more_available: true } }
+    : { body: { items: [item("OLD3", 1734000000)], next_max_id: null, more_available: false } })]]);
+  const r = await fetchPostHistory("creator", 50, { SCRAPECREATORS_API_KEY: "sc" }, { fetch: f });
+  assert.equal(r.source, "scrapecreators");
+  assert.deepEqual(r.posts!.map((p) => p.shortCode), ["OLD1", "OLD2", "OLD3"]);
+  const p = r.posts![0];
+  assert.deepEqual([p.caption, p.videoPlayCount, p.displayUrl, p.videoUrl, p.productType, p.hashtags?.[0]],
+    ["old reel #throwback", 500, "https://x/OLD1.jpg", "https://x/OLD1.mp4", "clips", "throwback"]);
+  assert.ok(asked[1].url.includes("next_max_id=c2"));
+  const capped = await fetchPostHistory("creator", 1, { SCRAPECREATORS_API_KEY: "sc" }, { fetch: fakeFetch([["/v2/instagram/user/posts",
+    { body: { items: [item("A", 1), item("B", 2)], next_max_id: "n" } }]]).f });
+  assert.equal(capped.posts!.length, 1, "stops at the number asked for");
 }
 
 console.log("ig-sources: all checks passed");

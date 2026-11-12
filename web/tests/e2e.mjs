@@ -418,12 +418,18 @@ try {
   await tick();
   const [qc] = await db`select title, subscriber_count::int as f from channels where id = 'ig_quickreels'`;
   const qPosts = await db`select id, view_count::int as v, media_url from videos where channel_id = 'ig_quickreels' order by id`;
-  check("quick provider: profile and posts saved at once", qc?.title === "Quick Reels" && qc.f === 1234 && qPosts.length === 2
+  check("quick provider: profile and posts saved at once", qc?.title === "Quick Reels" && qc.f === 1234 && qPosts.filter((v) => !v.id.startsWith("ig_QOLD")).length === 2
     && qPosts.find((v) => v.id === "ig_QREEL0001")?.v === 4200, JSON.stringify({ qc, qPosts }));
   if (!(await db`select 1 from comments where video_id = 'ig_QREEL0001'`).length) await tick();
+  if (!(await db`select 1 from videos where id = 'ig_QOLD0003'`).length) await tick();
+  const qOld = await db`select id, view_count::int as v from videos where id like 'ig_QOLD%' order by id`;
+  const [qHist] = await db`select source, status, items from ig_runs where channel_id = 'ig_quickreels' and kind = 'history' and status = 'SUCCEEDED'`;
+  check("Instagram back catalogue: older posts downloaded once by a quick provider", qOld.length === 3 && qOld[0].v === 900
+    && qHist?.source === "scrapecreators", JSON.stringify({ qOld, qHist }));
   const qCom = await db`select id, parent_id, author_name from comments where video_id = 'ig_QREEL0001' order by id`;
   check("quick provider: comments and replies saved", qCom.length === 3 && qCom.some((c) => c.parent_id === "ig_qc1"), JSON.stringify(qCom));
-  check("Apify was not used for an account a quick provider could read", (sent.igRuns ?? 0) === apifyRunsBefore, `${sent.igRuns} vs ${apifyRunsBefore}`);
+  check("Apify was not used for an account a quick provider could read",
+    !(sent.igInputs ?? []).some((i) => /quickreels|QREEL|QOLD/.test(i)), `${sent.igRuns} runs, ${apifyRunsBefore} before: ${(sent.igInputs ?? []).slice(apifyRunsBefore).join(" | ").slice(0, 400)}`);
   const manageIg = await (await get("/manage")).text();
   check("Manage lists the Instagram sources in order, Apify last", manageIg.includes("Instagram sources") && manageIg.indexOf("ScrapeCreators") < manageIg.lastIndexOf("Apify"));
 

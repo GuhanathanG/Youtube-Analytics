@@ -1,6 +1,6 @@
 import "server-only";
 import { sql, ensureRls, ensureColumns, ensureIndex } from "./db";
-import { fetchComments, fetchProfile, sourceKeys, sourceOrder, ALL_SOURCES, type Attempt, type IgComment, type IgPost, type IgProfile, type SourceName } from "./ig-sources";
+import { fetchComments, fetchPostHistory, fetchProfile, sourceKeys, sourceOrder, ALL_SOURCES, type Attempt, type IgComment, type IgPost, type IgProfile, type SourceName } from "./ig-sources";
 
 /**
  * Instagram, collected from several providers (lib/ig-sources.ts): the official API and the cheap/free
@@ -137,6 +137,33 @@ async function profileNow(channelId: string): Promise<number | null> {
   const r = await fetchProfile(usernameOf(channelId), process.env, { resting: await restingSources(), attempts });
   await recordAttempts(channelId, "details", attempts, r.profile ? 1 + (r.profile.latestPosts?.length ?? 0) : 0);
   return r.profile ? saveProfile(channelId, r.profile) : null;
+}
+
+/**
+ * Back catalogue, once per account: when an account has fewer than IG_HISTORY_POSTS (120) posts stored and no
+ * history download has succeeded yet, fetch its older posts (about 12 per credit). Gives the outlier finder and
+ * the Instagram prediction model enough history. Returns the number of new posts, or null if it didn't run.
+ */
+async function historyNow(channelId: string): Promise<number | null> {
+  const want = Number(process.env.IG_HISTORY_POSTS ?? 120);
+  const db = sql();
+  const [have] = await db`select count(*)::int as n,
+      (select count(*) from ig_runs where channel_id = ${channelId} and kind = 'history' and status = 'SUCCEEDED')::int as done,
+      (select count(*) from ig_runs where channel_id = ${channelId} and kind = 'history'
+         and started_at >= (now() at time zone 'utc') - interval '1 day')::int as recent
+    from videos where channel_id = ${channelId}`;
+  if (have.done > 0 || have.n >= want || have.recent >= 3) return null; // done, already enough, or retried enough today
+  const attempts: Attempt[] = [];
+  const r = await fetchPostHistory(usernameOf(channelId), want, process.env, { resting: await restingSources(), attempts });
+  await recordAttempts(channelId, "history", attempts, r.posts?.length ?? 0);
+  if (!r.posts) return null;
+  const known = new Set((await db`select id from videos where channel_id = ${channelId}`).map((v) => v.id as string));
+  const added = await savePosts(channelId, r.posts);
+  // The back catalogue is for history and predictions: its existing comments aren't fetched (that would spend
+  // provider credits on old posts). Only comments that arrive from now on are read, like any post.
+  const fresh = r.posts.map((p) => `ig_${p.shortCode}`).filter((id) => !known.has(id));
+  if (fresh.length) await db`update videos set comment_count_checked = comment_count where id in ${db(fresh)} and comment_count_checked is null`;
+  return added;
 }
 
 /** Newest comments of these posts, each from the first provider that answers. Returns new comment ids and the posts no provider could read. */
@@ -340,6 +367,9 @@ export async function instagramTick(timeLeft: () => boolean): Promise<IgTickResu
         max(started_at) filter (where kind = 'details') as details_at, max(started_at) filter (where kind = 'comments') as comments_at
       from ig_runs where channel_id = ${id}`;
     const hoursSince = (t: unknown) => (t ? (Date.now() - new Date(String(t).replace(" ", "T") + "Z").getTime()) / 3_600_000 : Infinity);
+    // Once per account: its back catalogue (older posts), if it has only a few stored.
+    const hist = await historyNow(id).catch((e) => { console.log("[instagram history]", e instanceof Error ? e.message : e); return null; });
+    if (hist !== null) { out.collected++; out.newPosts += hist; continue; }
     // Profile + newest 12 posts (one result): followers, new posts, likes and comment counts.
     if (hoursSince(last?.details_at) >= profileHours) {
       const quick = await profileNow(id).catch((e) => { console.log("[instagram]", e instanceof Error ? e.message : e); return null; });

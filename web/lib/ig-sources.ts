@@ -157,19 +157,70 @@ export function fromWebComment(c: WebComment, code: string): IgComment | null {
 /* ------------------------------------------------------------------ HikerAPI (instagrapi format) */
 type HMedia = { pk?: string | number; id?: string; code?: string; taken_at?: string | number; media_type?: number; product_type?: string;
   thumbnail_url?: string; comment_count?: number; comments_disabled?: boolean; like_count?: number; play_count?: number; view_count?: number;
-  caption_text?: string; video_url?: string; video_duration?: number };
+  caption_text?: string; video_url?: string; video_duration?: number;
+  // the same Instagram format as ScrapeCreators' posts feed returns it:
+  caption?: { text?: string } | null; display_uri?: string; image_versions2?: { candidates?: { url?: string }[] };
+  video_versions?: { url?: string }[] };
 type HUser = { pk?: string | number; username?: string; full_name?: string; is_private?: boolean; profile_pic_url?: string;
   profile_pic_url_hd?: string; media_count?: number; follower_count?: number; following_count?: number; biography?: string };
 
 export function fromHikerMedia(m: HMedia, owner?: string): IgPost | null {
   if (!m.code) return null;
+  const caption = m.caption_text ?? m.caption?.text ?? "";
   return {
-    id: m.pk !== undefined ? String(m.pk) : m.id, shortCode: m.code, url: postUrl(m.code), caption: m.caption_text ?? "",
+    id: m.pk !== undefined ? String(m.pk) : m.id, shortCode: m.code, url: postUrl(m.code), caption,
     type: m.media_type === 8 ? "Sidecar" : m.media_type === 2 ? "Video" : "Image", productType: m.product_type,
-    displayUrl: m.thumbnail_url, timestamp: iso(m.taken_at), likesCount: n(m.like_count), commentsCount: n(m.comment_count),
-    videoPlayCount: n(m.play_count), videoViewCount: n(m.view_count), videoDuration: n(m.video_duration), videoUrl: m.video_url,
-    isCommentsDisabled: !!m.comments_disabled, hashtags: hashtags(m.caption_text), ownerUsername: owner,
+    displayUrl: m.thumbnail_url ?? m.display_uri ?? m.image_versions2?.candidates?.[0]?.url, timestamp: iso(m.taken_at),
+    likesCount: n(m.like_count), commentsCount: n(m.comment_count),
+    videoPlayCount: n(m.play_count), videoViewCount: n(m.view_count), videoDuration: n(m.video_duration),
+    videoUrl: m.video_url ?? m.video_versions?.[0]?.url,
+    isCommentsDisabled: !!m.comments_disabled, hashtags: hashtags(caption), ownerUsername: owner,
   };
+}
+
+/**
+ * An account's older posts (its back catalogue), newest first, up to `max`: ScrapeCreators' posts feed or
+ * HikerAPI's media pages (about 12 posts, one credit, per page). Used once per account so there's enough
+ * history to compare posts and train the Instagram prediction model.
+ */
+export async function fetchPostHistory(username: string, max: number, env: Env,
+  opts: { resting?: Set<SourceName>; fetch?: Fetch; attempts?: Attempt[]; pages?: number } = {}) {
+  const attempts = opts.attempts ?? [];
+  const f = opts.fetch ?? fetch;
+  const pages = opts.pages ?? Math.ceil(max / 12) + 2;
+  const order = sourceOrder(env, "comments").filter((s) => s === "scrapecreators" || s === "hikerapi");
+  const r = await tryAll(order, env, opts.resting ?? new Set(), attempts, async (s, key) => {
+    const b = base(env, s);
+    const out: IgPost[] = [];
+    let cursor: string | undefined;
+    if (s === "scrapecreators") {
+      for (let i = 0; i < pages && out.length < max; i++) {
+        const q = new URLSearchParams({ handle: username });
+        if (cursor) q.set("next_max_id", cursor);
+        const d = (await getJson(f, `${b}/v2/instagram/user/posts?${q}`, { headers: { "x-api-key": key } }, s)) as
+          { items?: HMedia[]; next_max_id?: string; more_available?: boolean };
+        out.push(...list<HMedia>(d.items).map((m) => fromHikerMedia(m, username)).filter((p): p is IgPost => !!p));
+        cursor = d.next_max_id ?? undefined;
+        if (!cursor || d.more_available === false || !d.items?.length) break;
+      }
+    } else {
+      const h = { "x-access-key": key, accept: "application/json" };
+      const u = (await getJson(f, `${b}/v1/user/by/username?username=${encodeURIComponent(username)}`, { headers: h }, "HikerAPI")) as HUser;
+      if (u?.pk === undefined) throw new SourceError("HikerAPI: profile not found", 404);
+      for (let i = 0; i < pages && out.length < max; i++) {
+        const q = new URLSearchParams({ user_id: String(u.pk) });
+        if (cursor) q.set("end_cursor", cursor);
+        const d = await getJson(f, `${b}/v1/user/medias/chunk?${q}`, { headers: h }, "HikerAPI");
+        const [items, next] = Array.isArray(d) ? [list<HMedia>(d[0]), d[1] as string | null] : [[], null];
+        out.push(...items.map((m) => fromHikerMedia(m, username)).filter((p): p is IgPost => !!p));
+        cursor = next ?? undefined;
+        if (!cursor || !items.length) break;
+      }
+    }
+    if (!out.length) throw new SourceError(`${s}: no posts returned`);
+    return out.slice(0, max);
+  });
+  return r ? { source: r.source, posts: r.value, attempts } : { source: null, posts: null, attempts };
 }
 
 /* ------------------------------------------------------------------ Bright Data */
