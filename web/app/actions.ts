@@ -177,3 +177,19 @@ export async function revokeShareAction(form: FormData) {
   await revokeShareLink(String(form.get("token") ?? ""));
   revalidatePath("/manage");
 }
+
+export async function addGoalAction(form: FormData) {
+  await requireSession();
+  const { addGoal } = await import("@/lib/growth");
+  const target = Number(String(form.get("target") ?? "").replace(/[, ]/g, "").replace(/k$/i, "e3").replace(/m$/i, "e6"));
+  const deadline = String(form.get("deadline") ?? "").trim();
+  await addGoal(String(form.get("channel") ?? ""), String(form.get("metric") ?? ""), target, /^\d{4}-\d{2}-\d{2}$/.test(deadline) ? deadline : null);
+  revalidatePath("/growth");
+}
+
+export async function deleteGoalAction(form: FormData) {
+  await requireSession();
+  const { deleteGoal } = await import("@/lib/growth");
+  await deleteGoal(Number(form.get("id")));
+  revalidatePath("/growth");
+}

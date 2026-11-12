@@ -171,3 +171,20 @@ console.log("outlier finder: ok");
   assert.ok(titleMatches("My PHONE camera review!", "phone review") && !titleMatches("phone unboxing", "phone review"));
 }
 console.log("keyword scores: ok");
+
+// Goals & milestones, title-change effect
+{
+  const { pacePerDay, goalView, rateAround } = await import("../lib/growth-math.ts");
+  const day = 86400_000, t0 = Date.UTC(2026, 0, 1);
+  const pts = [0, 1, 2, 3].map((d) => ({ t: t0 + d * day, v: 1000 + d * 100 }));
+  assert.equal(Math.round(pacePerDay(pts)!), 100);
+  assert.equal(pacePerDay([{ t: t0, v: 1 }, { t: t0 + 3600_000, v: 2 }]), null); // under 12 hours: no pace yet
+  const g = goalView(1300, 2300, 100, new Date(t0 + 20 * day), new Date(t0));
+  assert.equal(g.etaDays, 10); assert.equal(g.needPerDay, 50); assert.equal(g.onTrack, true); assert.equal(Math.round(g.progress * 100), 57);
+  assert.equal(goalView(500, 400, null, null).reached, true);
+  assert.equal(goalView(100, 400, -5, null).etaDays, null); // shrinking: no date
+  const at = t0 + 2 * day, snaps = [-48, -24, 0, 24, 48].map((h) => ({ t: at + h * 3600_000, v: 10000 + (h < 0 ? h * 10 : h * 30) }));
+  const r = rateAround(snaps, at);
+  assert.equal(Math.round(r.before!), 10); assert.equal(Math.round(r.after!), 30); assert.equal(r.lift, 3);
+}
+console.log("growth: ok");
