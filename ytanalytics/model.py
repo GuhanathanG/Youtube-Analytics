@@ -424,20 +424,32 @@ def train(session, now: datetime | None = None) -> dict:
 
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     _ensure_tables(session)
+    # One model per platform: YouTube videos and Instagram posts live on different scales and patterns.
+    results = {p: _train_platform(session, p, now) for p in ("youtube", "instagram")}
+    out = dict(results["youtube"])
+    out["platforms"] = results
+    return out
+
+
+def _train_platform(session, platform: str, now: datetime) -> dict:
+    import numpy as np
+    from sqlalchemy import text
+
     rows = [dict(r._mapping) for r in session.execute(text("""
         select v.id, v.channel_id, v.title, v.description, v.duration, v.tags, v.has_captions, v.live_status, v.published_at,
                v.view_count, v.like_count, v.comment_count, coalesce(c.platform, 'youtube') as platform
         from videos v join channels c on c.id = v.channel_id
-        where v.published_at is not null and coalesce(c.platform, 'youtube') = 'youtube'"""))]
+        where v.published_at is not null and coalesce(c.platform, 'youtube') = :p"""), {"p": platform})]
     examples = build_examples(rows, now)
     train_set = [e for e in examples if e.age_days >= MATURE_DAYS and e.views is not None]
     channels = sorted({e.channel_id for e in train_set})
     if len(train_set) < MIN_TRAIN:
-        log.info("Prediction engine: %d usable videos, need %d", len(train_set), MIN_TRAIN)
+        log.info("Prediction engine (%s): %d usable videos, need %d", platform, len(train_set), MIN_TRAIN)
         return {"trained": False, "videos": len(train_set)}
     metrics = backtest(train_set)
-    graded = session.execute(text("""select first_views_30d f, actual_30d a from video_forecast
-        where first_views_30d > 0 and actual_30d > 0""")).all()
+    graded = session.execute(text("""select f.first_views_30d f, f.actual_30d a from video_forecast f
+        join channels c on c.id = f.channel_id
+        where f.first_views_30d > 0 and f.actual_30d > 0 and coalesce(c.platform, 'youtube') = :p"""), {"p": platform}).all()
     if graded:
         errs = [abs(math.log(r.f) - math.log(r.a)) for r in graded]
         metrics["live_graded"] = len(graded)
@@ -448,7 +460,7 @@ def train(session, now: datetime | None = None) -> dict:
         select s.video_id, v.channel_id, extract(epoch from (s.taken_at - v.published_at)) / 3600 as age_h, s.view_count as views
         from video_snapshots s join videos v on v.id = s.video_id"""))]
     stamp = now.replace(microsecond=0)
-    mine = [r[0] for r in session.execute(text("select id from channels where active and coalesce(platform, 'youtube') = 'youtube'"))]
+    mine = [r[0] for r in session.execute(text("select id from channels where active and coalesce(platform, 'youtube') = :p"), {"p": platform})]
     saved = 0
     for ch in mine:
         ch_examples = [e for e in examples if e.channel_id == ch]
@@ -479,8 +491,8 @@ def train(session, now: datetime | None = None) -> dict:
     # Graded forecasts stay (they are the engine's track record); ungraded stale ones go.
     session.execute(text("delete from video_forecast where updated_at < :t - interval '60 days' and actual_30d is null"), {"t": stamp})
     session.commit()
-    log.info("Prediction engine trained on %d videos from %d channels; backtest %s; %d forecasts",
-             len(train_set), len(channels), metrics, saved)
+    log.info("Prediction engine (%s) trained on %d videos from %d channels; backtest %s; %d forecasts",
+             platform, len(train_set), len(channels), metrics, saved)
     return {"trained": True, "videos": len(train_set), "channels": len(channels), "metrics": metrics, "forecasts": saved}
 
 

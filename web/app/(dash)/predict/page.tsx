@@ -23,12 +23,11 @@ export default async function PredictPage({ searchParams }: { searchParams: Prom
   const me = chs.find((c) => c.id === focus);
   const header = (
     <PageHeader eyebrow={me ? `Predict · ${me.title}` : "Predict"} title={<>Prediction <span className="glow-text">engine</span></>}>
-      <p className="max-w-2xl text-[15px] text-ink-2">Learns from every tracked channel (yours and competitors&apos;) what makes a video beat its
-        channel&apos;s normal, checks itself on the newest videos, and forecasts where new uploads will land after 30 days.</p>
+      <p className="max-w-2xl text-[15px] text-ink-2">Learns from every tracked account (yours and competitors&apos;; YouTube and Instagram each get their own model) what
+        makes a post beat its account&apos;s normal, checks itself on the newest videos, and forecasts where new uploads will land after 30 days.</p>
     </PageHeader>
   );
   if (!me) return <>{header}<Empty>Add one of your channels on the Manage page first.</Empty></>;
-  if (me.id.startsWith("ig_")) return <>{header}<Empty>Predictions cover YouTube channels for now. Pick a YouTube channel in the top bar.</Empty></>;
   const [engine, forecasts] = await Promise.all([within(engineFor(me.id), 8000, null), within(forecastsFor(me.id), 8000, [])]);
   if (!engine) return (<>{header}<Empty>The engine trains every night (02:11 India time). To train it now: GitHub → Actions → “Prediction engine” → Run workflow.</Empty></>);
 
