@@ -642,6 +642,13 @@ try {
   const kwp = await (await getF("/keywords?q=phone+review")).text();
   check("Keywords: demand from search suggestions, related searches and niche proof", kwp.includes("High demand") && kwp.includes("phone review tamil")
     && kwp.includes("In your niche"), kwp.slice(kwp.indexOf("Search demand"), kwp.indexOf("Search demand") + 400));
+  await (await getF("/growth")).text(); // sets up the goals table and the title-change trigger (read it all: it streams)
+  await db`insert into goals (channel_id, metric, target) values (${ch.id}, 'views', 999999999)`;
+  await db`update videos set title = 'Renamed for the change tracker' where id = 'livevid0001'`;
+  const [chg] = await db`select old_value, new_value from video_changes where video_id = 'livevid0001'`;
+  const gr = await (await getF("/growth")).text();
+  check("Growth: title change caught by the database, goal shown with progress", chg?.new_value === "Renamed for the change tracker"
+    && gr.includes("Renamed for the change tracker") && gr.includes("total views") && gr.includes("%"), JSON.stringify(chg));
   const wi = await (await getF("/predict?title=Top+7+tips&format=long&minutes=12&day=5&hour=18")).text();
   const wo = await (await getF("/predict?title=My+day+out&format=long&minutes=12&day=5&hour=18")).text();
   const mult = (h) => Number((/([\d.]+)×(?:<!-- -->)? this channel/.exec(h) ?? [])[1] ?? NaN);
