@@ -154,3 +154,20 @@ console.log("logic unit tests: all passed");
   assert.ok(p.some((x) => x.label === "Asks a question" && x.ratio > 1.25), JSON.stringify(p));
 }
 console.log("outlier finder: ok");
+
+// Keyword scores from search suggestions
+{
+  const { prefixesOf, rankIn, demandScore, opportunity, titleMatches } = await import("../lib/keyword-math.ts");
+  assert.deepEqual(prefixesOf("phone review"), ["phone", "phone rev", "phone review"]);
+  assert.equal(rankIn(["a", "Phone Review", "b"], "phone review"), 1);
+  assert.equal(rankIn(["phone review unboxing"], "phone review"), 0); // a longer suggestion that starts with it counts
+  assert.equal(rankIn(["phones"], "phone"), -1);
+  const at = (stage: number, rank: number) => ["phone", "phone rev", "phone review"].map((prefix, i) =>
+    ({ prefix, suggestions: i === stage ? [...Array(rank).fill("x"), "phone review"] : ["other"] }));
+  assert.equal(demandScore(at(0, 0), "phone review"), 100); // suggested after a third of the letters, first
+  assert.ok(demandScore(at(1, 0), "phone review") === 70 && demandScore(at(2, 9), "phone review") === 20);
+  assert.equal(demandScore([{ prefix: "zz", suggestions: [] }], "zz"), 0);
+  assert.equal(opportunity(50, 4, 3), 75); // niche proof is capped at ±25 assert.equal(opportunity(50, 0.5, 3), 35); assert.equal(opportunity(50, 4, 1), 50);
+  assert.ok(titleMatches("My PHONE camera review!", "phone review") && !titleMatches("phone unboxing", "phone review"));
+}
+console.log("keyword scores: ok");
