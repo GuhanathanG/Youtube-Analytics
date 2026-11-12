@@ -145,6 +145,13 @@ export function startFake(port = 4100) {
       });
       return;
     }
+    // YouTube search-suggest stand-in: "phone review" is suggested from the first few letters (high demand).
+    if (p === "/complete/search") {
+      const q = (u.searchParams.get("q") ?? "").toLowerCase();
+      const list = "phone review".startsWith(q) ? ["phone review", "phone review tamil", "phone review 2026", "phones"]
+        : q.startsWith("phone review") ? ["phone review tamil", "phone review camera"] : [];
+      return send([q, list]);
+    }
     // ScrapeCreators stand-in: answers for @quickreels only; for anyone else Instagram "blocks" it (500),
     // so those accounts fall back to the Apify stand-in below (the last resort).
     if (p === "/v1/instagram/profile" || p === "/v2/instagram/post/comments") {

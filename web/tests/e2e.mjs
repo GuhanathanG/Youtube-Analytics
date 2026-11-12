@@ -51,7 +51,7 @@ const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
     GITHUB_TOKEN: "test-token", GITHUB_API_BASE: "http://localhost:4100",
-    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", SCRAPECREATORS_API_KEY: "sc-test", SCRAPECREATORS_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0", RADAR_CACHE_SECONDS: "0", BIG_CHANNEL_COMMENTS: "100", HISTORY_DAYS: "36500", LIVE_INTERVAL_SECONDS: "60", GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "test-secret",
+    APIFY_TOKEN: "test", APIFY_API_BASE: "http://localhost:4100", SCRAPECREATORS_API_KEY: "sc-test", SCRAPECREATORS_API_BASE: "http://localhost:4100", SUGGEST_API_BASE: "http://localhost:4100", IG_COMMENT_HOURS: "0", BROWSER_TICK_AFTER_MINUTES: "0", LIST_CACHE_SECONDS: "0", RADAR_CACHE_SECONDS: "0", BIG_CHANNEL_COMMENTS: "100", HISTORY_DAYS: "36500", LIVE_INTERVAL_SECONDS: "60", GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "test-secret",
     GOOGLE_AUTH_URL: "http://localhost:4100/o/oauth2/auth", GOOGLE_TOKEN_URL: "http://localhost:4100/token", YT_ANALYTICS_BASE: "http://localhost:4100/yta/v2",
     YOUTUBE_RSS_BASE: "http://localhost:4100", WEBSUB_HUB: "http://localhost:4100/subscribe", WEBSUB_CALLBACK_BASE: `http://localhost:${PORT}` },
   stdio: ["ignore", "inherit", "inherit"],
@@ -633,6 +633,9 @@ try {
   const ol = await (await getF("/outliers?period=all&min=2")).text();
   check("Outlier finder shows breakouts with their score and what they share", ol.includes("outlier finder") && ol.includes("Breakouts found")
     && /\d(\.\d)?×/.test(ol) && ol.includes("How uploads land"), ol.slice(0, 300));
+  const kwp = await (await getF("/keywords?q=phone+review")).text();
+  check("Keywords: demand from search suggestions, related searches and niche proof", kwp.includes("High demand") && kwp.includes("phone review tamil")
+    && kwp.includes("In your niche"), kwp.slice(kwp.indexOf("Search demand"), kwp.indexOf("Search demand") + 400));
   const wi = await (await getF("/predict?title=Top+7+tips&format=long&minutes=12&day=5&hour=18")).text();
   const wo = await (await getF("/predict?title=My+day+out&format=long&minutes=12&day=5&hour=18")).text();
   const mult = (h) => Number((/([\d.]+)×(?:<!-- -->)? this channel/.exec(h) ?? [])[1] ?? NaN);

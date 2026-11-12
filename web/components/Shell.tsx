@@ -24,6 +24,7 @@ const NAV = [
   { href: "/predict", label: "Predict", icon: BrainCircuit },
   { href: "/radar", label: "Radar", icon: Radar },
   { href: "/outliers", label: "Outliers", icon: Flame },
+  { href: "/keywords", label: "Keywords", icon: Search },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/ideas", label: "Ideas", icon: Lightbulb },
   { href: "/manage", label: "Manage", icon: Settings2 },
