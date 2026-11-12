@@ -207,3 +207,44 @@ input, select, textarea {
 .chip-hi { color: var(--color-accent); border-color: rgba(34, 211, 238, 0.35); background: rgba(34, 211, 238, 0.08); }
 .chip-mid { color: var(--color-accent-2); border-color: rgba(139, 124, 246, 0.35); background: rgba(139, 124, 246, 0.08); }
 .scanline { display: none; }
+
+/* ------------------------------------------------------------------ futuristic extras (outliers and later pages)
+   All pure CSS (no JS), and switched off for people who ask for less motion. */
+.holo {
+  position: relative;
+  isolation: isolate;
+}
+.holo::before { /* slowly turning light around the card's edge */
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(from var(--holo-angle, 0deg), rgba(34, 211, 238, 0.55), rgba(139, 124, 246, 0.15) 25%,
+    rgba(34, 211, 238, 0.05) 50%, rgba(139, 124, 246, 0.45) 75%, rgba(34, 211, 238, 0.55));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: holo-spin 9s linear infinite;
+}
+@property --holo-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes holo-spin { to { --holo-angle: 360deg; } }
+
+.grow-x { transform-origin: left; animation: grow-x 1.1s cubic-bezier(.2, .8, .2, 1) both; }
+.grow-y { transform-origin: bottom; animation: grow-y 1s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes grow-x { from { transform: scaleX(0); } }
+@keyframes grow-y { from { transform: scaleY(0); } }
+
+.score-ring {
+  background: radial-gradient(closest-side, rgba(5, 7, 13, 0.92) 78%, transparent 80% 100%),
+    conic-gradient(var(--ring, #22d3ee) calc(var(--p, 0) * 1%), rgba(255, 255, 255, 0.08) 0);
+  box-shadow: 0 0 22px -4px var(--ring, #22d3ee);
+}
+.tilt { transition: transform .35s cubic-bezier(.2, .8, .2, 1), box-shadow .35s; }
+.tilt:hover { transform: translateY(-4px) scale(1.015); box-shadow: 0 18px 40px -18px rgba(34, 211, 238, 0.45); }
+
+@media (prefers-reduced-motion: reduce) {
+  .holo::before, .grow-x, .grow-y { animation: none; }
+  .tilt, .tilt:hover { transition: none; transform: none; }
+}
