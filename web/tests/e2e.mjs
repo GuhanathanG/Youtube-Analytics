@@ -630,6 +630,9 @@ try {
   const pr = await (await getF("/predict")).text();
   check("Predict page shows its tested accuracy and the measured driver", pr.includes("Lands within 2×") && pr.includes("Numbers in the title")
     && pr.includes("Where new uploads will land"));
+  const ol = await (await getF("/outliers?period=all&min=2")).text();
+  check("Outlier finder shows breakouts with their score and what they share", ol.includes("outlier finder") && ol.includes("Breakouts found")
+    && /\d(\.\d)?×/.test(ol) && ol.includes("How uploads land"), ol.slice(0, 300));
   const wi = await (await getF("/predict?title=Top+7+tips&format=long&minutes=12&day=5&hour=18")).text();
   const wo = await (await getF("/predict?title=My+day+out&format=long&minutes=12&day=5&hour=18")).text();
   const mult = (h) => Number((/([\d.]+)×(?:<!-- -->)? this channel/.exec(h) ?? [])[1] ?? NaN);

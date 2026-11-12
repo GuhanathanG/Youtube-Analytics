@@ -128,3 +128,29 @@ assert.ok(ownMoves.some((m) => m.id === "ctr" && m.impact === 3) && ownMoves.som
   assert.ok(Number.isFinite(wild.multiple) && wild.multiple <= Math.exp(3) + 1e-9, String(wild.multiple));
 }
 console.log("logic unit tests: all passed");
+
+// Niche outlier finder: each video vs its own channel's earlier uploads of the same kind
+{
+  const { scoreVideos, patterns, kindOf, bandCounts } = await import("../lib/outlier-math.ts");
+  const day = (d: number) => new Date(Date.UTC(2026, 0, 1 + d, 12)).toISOString();
+  const vids = [
+    ...Array.from({ length: 12 }, (_, i) => ({ id: `a${i}`, channel_id: "A", title: `normal video ${i}`, thumbnail_url: null, duration: "PT12M",
+      view_count: 1000, like_count: 0, comment_count: 0, published_at: day(i), age: 100 - i })),
+    { id: "aHit", channel_id: "A", title: "Huge 10 MISTAKES?", thumbnail_url: null, duration: "PT12M", view_count: 8000, like_count: 0, comment_count: 0,
+      published_at: day(20), age: 80 },
+    ...Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, channel_id: "A", title: `short ${i}`, thumbnail_url: null, duration: "PT40S",
+      view_count: 50000, like_count: 0, comment_count: 0, published_at: day(i), age: 100 - i })),
+    { id: "ig_X", channel_id: "ig_b", title: "reel", thumbnail_url: null, duration: "PT20S", view_count: 5, like_count: 0, comment_count: 0, published_at: day(1), age: 99 },
+  ];
+  const s = scoreVideos(vids);
+  const hit = s.find((v) => v.id === "aHit")!;
+  assert.equal(hit.normal, 1000); assert.equal(hit.score, 8); // shorts (50K) don't raise the long-video bar
+  assert.equal(s.find((v) => v.id === "s5")!.score, 1);
+  assert.ok(!s.some((v) => v.id === "a2"), "needs 5 earlier uploads before a video is scored");
+  assert.equal(kindOf({ id: "ig_X", duration: "PT20S" }), "reel"); assert.equal(kindOf({ id: "ig_Y", duration: null }), "post");
+  assert.equal(bandCounts(s).reduce((a, b) => a + b, 0), s.length);
+  const many = [...s, ...[1, 2, 3].map((k) => ({ ...hit, id: `h${k}`, title: `${k} BIG NEWS?` }))];
+  const p = patterns(many, many.filter((v) => v.score >= 3));
+  assert.ok(p.some((x) => x.label === "Asks a question" && x.ratio > 1.25), JSON.stringify(p));
+}
+console.log("outlier finder: ok");

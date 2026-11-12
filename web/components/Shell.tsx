@@ -1,6 +1,6 @@
 "use client";
 
-import { BrainCircuit, ChartNoAxesCombined, Clapperboard, Gauge, Radar, Rocket, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
+import { Flame, BrainCircuit, ChartNoAxesCombined, Clapperboard, Gauge, Radar, Rocket, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
@@ -23,6 +23,7 @@ const NAV = [
   { href: "/analytics", label: "Analytics", icon: ChartNoAxesCombined },
   { href: "/predict", label: "Predict", icon: BrainCircuit },
   { href: "/radar", label: "Radar", icon: Radar },
+  { href: "/outliers", label: "Outliers", icon: Flame },
   { href: "/compare", label: "Compare", icon: GitCompareArrows },
   { href: "/ideas", label: "Ideas", icon: Lightbulb },
   { href: "/manage", label: "Manage", icon: Settings2 },
