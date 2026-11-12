@@ -22,6 +22,9 @@ jobs:
       models: read     # free GitHub Models AI with the job's own token (no key needed)
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Download every comment of every channel (also channels added later). The archive step below moves
+      # comments older than ARCHIVE_AFTER_DAYS (90) out of the main database, so it stays small and fast.
+      HISTORY_DAYS: "36500"
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
