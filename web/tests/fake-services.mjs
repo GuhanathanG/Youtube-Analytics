@@ -140,6 +140,7 @@ export function startFake(port = 4100) {
         const input = JSON.parse(body);
         const id = `run${(sent.igRuns = (sent.igRuns ?? 0) + 1)}`;
         state.igRuns = { ...(state.igRuns ?? {}), [id]: input };
+        sent.igInputs = [...(sent.igInputs ?? []), JSON.stringify(input)];
         sent.igCaps = [...(sent.igCaps ?? []), { maxItems: u.searchParams.get("maxItems"), maxTotalChargeUsd: u.searchParams.get("maxTotalChargeUsd") }];
         send({ data: { id, status: "RUNNING", defaultDatasetId: `ds-${id}` } }, 201);
       });
@@ -154,6 +155,13 @@ export function startFake(port = 4100) {
     }
     // ScrapeCreators stand-in: answers for @quickreels only; for anyone else Instagram "blocks" it (500),
     // so those accounts fall back to the Apify stand-in below (the last resort).
+    if (p === "/v2/instagram/user/posts") { // back catalogue: older posts of @quickreels only
+      if (u.searchParams.get("handle") !== "quickreels") return send({ success: false, message: "Shoot, IG is blocking us" }, 500);
+      const t = (d) => Math.floor((Date.now() - d * 86400e3) / 1000);
+      const old = (code, d) => ({ code, taken_at: t(d), media_type: 2, product_type: "clips", like_count: 30, comment_count: 1, play_count: 900,
+        caption: { text: `Throwback ${code}` }, display_uri: `http://localhost:4100/thumbs/${code}.jpg` });
+      return send({ items: [old("QOLD0001", 60), old("QOLD0002", 90), old("QOLD0003", 120)], next_max_id: null, more_available: false });
+    }
     if (p === "/v1/instagram/profile" || p === "/v2/instagram/post/comments") {
       sent.scCalls = [...(sent.scCalls ?? []), `${p}?${u.searchParams}`];
       if (req.headers["x-api-key"] !== "sc-test") return send({ message: "bad key" }, 401);
