@@ -188,3 +188,20 @@ console.log("keyword scores: ok");
   assert.equal(Math.round(r.before!), 10); assert.equal(Math.round(r.after!), 30); assert.equal(r.lift, 3);
 }
 console.log("growth: ok");
+
+// YouTube vs Instagram side by side
+{
+  const { istParts, timingGrid, bestSlot, engagementRate, repurposeIdeas } = await import("../lib/platform-math.ts");
+  assert.deepEqual(istParts("2026-01-05 13:00:00"), { day: 0, hour: 18 }); // Monday 13:00 UTC = 18:30 India
+  assert.deepEqual(istParts("2026-01-04T20:00:00Z"), { day: 0, hour: 1 });  // Sunday 20:00 UTC = Monday 01:30 India
+  const v = (id: string, at: string, score: number, kind = "long", age = 10, views = 1000, likes = 50, comments = 10) =>
+    ({ id, channel_id: "c", title: id, thumbnail_url: null, duration: null, view_count: views, like_count: likes, comment_count: comments, published_at: at, age, kind, normal: 1, score }) as never;
+  const xs = [v("a", "2026-01-05 13:00:00", 3), v("b", "2026-01-12 13:00:00", 5), v("c", "2026-01-06 03:00:00", 1)];
+  const grid = timingGrid(xs);
+  assert.equal(grid[0][3], 4); assert.equal(grid[1][1], null); // Monday evening: median of 3 and 5; one upload alone isn't enough
+  assert.deepEqual(bestSlot(grid), { day: 0, slot: 3, score: 4 });
+  assert.equal(engagementRate([v("e", "2026-01-01", 1, "long", 10, 1000, 50, 10)]), 0.06);
+  const ideas = repurposeIdeas([v("s", "x", 3, "short"), v("l", "x", 6, "long"), v("old", "x", 9, "short", 400)], [v("ig_r", "x", 4, "reel"), v("ig_p", "x", 9, "post")]);
+  assert.deepEqual(ideas.map((i) => [i.from.id, i.to]), [["l", "instagram"], ["ig_r", "youtube"], ["s", "instagram"]]); // old ones and photos left out
+}
+console.log("platforms: ok");
