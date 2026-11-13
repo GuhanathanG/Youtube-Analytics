@@ -301,3 +301,6 @@ input, select, textarea {
   .viz-draw { animation: none; stroke-dashoffset: 0; }
   .viz-fade, .viz-dot, .viz-arc, .viz-ripple, .viz-pop, .viz-aurora, .drawer-panel, .hub-tab[data-on="1"]::after { animation: none; }
 }
+.pin-drop { animation: pin-drop .7s var(--ease) both; }
+@keyframes pin-drop { from { transform: translateY(-18px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pin-drop { animation: none; } }

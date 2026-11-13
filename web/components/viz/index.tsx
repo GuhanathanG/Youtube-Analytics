@@ -86,11 +86,13 @@ export function PulseRing({ value, label, sub, color = C.accent, size = 168, tre
   const r = 44, circ = 2 * Math.PI * r, v = Math.max(0, Math.min(100, value));
   return (
     <div className="relative grid shrink-0 place-items-center" style={{ width: size, height: size }}>
-      <span className="viz-ripple absolute inset-3 rounded-full" style={{ boxShadow: `0 0 0 0 ${color}66` }} />
+      {/* Round glow (an SVG drop-shadow is clipped to a square on some browsers) */}
+      <span className="pointer-events-none absolute inset-[6%] rounded-full" style={{ boxShadow: `0 0 34px -6px ${color}, inset 0 0 22px -10px ${color}` }} />
+      <span className="viz-ripple absolute inset-3 rounded-full" />
       <svg viewBox="0 0 100 100" className="absolute inset-0 -rotate-90" aria-hidden>
         <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="6" />
         <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" className="viz-arc"
-          style={{ strokeDasharray: circ, "--arc-to": circ * (1 - v / 100), "--arc-from": circ, filter: `drop-shadow(0 0 6px ${color})` } as CSSProperties} />
+          style={{ strokeDasharray: circ, "--arc-to": circ * (1 - v / 100), "--arc-from": circ } as CSSProperties} />
       </svg>
       <div className="relative flex flex-col items-center text-center">
         <span className="font-[family-name:var(--font-display)] font-semibold leading-none tabular" style={{ color, fontSize: size * 0.24 }}><CountUp value={v} /></span>

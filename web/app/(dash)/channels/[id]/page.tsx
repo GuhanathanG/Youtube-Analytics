@@ -19,6 +19,9 @@ import { NewVideosPanel, SuperfansPanel, TopicTrendsPanel } from "@/components/F
 import { RangeTabs, rangeSince } from "@/components/RangeTabs";
 import { Reveal } from "@/components/Reveal";
 import { SectionNav } from "@/components/viz";
+import { Timeline } from "@/components/viz/Timeline";
+import { ThumbWall } from "@/components/viz/ThumbWall";
+import { channelVisual, type ChannelVisual } from "@/lib/channel-visual";
 import { Empty, Panel, Stat, Tag } from "@/components/ui";
 import { compact, date, duration, score } from "@/lib/format";
 import { channel as getChannel, channelSnapshots, latestInsight, videos as getVideos } from "@/lib/queries";
@@ -72,11 +75,43 @@ export default async function ChannelPage({ params, searchParams }:
         <Reveal delay={0.15}><Stat label="Sentiment score" value={Math.round((c.avg_sentiment ?? 0) * 100)} format="signed" hint="−100 … +100" /></Reveal>
       </div>
 
-      <div className="mt-6"><SectionNav items={[{ id: "sec-signals", label: "AI brief & signals" }, { id: "sec-audience", label: "Topics & superfans" },
-        { id: "sec-videos", label: "Videos" }]} /></div>
+      <div className="mt-6"><SectionNav items={[{ id: "sec-timeline", label: "Timeline" }, { id: "sec-signals", label: "AI brief & signals" },
+        { id: "sec-audience", label: "Topics & superfans" }, { id: "sec-videos", label: "Videos" }]} /></div>
+      <section id="sec-timeline" className="scroll-mt-36"><Suspense fallback={<SectionSkeleton rows={1} />}><ChannelHero id={id} /></Suspense></section>
       <section id="sec-signals" className="scroll-mt-36"><Suspense fallback={<SectionSkeleton rows={2} />}><Signals id={id} range={key} /></Suspense></section>
       <section id="sec-audience" className="scroll-mt-36"><Suspense fallback={<SectionSkeleton rows={2} />}><AudienceSections id={id} /></Suspense></section>
       <section id="sec-videos" className="scroll-mt-36"><Suspense fallback={<SectionSkeleton rows={1} />}><VideoTable id={id} all={sp.all === "1"} /></Suspense></section>
+    </>
+  );
+}
+
+async function ChannelHero({ id }: { id: string }) {
+  const v: ChannelVisual = await within(channelVisual(id), 12_000, { weeks: [], pins: [], wall: [] });
+  if (!v.weeks.some((w) => w.uploads || w.comments)) return null;
+  const breakouts = v.pins.filter((p) => p.kind === "breakout").length;
+  return (
+    <>
+      <Reveal><section className="panel holo hero-stage relative overflow-hidden p-5 sm:p-7">
+        <div className="viz-aurora pointer-events-none absolute -inset-1/4 opacity-30" aria-hidden />
+        <div className="relative">
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <div className="label">Last 26 weeks</div>
+              <h2 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight">Timeline</h2>
+            </div>
+            <div className="flex gap-5 text-right">
+              <div><div className="font-[family-name:var(--font-display)] text-2xl font-semibold tabular text-ink">{v.weeks.reduce((a, w) => a + w.uploads, 0)}</div><div className="label">uploads</div></div>
+              <div><div className="font-[family-name:var(--font-display)] text-2xl font-semibold tabular" style={{ color: "#fab219" }}>{breakouts}</div><div className="label">breakouts</div></div>
+            </div>
+          </div>
+          <Timeline weeks={v.weeks} pins={v.pins} />
+        </div>
+      </section></Reveal>
+      {v.wall.length > 0 && (
+        <Reveal delay={0.05} className="mt-4"><Panel title="Recent uploads" subtitle="Biggest tiles = most views; the glow and chip show how far above the channel's normal">
+          <ThumbWall items={v.wall} />
+        </Panel></Reveal>
+      )}
     </>
   );
 }
