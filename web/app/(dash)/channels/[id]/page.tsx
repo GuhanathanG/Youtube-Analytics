@@ -18,6 +18,7 @@ import { InsightPanel } from "@/components/InsightPanel";
 import { NewVideosPanel, SuperfansPanel, TopicTrendsPanel } from "@/components/FeaturePanels";
 import { RangeTabs, rangeSince } from "@/components/RangeTabs";
 import { Reveal } from "@/components/Reveal";
+import { SectionNav } from "@/components/viz";
 import { Empty, Panel, Stat, Tag } from "@/components/ui";
 import { compact, date, duration, score } from "@/lib/format";
 import { channel as getChannel, channelSnapshots, latestInsight, videos as getVideos } from "@/lib/queries";
@@ -71,9 +72,11 @@ export default async function ChannelPage({ params, searchParams }:
         <Reveal delay={0.15}><Stat label="Sentiment score" value={Math.round((c.avg_sentiment ?? 0) * 100)} format="signed" hint="−100 … +100" /></Reveal>
       </div>
 
-      <Suspense fallback={<SectionSkeleton rows={2} />}><Signals id={id} range={key} /></Suspense>
-      <Suspense fallback={<SectionSkeleton rows={2} />}><AudienceSections id={id} /></Suspense>
-      <Suspense fallback={<SectionSkeleton rows={1} />}><VideoTable id={id} all={sp.all === "1"} /></Suspense>
+      <div className="mt-6"><SectionNav items={[{ id: "sec-signals", label: "AI brief & signals" }, { id: "sec-audience", label: "Topics & superfans" },
+        { id: "sec-videos", label: "Videos" }]} /></div>
+      <section id="sec-signals" className="scroll-mt-36"><Suspense fallback={<SectionSkeleton rows={2} />}><Signals id={id} range={key} /></Suspense></section>
+      <section id="sec-audience" className="scroll-mt-36"><Suspense fallback={<SectionSkeleton rows={2} />}><AudienceSections id={id} /></Suspense></section>
+      <section id="sec-videos" className="scroll-mt-36"><Suspense fallback={<SectionSkeleton rows={1} />}><VideoTable id={id} all={sp.all === "1"} /></Suspense></section>
     </>
   );
 }

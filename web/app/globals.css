@@ -21,6 +21,13 @@
   --color-neg: #e66767;
   --color-good: #0ca30c;
   --color-warn: #fab219;
+  /* Revamp tokens (docs/UI_UX_REVAMP.md §5): depth, platforms, records */
+  --color-raised: rgba(255, 255, 255, 0.075);
+  --color-yt: #ff3b4a;
+  --color-ig: #e1306c;
+  --color-ig-2: #f77737;
+  --color-rival: #8b7cf6;
+  --color-gold: #fab219;
 
   --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-display: var(--font-grotesk), var(--font-inter), system-ui, sans-serif;
@@ -265,3 +272,32 @@ input, select, textarea {
 .anim-flow { display: inline-block; animation: flow 1.4s ease-in-out infinite; }
 @keyframes flow { 0%, 100% { transform: translateX(-2px); opacity: .6; } 50% { transform: translateX(3px); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .anim-flow { animation: none; } }
+
+/* ------------------------------------------------------------------ motion system (viz library)
+   One easing, three durations; hero first, the supporting ring after. All off for reduced motion. */
+:root { --ease: cubic-bezier(.2, .8, .2, 1); --dur-micro: 150ms; --dur-std: 400ms; --dur-hero: 900ms; }
+.viz-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: viz-draw 1.2s var(--ease) .15s forwards; }
+@keyframes viz-draw { to { stroke-dashoffset: 0; } }
+.viz-fade { animation: viz-fade var(--dur-hero) var(--ease) both; }
+@keyframes viz-fade { from { opacity: 0; } }
+.viz-dot { animation: viz-dot 2.4s ease-in-out 1.3s infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes viz-dot { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.6); } }
+.viz-arc { stroke-dashoffset: var(--arc-to); animation: viz-arc 1.3s var(--ease) both; }
+@keyframes viz-arc { from { stroke-dashoffset: var(--arc-from); } }
+.viz-ripple { animation: viz-ripple 3s ease-out 1.4s infinite; }
+@keyframes viz-ripple { 0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, .35); } 100% { box-shadow: 0 0 0 22px rgba(34, 211, 238, 0); } }
+.viz-pop { animation: viz-pop .7s var(--ease) both; }
+@keyframes viz-pop { from { transform: scale(.85) rotate(-40deg); opacity: 0; } }
+.viz-aurora { background: radial-gradient(40% 50% at 20% 30%, rgba(34, 211, 238, .25), transparent 70%),
+  radial-gradient(35% 45% at 80% 60%, rgba(139, 124, 246, .25), transparent 70%); animation: aurora 18s ease-in-out infinite alternate; }
+.hero-stage { background: linear-gradient(140deg, rgba(34, 211, 238, .07), rgba(139, 124, 246, .05) 45%, rgba(255, 255, 255, .02)); }
+.drawer-panel { animation: drawer-in var(--dur-std) var(--ease) both; }
+@keyframes drawer-in { from { transform: translateX(40px); opacity: 0; } }
+@media (max-width: 639px) { @keyframes drawer-in { from { transform: translateY(40px); opacity: 0; } } }
+.hub-tab { position: relative; }
+.hub-tab[data-on="1"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; border-radius: 2px;
+  background: #22d3ee; box-shadow: 0 0 10px #22d3ee; animation: grow-x var(--dur-std) var(--ease) both; }
+@media (prefers-reduced-motion: reduce) {
+  .viz-draw { animation: none; stroke-dashoffset: 0; }
+  .viz-fade, .viz-dot, .viz-arc, .viz-ripple, .viz-pop, .viz-aurora, .drawer-panel, .hub-tab[data-on="1"]::after { animation: none; }
+}

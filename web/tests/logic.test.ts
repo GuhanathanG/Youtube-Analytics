@@ -205,3 +205,17 @@ console.log("growth: ok");
   assert.deepEqual(ideas.map((i) => [i.from.id, i.to]), [["l", "instagram"], ["ig_r", "youtube"], ["s", "instagram"]]); // old ones and photos left out
 }
 console.log("platforms: ok");
+
+// Navigation: 5 hubs, every page in exactly one hub
+{
+  const { HUBS, hubOf, pageMatches } = await import("../lib/nav.ts");
+  assert.equal(HUBS.length, 5);
+  const all = HUBS.flatMap((h) => h.pages.map((p) => p.href));
+  assert.equal(new Set(all).size, all.length, "no page in two hubs");
+  for (const p of ["/", "/command", "/glance", "/comments", "/ask", "/analytics", "/predict", "/growth", "/outliers", "/keywords", "/platforms", "/radar", "/compare", "/studio", "/ideas"])
+    assert.ok(hubOf(p), `${p} has a hub`);
+  assert.equal(hubOf("/"), HUBS[0]); assert.equal(hubOf("/comments?x=1".split("?")[0])?.key, "audience");
+  assert.equal(hubOf("/channels/UC1"), null); assert.equal(hubOf("/manage"), null);
+  assert.ok(!pageMatches("/", "/comments") && pageMatches("/radar", "/radar") && !pageMatches("/predict", "/predictions"));
+}
+console.log("nav: ok");
