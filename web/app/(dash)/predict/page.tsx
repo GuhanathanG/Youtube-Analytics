@@ -7,6 +7,8 @@ import { estimateDraft } from "@/lib/whatif";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel, Tag } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
+import { forecastScale } from "@/lib/viz-math";
+import { MultChip, RangeBar } from "@/components/viz";
 
 export const metadata = { title: "Predict" };
 
@@ -39,6 +41,7 @@ export default async function PredictPage({ searchParams }: { searchParams: Prom
     title: q.title.slice(0, 200), short: q.format === "short", minutes: Math.min(240, Math.max(0.2, Number(q.minutes) || (q.format === "short" ? 0.75 : 12))),
     day: Math.min(6, Math.max(0, Number(q.day) || 0)), hour: Math.min(23, Math.max(0, Number(q.hour ?? 18) || 0)),
   } : null;
+  const scale = forecastScale(forecasts);
   const est = draft && engine.linear ? estimateDraft(engine.linear, draft) : null;
 
   return (
@@ -82,19 +85,20 @@ export default async function PredictPage({ searchParams }: { searchParams: Prom
         </Panel></Reveal>
       </div>
 
-      <Reveal className="mt-4 block"><Panel title="Where new uploads will land" subtitle="30-day views: the engine's expectation blended with each video's real numbers so far">
+      <Reveal className="mt-4 block"><Panel title="Where new uploads will land" subtitle="30-day views: the engine's expectation blended with each video's real numbers so far. Bar = likely range, dot = expected, white tick = views now">
         {forecasts.length === 0 ? <p className="text-[13px] text-ink-3">No uploads in the last 30 days.</p> : (
           <div className="scrollbar-thin -mx-2 overflow-x-auto">
-            <table className="w-full min-w-[620px] text-[13.5px]">
-              <thead><tr className="text-left">{["Video", "Views now", "In 30 days", "Vs normal", "Sure"].map((h) => <th key={h} className="label px-2 py-2 font-normal">{h}</th>)}</tr></thead>
+            <table className="w-full min-w-[760px] text-[13.5px]">
+              <thead><tr className="text-left">{["Video", "Views now", "In 30 days", "Likely range (log scale)", "Vs normal", "Sure"].map((h) => <th key={h} className="label px-2 py-2 font-normal">{h}</th>)}</tr></thead>
               <tbody>
                 {forecasts.map((f) => (
                   <tr key={f.video_id} className="border-t border-line">
                     <td className="max-w-[280px] px-2 py-2"><Link href={`/videos/${f.video_id}`} className="line-clamp-1 hover:text-accent">{f.title}</Link>
                       <div className="text-[11.5px] text-ink-3">{ago(f.published_at)}</div></td>
                     <td className="px-2 py-2 tabular">{compact(f.views_now)}</td>
-                    <td className="px-2 py-2 tabular"><span className="text-ink">{compact(f.views_30d)}</span> <span className="text-[11.5px] text-ink-3">{compact(f.low)}–{compact(f.high)}</span></td>
-                    <td className={`px-2 py-2 tabular ${f.vs_normal >= 1.5 ? "text-pos" : f.vs_normal <= 0.6 ? "text-neg" : ""}`}>{times(f.vs_normal)}</td>
+                    <td className="px-2 py-2 tabular"><span className="text-ink">{compact(f.views_30d)}</span> <div className="text-[11.5px] text-ink-3">{compact(f.low)}–{compact(f.high)}</div></td>
+                    <td className="w-[34%] px-2 py-2"><RangeBar low={f.low} high={f.high} expected={f.views_30d} now={f.views_now} vsNormal={f.vs_normal} lo={scale.lo} hi={scale.hi} /></td>
+                    <td className="px-2 py-2"><MultChip value={f.vs_normal} suffix="" /></td>
                     <td className="px-2 py-2">{f.confidence >= 0.66 ? <Tag tone="accent">high</Tag> : f.confidence >= 0.3 ? <Tag>medium</Tag> : <Tag tone="warn">early</Tag>}</td>
                   </tr>
                 ))}
