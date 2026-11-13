@@ -8,7 +8,8 @@ import { MixBar } from "@/components/charts/MixBar";
 import { TrendChart } from "@/components/charts/lazy";
 import { RangeTabs, rangeSince } from "@/components/RangeTabs";
 import { Reveal } from "@/components/Reveal";
-import { Empty, PageHeader, Panel, Stat } from "@/components/ui";
+import { Empty, PageHeader, Panel } from "@/components/ui";
+import { C, KpiOrb } from "@/components/viz";
 import { ago, compact, score } from "@/lib/format";
 import { LiveFeed } from "@/components/LiveFeed";
 import { AlertsPanel, NewVideosPanel } from "@/components/FeaturePanels";
@@ -47,6 +48,13 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     || (p.videos_total ?? 0) > p.videos_known);
   const analysed = chs.reduce((s, c) => s + c.positive + c.neutral + c.negative, 0);
   const weighted = analysed ? chs.reduce((s, c) => s + (c.avg_sentiment ?? 0) * (c.positive + c.neutral + c.negative), 0) / analysed : 0;
+  // Shapes for the numbers: comments per period and net mood per period, from the same series as the chart below.
+  // The last period is still running (partial), so it's left out: it would always look like a drop.
+  const done = daily.length >= 3 ? daily.slice(0, -1) : daily;
+  const volTrend = done.map((d) => d.positive + d.neutral + d.negative + d.pending);
+  const moodTrend = done.filter((d) => d.positive + d.neutral + d.negative > 0)
+    .map((d) => Math.round(((d.positive - d.negative) / (d.positive + d.neutral + d.negative)) * 100));
+  const moodDelta = moodTrend.length >= 2 ? moodTrend[moodTrend.length - 1] - moodTrend[moodTrend.length - 2] : null;
 
   return (
     <>
@@ -59,10 +67,13 @@ export default async function Overview({ searchParams }: { searchParams: Promise
       </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <Reveal><Stat label="Comments captured" value={k.comments} accent hint={`+${compact(k.comments_24h)} in 24h`} /></Reveal>
-        <Reveal delay={0.05}><Stat label="Sentiment score" value={Math.round(weighted * 100)} format="signed" hint={focus ? "−100 … +100, this channel" : "−100 … +100, all channels"} /></Reveal>
-        <Reveal delay={0.1}><Stat label="Read by AI" value={k.comments ? Math.round((k.ai_read / k.comments) * 100) : 0} suffix="%" hint={`${compact(k.ai_read)} deep-read comments`} /></Reveal>
-        <Reveal delay={0.15}><Stat label="Videos tracked" value={k.videos} hint={k.videos_backfilling ? `${k.videos_backfilling} still downloading history` : "history complete"} /></Reveal>
+        <Reveal><KpiOrb focal label="Comments captured" value={k.comments} hint={`+${compact(k.comments_24h)} in 24h`} trend={volTrend} /></Reveal>
+        <Reveal delay={0.05}><KpiOrb label="Sentiment score" value={Math.round(weighted * 100)} format="signed" color={C.pos} trend={moodTrend}
+          delta={moodDelta} deltaSuffix=" pts" hint={focus ? "−100 … +100, this channel" : "−100 … +100, all channels"} /></Reveal>
+        <Reveal delay={0.1}><KpiOrb label="Read by AI" value={k.comments ? Math.round((k.ai_read / k.comments) * 100) : 0} suffix="%" color={C.ai}
+          hint={`${compact(k.ai_read)} deep-read comments`} /></Reveal>
+        <Reveal delay={0.15}><KpiOrb label="Videos tracked" value={k.videos} color={C.gold}
+          hint={k.videos_backfilling ? `${k.videos_backfilling} still downloading history` : "history complete"} /></Reveal>
       </div>
 
       {historyBusy && <Reveal delay={0.1} className="mt-6"><ProgressPanel rows={prog} /></Reveal>}

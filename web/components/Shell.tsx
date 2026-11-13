@@ -1,6 +1,7 @@
 "use client";
 
-import { Columns2, Target, Flame, BrainCircuit, ChartNoAxesCombined, Clapperboard, Gauge, Radar, Rocket, GitCompareArrows, LayoutDashboard, Lightbulb, LogOut, Menu, MessageSquareText, Search, Settings2, Sparkles, X } from "lucide-react";
+import { Activity, BrainCircuit, ChartNoAxesCombined, Clapperboard, Columns2, Flame, Gauge, GitCompareArrows, Globe, LayoutDashboard, Lightbulb,
+  LogOut, MessageSquareText, Radar, Rocket, Search, Settings2, Sparkles, Target, TrendingUp, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useTransition, type ReactNode } from "react";
@@ -11,29 +12,13 @@ import dynamic from "next/dynamic";
 const CommandPalette = dynamic(() => import("./CommandPalette").then((m) => m.CommandPalette), { ssr: false });
 import { LivePill } from "./LivePill";
 import { Logo } from "./Logo";
+import { ACCOUNT_PAGES, HUBS, hubOf, pageMatches } from "@/lib/nav";
 
 type NavChannel = { id: string; title: string; thumb: string | null; active: boolean; rival?: boolean };
 
-const NAV = [
-  { href: "/command", label: "Command", icon: Rocket },
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/studio", label: "Studio", icon: Clapperboard },
-  { href: "/ask", label: "Ask AI", icon: Sparkles },
-  { href: "/comments", label: "Comments", icon: MessageSquareText },
-  { href: "/analytics", label: "Analytics", icon: ChartNoAxesCombined },
-  { href: "/predict", label: "Predict", icon: BrainCircuit },
-  { href: "/radar", label: "Radar", icon: Radar },
-  { href: "/outliers", label: "Outliers", icon: Flame },
-  { href: "/keywords", label: "Keywords", icon: Search },
-  { href: "/growth", label: "Growth", icon: Target },
-  { href: "/platforms", label: "YT vs IG", icon: Columns2 },
-  { href: "/compare", label: "Compare", icon: GitCompareArrows },
-  { href: "/ideas", label: "Ideas", icon: Lightbulb },
-  { href: "/manage", label: "Manage", icon: Settings2 },
-  { href: "/glance", label: "Glance", icon: Gauge },
-];
-// The phone bar has room for four items plus search.
-const MOBILE_NAV = NAV.filter((n) => ["/command", "/", "/ask", "/comments"].includes(n.href));
+const ICONS: Record<string, LucideIcon> = { Activity, BrainCircuit, ChartNoAxesCombined, Clapperboard, Columns2, Flame, Gauge, GitCompareArrows, Globe,
+  LayoutDashboard, Lightbulb, MessageSquareText, Radar, Rocket, Search, Settings2, Sparkles, Target, TrendingUp, Users };
+const Icon = ({ name, ...p }: { name: string; size?: number; className?: string }) => { const I = ICONS[name] ?? Activity; return <I {...p} />; };
 
 /** Which channel the whole site shows. Switching reloads the page's data for that channel only. */
 function FocusSwitcher({ channels, focus }: { channels: NavChannel[]; focus: string | null }) {
@@ -63,8 +48,8 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const [more, setMore] = useState(false);
-  const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const [account, setAccount] = useState(false);
+  const hub = hubOf(path);
 
   return (
     <div className="min-h-dvh lg:pl-[260px]">
@@ -73,14 +58,32 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
         <Link href="/" className="px-2"><Logo /></Link>
         {/* Nav and the Watching list scroll together, so the channel list is never squeezed to nothing on short screens */}
         <div className="scrollbar-thin -mx-1 mt-6 min-h-0 flex-1 overflow-y-auto px-1">
-        <nav className="space-y-0.5">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href}
-              className={`group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[14px] transition ${isActive(href) ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
-              {isActive(href) && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-accent shadow-[0_0_12px_#22d3ee]" />}
-              <Icon size={17} className={isActive(href) ? "text-accent" : ""} />{label}
-            </Link>
-          ))}
+        <nav className="space-y-1" aria-label="Hubs">
+          {HUBS.map((h) => {
+            const on = hub?.key === h.key;
+            return (
+              <div key={h.key}>
+                <Link href={h.pages[0].href} title={h.question}
+                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14.5px] font-medium transition ${on ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
+                  {on && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" style={{ background: h.color, boxShadow: `0 0 12px ${h.color}` }} />}
+                  <span className="grid h-7 w-7 place-items-center rounded-lg transition" style={on ? { background: `${h.color}22`, color: h.color, boxShadow: `0 0 14px -4px ${h.color}` } : undefined}>
+                    <Icon name={h.icon} size={16} />
+                  </span>
+                  {h.label}
+                </Link>
+                {on && (
+                  <div className="anim-slide-in ml-[26px] mt-0.5 space-y-0.5 border-l border-line pl-3">
+                    {h.pages.map((p) => (
+                      <Link key={p.href} href={p.href}
+                        className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition ${pageMatches(p.href, path) ? "text-ink" : "text-ink-3 hover:text-ink-2"}`}>
+                        <Icon name={p.icon} size={14} className={pageMatches(p.href, path) ? "text-accent" : ""} />{p.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
         <div className="mt-6 px-3 label">Watching</div>
         <div className="mt-2 space-y-0.5 pb-2">
@@ -98,11 +101,16 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
           ))}
         </div>
         </div>
-        <form action={logout}>
-          <button className="mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-ink-3 hover:bg-white/[0.04] hover:text-ink-2">
-            <LogOut size={15} />Sign out
-          </button>
-        </form>
+        <div className="mt-3 flex gap-1 border-t border-line pt-3">
+          {ACCOUNT_PAGES.map((p) => (
+            <Link key={p.href} href={p.href} className={`flex flex-1 items-center gap-2 rounded-lg px-3 py-2 text-[13px] ${pageMatches(p.href, path) ? "bg-white/[0.06] text-ink" : "text-ink-3 hover:bg-white/[0.04] hover:text-ink-2"}`}>
+              <Icon name={p.icon} size={15} />Settings
+            </Link>
+          ))}
+          <form action={logout}>
+            <button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-ink-3 hover:bg-white/[0.04] hover:text-ink-2"><LogOut size={15} />Sign out</button>
+          </form>
+        </div>
       </aside>
 
       {/* Top bar */}
@@ -115,49 +123,55 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
           <kbd className="ml-auto hidden rounded-md border border-line-2 px-1.5 py-0.5 font-mono text-[11px] sm:inline">⌘K</kbd>
         </button>
         <LivePill />
+        <button onClick={() => setAccount(true)} aria-label="Settings and account" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-line text-ink-3 hover:text-ink lg:hidden">
+          <Settings2 size={17} />
+        </button>
       </header>
 
-      <main className="safe-main mx-auto max-w-[1400px] px-4 pt-6 sm:px-8 sm:pt-8">{children}</main>
+      <main className="safe-main mx-auto max-w-[1400px] px-4 pt-4 sm:px-8 sm:pt-6">
+        {hub && (
+          <nav aria-label={`${hub.label} pages`} className="scrollbar-thin -mx-1 mb-5 flex items-center gap-1 overflow-x-auto border-b border-line px-1">
+            <span className="mr-2 hidden shrink-0 items-center gap-2 py-2.5 text-[12px] uppercase tracking-[0.14em] sm:flex" style={{ color: hub.color }}>
+              <Icon name={hub.icon} size={14} />{hub.label}
+            </span>
+            {hub.pages.map((p) => {
+              const on = pageMatches(p.href, path);
+              return (
+                <Link key={p.href} href={p.href} data-on={on ? "1" : "0"}
+                  className={`hub-tab flex shrink-0 items-center gap-1.5 rounded-t-lg px-3 py-2.5 text-[13.5px] transition ${on ? "text-ink" : "text-ink-3 hover:text-ink-2"}`}>
+                  <Icon name={p.icon} size={14} className={on ? "text-accent" : ""} />{p.label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
+        {children}
+      </main>
 
-      {/* Mobile bottom nav */}
-      <nav className="safe-bottom fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-[#0a0e1a]/85 p-1.5 backdrop-blur-xl lg:hidden">
-        {MOBILE_NAV.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${isActive(href) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
-            <Icon size={18} className={isActive(href) ? "text-accent" : ""} />{label}
-          </Link>
-        ))}
-        <button onClick={() => setMore(true)} aria-expanded={more} aria-label="More pages"
-          className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] ${more || !MOBILE_NAV.some((n) => isActive(n.href)) ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
-          <Menu size={18} />More
-        </button>
+      {/* Mobile bottom nav: the five hubs (each hub's pages are tabs at the top of the page) */}
+      <nav aria-label="Hubs" className="safe-bottom fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-[#0a0e1a]/85 p-1.5 backdrop-blur-xl lg:hidden">
+        {HUBS.map((h) => {
+          const on = hub?.key === h.key;
+          return (
+            <Link key={h.key} href={h.pages[0].href} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] transition ${on ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
+              <span style={on ? { color: h.color, filter: `drop-shadow(0 0 6px ${h.color})` } : undefined}><Icon name={h.icon} size={18} /></span>{h.label}
+            </Link>
+          );
+        })}
       </nav>
 
-      {/* Phone: every page, so nothing is hidden behind the 5-button bar */}
-      {more && (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="All pages">
-          <button aria-label="Close" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setMore(false)} />
-          <div className="safe-bottom absolute inset-x-3 bottom-3 rounded-2xl border border-line-2 bg-[#0a0e1a] p-3 shadow-2xl">
-            <div className="mb-1 flex items-center justify-between px-2 py-1">
-              <span className="label">All pages</span>
-              <button onClick={() => setMore(false)} aria-label="Close menu" className="rounded-lg p-1.5 text-ink-3 hover:text-ink"><X size={18} /></button>
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {NAV.map(({ href, label, icon: Icon }) => (
-                <Link key={href} href={href} onClick={() => setMore(false)}
-                  className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-3 text-[12.5px] ${isActive(href) ? "border-accent/40 bg-accent/10 text-ink" : "border-line text-ink-2"}`}>
-                  <Icon size={19} className={isActive(href) ? "text-accent" : ""} />{label}
-                </Link>
-              ))}
-              <button onClick={() => { setMore(false); setOpen(true); }}
-                className="flex flex-col items-center gap-1 rounded-xl border border-line px-2 py-3 text-[12.5px] text-ink-2">
-                <Search size={19} />Search
-              </button>
-              <form action={logout} className="contents">
-                <button className="flex flex-col items-center gap-1 rounded-xl border border-line px-2 py-3 text-[12.5px] text-ink-2">
-                  <LogOut size={19} />Sign out
-                </button>
-              </form>
-            </div>
+      {/* Phone: settings, search and sign out */}
+      {account && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Account">
+          <button aria-label="Close" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAccount(false)} />
+          <div className="safe-top drawer-panel absolute right-3 top-3 w-60 space-y-1 rounded-2xl border border-line-2 bg-[#0a0e1a] p-2 shadow-2xl">
+            {ACCOUNT_PAGES.map((p) => (
+              <Link key={p.href} href={p.href} onClick={() => setAccount(false)} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] text-ink-2 hover:bg-white/[0.05]">
+                <Icon name={p.icon} size={16} />{p.label}
+              </Link>
+            ))}
+            <button onClick={() => { setAccount(false); setOpen(true); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] text-ink-2 hover:bg-white/[0.05]"><Search size={16} />Search</button>
+            <form action={logout}><button className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] text-ink-2 hover:bg-white/[0.05]"><LogOut size={16} />Sign out</button></form>
           </div>
         </div>
       )}
