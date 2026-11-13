@@ -649,6 +649,9 @@ try {
   const gr = await (await getF("/growth")).text();
   check("Growth: title change caught by the database, goal shown with progress", chg?.new_value === "Renamed for the change tracker"
     && gr.includes("Renamed for the change tracker") && gr.includes("total views") && gr.includes("%"), JSON.stringify(chg));
+  const pf = await (await getF(`/platforms?yt=${ch.id}&ig=ig_pulsecreator`)).text();
+  check("YouTube vs Instagram: both sides, head to head, timing and repurpose sections", pf.includes("Head to head") && pf.includes("Pulse Creator")
+    && pf.includes("When to post") && pf.includes("Carry it across") && pf.includes("Typical views per upload"), pf.slice(0, 300));
   const wi = await (await getF("/predict?title=Top+7+tips&format=long&minutes=12&day=5&hour=18")).text();
   const wo = await (await getF("/predict?title=My+day+out&format=long&minutes=12&day=5&hour=18")).text();
   const mult = (h) => Number((/([\d.]+)×(?:<!-- -->)? this channel/.exec(h) ?? [])[1] ?? NaN);

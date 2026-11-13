@@ -260,3 +260,8 @@ input, select, textarea {
   color-scheme: dark;
 }
 .input:focus { border-color: rgba(34, 211, 238, 0.6); box-shadow: 0 0 22px -6px #22d3ee; }
+
+/* Arrow that keeps moving forward (repurpose cards) */
+.anim-flow { display: inline-block; animation: flow 1.4s ease-in-out infinite; }
+@keyframes flow { 0%, 100% { transform: translateX(-2px); opacity: .6; } 50% { transform: translateX(3px); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .anim-flow { animation: none; } }
