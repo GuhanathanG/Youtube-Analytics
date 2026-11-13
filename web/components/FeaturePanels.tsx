@@ -1,4 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Heart, MessageCircle } from "lucide-react";
+import { Gauge, MultChip } from "./viz";
 import Link from "next/link";
 import type { Alert } from "@/lib/alerts";
 import type { Commenter, Prediction, TopicTrend } from "@/lib/features";
@@ -70,16 +71,21 @@ export function TopicTrendsPanel({ trend }: { trend: TopicTrend }) {
 export function PredictionBadge({ p }: { p: Prediction }) {
   const idx = p.index;
   const label = idx == null ? "too early to tell" : idx >= 1.5 ? "well above usual" : idx >= 1.1 ? "above usual" : idx >= 0.9 ? "on track" : idx >= 0.6 ? "below usual" : "well below usual";
-  const color = idx == null ? "text-ink-3" : idx >= 1.1 ? "text-accent" : idx >= 0.9 ? "text-ink" : "text-warn";
   return (
-    <div className="rounded-xl border border-line bg-white/[0.02] p-4">
-      <div className="label">Early performance · {Math.round(p.age_hours)} h old</div>
-      <div className={`mt-1 font-[family-name:var(--font-display)] text-xl font-semibold ${color}`}>{label}{idx != null && ` (${idx.toFixed(1)}×)`}</div>
-      <div className="mt-1 text-[12.5px] text-ink-2 tabular">
-        {compact(p.views)} views now{p.expected_views_now != null && ` · usual at this age ≈ ${compact(p.expected_views_now)}`}
-        {p.projected_7d != null && ` · ≈ ${compact(p.projected_7d)} by day 7`}
+    <div className="flex items-center gap-4 rounded-xl border border-line bg-white/[0.02] p-4">
+      <Gauge index={idx} size={118} />
+      <div className="min-w-0">
+        <div className="label">Early performance · {Math.round(p.age_hours)} h old</div>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <span className="font-[family-name:var(--font-display)] text-lg font-semibold text-ink">{label}</span>
+          {idx != null && <MultChip value={idx} suffix="usual" />}
+        </div>
+        <div className="mt-1 text-[12.5px] text-ink-2 tabular">
+          {compact(p.views)} views now{p.expected_views_now != null && ` · usual at this age ≈ ${compact(p.expected_views_now)}`}
+          {p.projected_7d != null && ` · ≈ ${compact(p.projected_7d)} by day 7`}
+        </div>
+        <div className="mt-1 text-[11.5px] text-ink-3">Estimate based on {p.basis}.</div>
       </div>
-      <div className="mt-1 text-[11.5px] text-ink-3">Estimate based on {p.basis}.</div>
     </div>
   );
 }

@@ -6,10 +6,8 @@
 import type { CSSProperties, ReactNode } from "react";
 import { CountUp } from "../CountUp";
 
-export const C = {
-  accent: "#22d3ee", ai: "#8b7cf6", gold: "#fab219", good: "#0ca30c", bad: "#e66767",
-  pos: "#3987e5", neu: "#8a8f9c", neg: "#e66767", yt: "#ff3b4a", ig: "#e1306c", ig2: "#f77737",
-};
+import { C, multColor } from "./tokens";
+export { C, multColor };
 
 /* ------------------------------------------------------------------ Sparkline */
 /** A small line that draws itself left → right, with a soft area under it and a glowing dot on the latest value. */
@@ -68,7 +66,6 @@ export function KpiOrb({ label, value, format = "compact", suffix = "", delta = 
 
 /* ------------------------------------------------------------------ MultChip */
 /** "3.2× normal": one look everywhere. Cyan under 5×, violet 5-10×, gold 10×+, red when below normal. */
-export function multColor(x: number) { return x >= 10 ? C.gold : x >= 5 ? C.ai : x >= 1 ? C.accent : C.bad; }
 export function MultChip({ value, suffix = "normal", size = "sm" }: { value: number; suffix?: string; size?: "sm" | "lg" }) {
   const c = multColor(value);
   const text = value >= 10 ? `${Math.round(value)}×` : `${value.toFixed(1)}×`;
@@ -135,3 +132,7 @@ export function HeroStage({ children, className = "" }: { children: ReactNode; c
 
 export { SectionNav } from "./SectionNav";
 export { Drawer } from "./Drawer";
+export { MoodRiver } from "./MoodRiver";
+export { Gauge } from "./Gauge";
+export { RangeBar } from "./RangeBar";
+export { GoalTrack } from "./GoalTrack";

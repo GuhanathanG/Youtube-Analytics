@@ -6,6 +6,7 @@ import { addGoalAction, deleteGoalAction } from "@/app/actions";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
+import { GoalTrack } from "@/components/viz";
 
 export const metadata = { title: "Growth" };
 
@@ -48,7 +49,8 @@ export default async function GrowthPage() {
                   <div className="text-[12.5px] text-ink-3">now {compact(g.view.current)}{g.deadline ? ` · by ${new Date(g.deadline).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""}</div>
                 </div>
               </div>
-              <div className="mt-4 space-y-1.5 text-[13px]">
+              <GoalTrack etaDays={g.view.etaDays} deadline={g.deadline} reached={g.view.reached} />
+              <div className="mt-3 space-y-1.5 text-[13px]">
                 {g.view.reached ? <p className="text-good">Reached 🎉</p>
                   : g.view.etaDays !== null ? <p className="text-ink">At today&apos;s pace: <span className="text-accent">{fmtDate(g.view.etaDays)}</span> <span className="text-ink-3">({Math.ceil(g.view.etaDays)} days)</span></p>
                   : <p className="text-ink-3">{g.days < 0.5 ? "Measuring the pace: needs half a day of snapshots." : "Not growing in this period, so no date yet."}</p>}

@@ -163,6 +163,7 @@ try {
   check("channel page shows topic trends", chPage.includes("Topic trends"));
   check("channel page shows superfans & critics", chPage.includes("Superfans"));
   check("channel page shows early performance of new videos", chPage.includes("Early performance"));
+  check("early performance drawn as a × usual gauge", /aria-label="(Too early to tell|[\d.]+ times usual)"/.test(chPage));
   const overview = await (await get("/")).text();
   check("overview shows alerts", overview.includes("New video from Live Creator"));
   const [{ n: snaps }] = await db`select count(*)::int n from video_snapshots v join videos x on x.id = v.video_id where x.channel_id like '%live'`;
@@ -636,6 +637,9 @@ try {
   const pr = await (await getF("/predict")).text();
   check("Predict page shows its tested accuracy and the measured driver", pr.includes("Lands within 2×") && pr.includes("Numbers in the title")
     && pr.includes("Where new uploads will land"));
+  check("Predict: each forecast drawn as a likely-range bar", pr.includes("Likely range") && /aria-label="Expected [^"]+ views in 30 days, likely/.test(pr));
+  const river = await (await getF("/comments")).text();
+  check("Comments: mood river hero with the 90-day stream", river.includes("Mood river") && /aria-label="Comments per day over 90 days by mood/.test(river) && river.includes("mr-positive"));
   const ol = await (await getF("/outliers?period=all&min=2")).text();
   check("Outlier finder shows breakouts with their score and what they share", ol.includes("outlier finder") && ol.includes("Breakouts found")
     && /\d(\.\d)?×/.test(ol) && ol.includes("How uploads land"), ol.slice(0, 300));
@@ -649,6 +653,7 @@ try {
   const gr = await (await getF("/growth")).text();
   check("Growth: title change caught by the database, goal shown with progress", chg?.new_value === "Renamed for the change tracker"
     && gr.includes("Renamed for the change tracker") && gr.includes("total views") && gr.includes("%"), JSON.stringify(chg));
+  check("Growth: goal drawn on a timeline (today → date at current pace)", /aria-label="(Reached around|No date yet)/.test(gr));
   const pf = await (await getF(`/platforms?yt=${ch.id}&ig=ig_pulsecreator`)).text();
   check("YouTube vs Instagram: both sides, head to head, timing and repurpose sections", pf.includes("Head to head") && pf.includes("Pulse Creator")
     && pf.includes("When to post") && pf.includes("Carry it across") && pf.includes("Typical views per upload"), pf.slice(0, 300));

@@ -219,3 +219,26 @@ console.log("platforms: ok");
   assert.ok(!pageMatches("/", "/comments") && pageMatches("/radar", "/radar") && !pageMatches("/predict", "/predictions"));
 }
 console.log("nav: ok");
+
+// Phase 4 visuals geometry
+{
+  const { fillDays, smooth, riverLayers, bandPath, logPos, gaugeAngle, forecastScale, goalTrack } = await import("../lib/viz-math.ts");
+  const filled = fillDays([{ day: "2026-01-10", positive: 4, neutral: 2, negative: 2, pending: 0 }], 3, new Date("2026-01-10T12:00:00Z"));
+  assert.deepEqual(filled.map((r) => r.day), ["2026-01-08", "2026-01-09", "2026-01-10"]);
+  assert.equal(filled[2].positive, 4); assert.equal(filled[0].positive, 0);
+  assert.equal(smooth(filled, 3)[1].positive, 4 / 3);
+  const L = riverLayers(filled, 100, 100, 0);
+  // Busiest day fills the height, centred: positive starts at the top, pending ends at the bottom.
+  assert.equal(L.positive[2][1], 0); assert.equal(L.pending[2][2], 100);
+  assert.equal(L.positive[0][1], 50); // empty day collapses to the middle
+  assert.ok(bandPath(L.positive).startsWith("M0.0,50.0") && bandPath(L.positive).endsWith("Z"));
+  const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-9, `${a} ≈ ${b}`);
+  near(logPos(1, 0.1, 10), 0.5); assert.equal(logPos(1000, 0.1, 10), 1); assert.equal(logPos(0, 0.1, 10), 0);
+  near(gaugeAngle(1), 0); near(gaugeAngle(10), 90); near(gaugeAngle(0.1), -90);
+  const sc = forecastScale([{ low: 100, high: 1000, views_now: 50 }]);
+  assert.ok(sc.lo < 50 && sc.hi > 1000);
+  const gt = goalTrack(100, 50);
+  assert.ok(gt.eta! > gt.deadline!); assert.ok(Math.abs(gt.span - 108) < 1e-9);
+  near(goalTrack(null, null).span, 7 * 1.08);
+  console.log("viz-math: ok");
+}
