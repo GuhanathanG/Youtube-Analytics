@@ -71,17 +71,19 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[260px] flex-col border-r border-line bg-[#05070d]/70 px-4 py-5 backdrop-blur-xl lg:flex">
         <Link href="/" className="px-2"><Logo /></Link>
-        <nav className="mt-8 space-y-1">
+        {/* Nav and the Watching list scroll together, so the channel list is never squeezed to nothing on short screens */}
+        <div className="scrollbar-thin -mx-1 mt-6 min-h-0 flex-1 overflow-y-auto px-1">
+        <nav className="space-y-0.5">
           {NAV.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href}
-              className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] transition ${isActive(href) ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
+              className={`group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[14px] transition ${isActive(href) ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
               {isActive(href) && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-accent shadow-[0_0_12px_#22d3ee]" />}
               <Icon size={17} className={isActive(href) ? "text-accent" : ""} />{label}
             </Link>
           ))}
         </nav>
-        <div className="mt-8 px-3 label">Watching</div>
-        <div className="scrollbar-thin mt-2 flex-1 space-y-0.5 overflow-y-auto">
+        <div className="mt-6 px-3 label">Watching</div>
+        <div className="mt-2 space-y-0.5 pb-2">
           {channels.length === 0 && <p className="px-3 py-2 text-[13px] text-ink-3">No channels yet.</p>}
           {channels.map((c) => (
             <Link key={c.id} href={`/channels/${c.id}`}
@@ -94,6 +96,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
               {!c.active ? <span className="ml-auto text-[10px] text-ink-3">paused</span> : c.rival ? <span className="ml-auto font-mono text-[9.5px] tracking-wider text-accent-2">RIVAL</span> : null}
             </Link>
           ))}
+        </div>
         </div>
         <form action={logout}>
           <button className="mt-3 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-ink-3 hover:bg-white/[0.04] hover:text-ink-2">
