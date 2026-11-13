@@ -9,7 +9,10 @@ import { TrendChart } from "@/components/charts/lazy";
 import { RangeTabs, rangeSince } from "@/components/RangeTabs";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
-import { C, KpiOrb } from "@/components/viz";
+import { C, HeroStage, KpiOrb, MoodGlyph, PulseRing } from "@/components/viz";
+import { channelHealth } from "@/lib/creator-insights";
+import { nextMoves } from "@/lib/recommendations";
+import { stored } from "@/lib/stored";
 import { ago, compact, score } from "@/lib/format";
 import { LiveFeed } from "@/components/LiveFeed";
 import { AlertsPanel, NewVideosPanel } from "@/components/FeaturePanels";
@@ -39,6 +42,13 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     within(progress(), 15000, []), within(recentAlerts(8, focus), 8000, []), within(predictions(focus ?? undefined), 10000, []),
     within(liveNow(), 8000, []),
   ]);
+  // Hero: the focused channel's health and today's #1 move ("next moves" is heavy, so it's saved for 30 minutes).
+  const heroId = focus ?? allChs.find((c) => c.active && c.role !== "competitor")?.id ?? null;
+  const [health, top] = heroId ? await Promise.all([
+    within(channelHealth(heroId), 4000, null),
+    within(stored(`moves:${heroId}`, 30 * 60_000, () => nextMoves(heroId)), 4000, null),
+  ]) : [null, null];
+  const heroCh = heroId ? allChs.find((c) => c.id === heroId) : null;
   const one = focus ? sums.get(focus) : null;
   const fc = focus ? allChs.find((c) => c.id === focus) : null;
   const k = one && fc ? { ...kAll, channels: 1, comments: one.comments, analyzed: one.analyzed, ai_read: one.ai_read, comments_24h: one.comments_24h,
@@ -65,6 +75,30 @@ export default async function Overview({ searchParams }: { searchParams: Promise
           {compact(k.comments_24h)} in the last 24 hours.
         </p>
       </PageHeader>
+
+      {heroCh && (
+        <Reveal className="mb-4"><HeroStage>
+          <div className="grid items-center gap-6 md:grid-cols-[auto_1fr_auto]">
+            <div className="flex justify-center"><PulseRing value={health?.score ?? 0} label="Health" sub={health?.grade ?? "measuring"} size={176}
+              color={(health?.score ?? 0) >= 70 ? C.good : (health?.score ?? 0) >= 45 ? C.accent : C.gold} trend={moodTrend.length >= 2 ? moodTrend : undefined} /></div>
+            <div className="min-w-0">
+              <div className="label" style={{ color: C.ai }}>✦ Today&apos;s #1 move · {heroCh.title}</div>
+              <h2 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-3xl">
+                {top?.moves[0]?.title ?? (briefs[0] ? "Your audience, at a glance" : "All clear for now")}</h2>
+              <p className="mt-2 max-w-2xl text-[14px] text-ink-2">{top?.moves[0]?.why ?? briefs[0]?.summary ?? "Nothing urgent. New comments and uploads update this live."}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {top?.moves[0] && <Link href={top.moves[0].href} className="btn-neon rounded-xl px-4 py-2 text-[13.5px] font-medium">{top.moves[0].cta} →</Link>}
+                <Link href="/command" className="rounded-xl border border-line-2 px-4 py-2 text-[13.5px] text-ink-2 hover:border-accent/50 hover:text-ink">
+                  {top?.moves.length ? `All ${top.moves.length} moves` : "Next moves"}</Link>
+              </div>
+            </div>
+            <div className="hidden flex-col items-center gap-2 md:flex">
+              <MoodGlyph positive={heroCh.positive} neutral={heroCh.neutral} negative={heroCh.negative} size={120} />
+              <span className="label">Audience mood</span>
+            </div>
+          </div>
+        </HeroStage></Reveal>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <Reveal><KpiOrb focal label="Comments captured" value={k.comments} hint={`+${compact(k.comments_24h)} in 24h`} trend={volTrend} /></Reveal>
