@@ -134,6 +134,9 @@ try {
   check("Manage page shows the engine running 24/7", manage.includes("Running 24/7"));
   check("Manage page shows database storage", manage.includes("Database storage"));
   check("Manage page lists AI video analyses", (await (await get("/manage")).text()).includes("AI video analysis"));
+  const fresh = await (await get("/manage")).text();
+  check("Manage: engine freshness board with a light per engine", fresh.includes("Engine freshness") && /data-engine="yt_comments" data-state="(ok|warn|bad|idle)"/.test(fresh)
+    && fresh.includes('data-engine="ai"') && fresh.includes('data-engine="forecasts"'), fresh.slice(fresh.indexOf("Engine freshness"), fresh.indexOf("Engine freshness") + 400));
   check("Manage page shows every job with time left and an overall finish time",
     manage.includes("Jobs &amp; time left") && manage.includes("AI reads every comment") && manage.includes("All jobs done"));
 

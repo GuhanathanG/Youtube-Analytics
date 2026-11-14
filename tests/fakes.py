@@ -131,7 +131,7 @@ class FakeYouTube:
             out.extend(self.videos[v] for v in ids[i:i + 50] if v in self.videos)
         return out
 
-    def list_comment_threads(self, video_id: str, page_token=None) -> dict:
+    def list_comment_threads(self, video_id: str, page_token=None, order: str = "time") -> dict:
         self._spend("commentThreads")
         if video_id in self.disabled:
             raise YouTubeError(403, "commentsDisabled", "disabled")

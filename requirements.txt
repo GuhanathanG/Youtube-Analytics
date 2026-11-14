@@ -7,3 +7,4 @@ plotly>=5.20
 streamlit>=1.39
 langdetect>=1.0.9
 tzdata
+youtube-transcript-api>=1.2

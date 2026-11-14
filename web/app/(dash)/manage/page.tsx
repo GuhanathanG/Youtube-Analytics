@@ -22,6 +22,8 @@ import { ConnectChannel } from "@/components/ConnectChannel";
 import { connections, ownerConfigured } from "@/lib/owner";
 import { headers } from "next/headers";
 import { within } from "@/lib/cache";
+import { engineFreshness } from "@/lib/freshness";
+import { EngineBoard } from "@/components/EngineBoard";
 
 export const metadata = { title: "Manage" };
 
@@ -57,6 +59,7 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
   const engine = await engineStatus().catch(() => null);
   const worker = await within(alwaysOnWorker(), 5000, null);
   const prog = await progress().catch(() => []);
+  const fresh = await within(engineFreshness(), 6000, []);
   const storage = await storageStatus().catch(() => null);
   const analyses = await recentAnalyses(8).catch(() => []);
   const ig = await within(instagramStatus(), 6000, null);
@@ -100,6 +103,9 @@ export default async function ManagePage({ searchParams }: { searchParams: Promi
           {e?.message && <p className={`mt-3 text-[12.5px] ${e.status === "ok" ? "text-ink-3" : "text-warn"}`}>{e.message}</p>}
         </Panel>
       </Reveal>
+
+      {fresh.length > 0 && <Reveal className="mt-4"><Panel title="Engine freshness" subtitle="Each engine should run within its limit; red ones are retried and sent to Telegram">
+        <EngineBoard checks={fresh} /></Panel></Reveal>}
 
       <Reveal className="mt-4"><ProgressPanel rows={prog} /></Reveal>
 

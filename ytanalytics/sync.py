@@ -60,6 +60,8 @@ class SyncStats:
     new_comment_checks: int = 0
     backfill_pages: int = 0
     comments_saved: int = 0
+    comments_refreshed: int = 0
+    replies_refreshed: int = 0
     stopped_reason: str = "done"
 
 
@@ -410,6 +412,67 @@ class Syncer:
             if not token:
                 return
 
+    def refresh_engagement(self) -> None:
+        """E2: spend spare YouTube quota re-reading the top comment threads of recent videos.
+
+        The "comment count went up" check reads only the newest threads, so it misses new replies on older
+        threads and never updates like counts. Here, videos from the last REFRESH_DAYS get their most-liked
+        threads re-read (every 6 h in their first week, then daily); a thread whose reply count grew gets all
+        its replies fetched. Stops once today's quota passes REFRESH_QUOTA_CAP, leaving room for new comments.
+        """
+        channel_ids = self._active_channel_ids()
+        if not channel_ids:
+            return
+        cap = int(os.environ.get("REFRESH_QUOTA_CAP", "6000"))
+        pages = int(os.environ.get("REFRESH_PAGES", "2"))
+        now = utcnow()
+        videos = self.s.scalars(
+            select(Video).where(
+                Video.channel_id.in_(channel_ids), Video.comments_disabled.is_(False), Video.comments_backfilled.is_(True),
+                Video.comment_count > 0, Video.published_at >= now - timedelta(days=int(os.environ.get("REFRESH_DAYS", "90"))),
+                or_(Video.comments_refreshed_at.is_(None),
+                    Video.comments_refreshed_at < case((Video.published_at >= now - timedelta(days=7), now - timedelta(hours=6)),
+                                                       else_=now - timedelta(hours=24))),
+            ).order_by(Video.comments_refreshed_at.asc().nulls_first(), Video.published_at.desc()).limit(200)
+        ).all()
+        for video in videos:
+            self._check_time()
+            if self.yt.quota.used_today() >= cap:
+                log.info("Engagement refresh paused: %s quota units used today (cap %s)", self.yt.quota.used_today(), cap)
+                return
+            token = None
+            for _ in range(pages):
+                try:
+                    data = self.yt.list_comment_threads(video.id, token, order="relevance")
+                except YouTubeError as e:
+                    if self._handle_comment_error(video, e):
+                        break
+                    raise
+                items = data.get("items", [])
+                ids = [it["snippet"]["topLevelComment"]["id"] for it in items]
+                known = dict(self.s.execute(select(Comment.id, Comment.reply_count).where(Comment.id.in_(ids))).all()) if ids else {}
+                rows: list[dict] = []
+                for it in items:
+                    top = it["snippet"]["topLevelComment"]
+                    total = it["snippet"].get("totalReplyCount", 0) or 0
+                    row = _comment_row(top, video, parent_id=None, now=now)
+                    row["reply_count"] = total
+                    rows.append(row)
+                    included = it.get("replies", {}).get("comments", [])
+                    if total > (known.get(top["id"]) or 0) and total > len(included):
+                        rows.extend(self._fetch_all_replies(top["id"], video, now))
+                        self.stats.replies_refreshed += 1
+                    else:
+                        rows.extend(_comment_row(r, video, parent_id=top["id"], now=now) for r in included)
+                for i in range(0, len(rows), 500):
+                    upsert(self.s, Comment, rows[i:i + 500], ["id"], COMMENT_UPDATE_COLS)
+                self.stats.comments_refreshed += len(rows)
+                token = data.get("nextPageToken")
+                if not token:
+                    break
+            video.comments_refreshed_at = utcnow()
+            self.s.commit()
+
     def _handle_comment_error(self, video: Video, e: YouTubeError) -> bool:
         """Returns True if the error means 'this video has no readable comments'."""
         if e.reason in ("commentsDisabled", "videoNotFound", "forbidden") or e.status == 404:
@@ -503,6 +566,7 @@ def run_sync(session: Session, settings: Settings, yt: YouTubeClient | None = No
             syncer.refresh_video_stats(channel)
         syncer.sync_new_comments()
         syncer.backfill_comments()
+        syncer.refresh_engagement()
         run.status = "ok"
     except QuotaExhausted as e:
         session.rollback()
