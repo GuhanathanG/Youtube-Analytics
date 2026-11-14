@@ -427,6 +427,8 @@ export type Progress = {
   comments_on_youtube: number; comments_stored: number; ai_read: number;
   saved_last_hour: number; ai_last_hour: number;
   sentiment_done: number; sentiment_last_hour: number;
+  /** What's really left in the main database (the archive keeps older comments as they were). */
+  history_left?: number; sentiment_waiting?: number; ai_waiting?: number; archived?: number;
   // Slower AI jobs (filled in by jobExtras; null when that job's table doesn't exist yet)
   videos_to_watch?: number | null; thumbs_to_check?: number | null; months_to_remember?: number | null;
   watch_per_hour?: number; thumbs_per_hour?: number; memory_per_hour?: number;
@@ -443,6 +445,7 @@ async function progressUncached(): Promise<Progress[]> {
   const rows = (await db`
     select ch.id as channel_id, ch.title, ch.video_count::int as videos_total,
       coalesce(v.known, 0)::int as videos_known, coalesce(v.complete, 0)::int as videos_complete,
+      (coalesce(v.known, 0) - coalesce(v.complete, 0))::int as history_left,
       coalesce(v.on_yt, 0)::float8 as comments_on_youtube,
       coalesce(c.comments, 0)::int as comments_stored, coalesce(c.ai_read, 0)::int as ai_read,
       coalesce(c.saved_hour, 0)::int as saved_last_hour, coalesce(c.ai_hour, 0)::int as ai_last_hour,
@@ -453,6 +456,15 @@ async function progressUncached(): Promise<Progress[]> {
                from videos group by channel_id) v on v.channel_id = ch.id
     left join channel_summary c on c.channel_id = ch.id
     where ch.active order by ch.title`) as unknown as Progress[];
+  // What's actually waiting (partial indexes make these cheap) and how many older comments sit in the archive.
+  const [waitS, waitA, arch] = await Promise.all([
+    db`select channel_id, count(*)::int as n from comments where analyzed_at is null group by 1`.catch(() => []),
+    db`select channel_id, count(*)::int as n from comments where ai_at is null group by 1`.catch(() => []),
+    db`select channel_id, sum(comments)::int as n from archive_stats group by 1`.catch(() => []),
+  ]);
+  const by = (rs: Record<string, unknown>[]) => new Map(rs.map((r) => [r.channel_id as string, Number(r.n)]));
+  const [ws, wa, ar] = [by(waitS), by(waitA), by(arch)];
+  for (const r of rows) { r.sentiment_waiting = ws.get(r.channel_id) ?? 0; r.ai_waiting = wa.get(r.channel_id) ?? 0; r.archived = ar.get(r.channel_id) ?? 0; }
   // The slow-job numbers are optional: use them if ready within 3 s (they keep loading in the background).
   const extra = await within(cached("job-extras", 10 * 60_000, jobExtras), 3000, null);
   if (extra) for (const r of rows) Object.assign(r, extra.perChannel.get(r.channel_id) ?? {}, extra.rates);
@@ -463,7 +475,7 @@ async function progressUncached(): Promise<Progress[]> {
 async function jobExtras() {
   const db = sql();
   const perChannel = new Map<string, Partial<Progress>>();
-  const rates = { watch_per_hour: 0.5, thumbs_per_hour: 12.5, memory_per_hour: 6 }; // designed pace, replaced by measured speed below
+  const rates = { watch_per_hour: 0.5, thumbs_per_hour: 37.5, memory_per_hour: 6 }; // designed pace, replaced by measured speed below
   const safe = async <T,>(p: Promise<T>) => { try { return await p; } catch { return null; } };
   const watch = await safe(db`select v.channel_id, count(*)::int as n from videos v join channels c on c.id = v.channel_id
     left join video_analysis a on a.video_id = v.id where c.active and a.video_id is null
