@@ -157,7 +157,7 @@ export async function chatJson(system: string, user: string, maxTokens = 4000, d
       if (res.ok) {
         try {
           const payload = JSON.parse(text);
-          await record(s, Number(payload?.usage?.total_tokens ?? 0));
+          void record(s, Number(payload?.usage?.total_tokens ?? 0)).catch(() => {}); // bookkeeping: don't make the reader wait
           return { data: parseJson(payload.choices?.[0]?.message?.content ?? ""), model: keyOf(s) };
         } catch { await record(s, 0); break; }
       }
