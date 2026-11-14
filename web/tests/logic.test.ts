@@ -242,3 +242,19 @@ console.log("nav: ok");
   near(goalTrack(null, null).span, 7 * 1.08);
   console.log("viz-math: ok");
 }
+
+// Engine freshness rules (E1)
+{
+  const { judge, overall, fmtMin } = await import("../lib/freshness-math.ts");
+  assert.equal(judge("yt_comments", 30).state, "ok");
+  assert.equal(judge("yt_comments", 90).state, "warn");
+  assert.equal(judge("yt_comments", 200).state, "bad");
+  assert.equal(judge("ai", null).state, "idle");
+  assert.equal(judge("ig_comments", 400, 2).state, "warn");
+  assert.equal(judge("ig_comments", 800, 2).state, "bad");
+  assert.ok(judge("ig_comments", 400, 2).note.includes("2 waiting"));
+  assert.equal(overall([judge("ai", null), judge("yt_comments", 10)]), "ok");
+  assert.equal(overall([judge("yt_comments", 10), judge("forecasts", 4000)]), "bad");
+  assert.equal(fmtMin(30), "30 min"); assert.equal(fmtMin(180), "3 h"); assert.equal(fmtMin(4000), "3 days");
+  console.log("freshness: ok");
+}

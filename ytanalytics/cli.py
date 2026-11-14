@@ -60,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     la.add_argument("--minutes", type=float, default=None)
     ar.add_argument("--minutes", type=float, default=None)
     sub.add_parser("history-left", help="print how many videos still have comment history to download")
+    sub.add_parser("transcripts", help="fetch transcripts (captions) of recent uploads (E3)")
     sub.add_parser("train", help="train the prediction engine (needs scikit-learn) and save forecasts + drivers")
     sub.add_parser("pending", help="number of comments waiting for analysis")
     sub.add_parser("status", help="summary of what is stored")
@@ -203,6 +204,12 @@ def main(argv: list[str] | None = None) -> int:
             n = session.scalar(select(func.count()).select_from(Video).join(Channel, Channel.id == Video.channel_id).where(
                 Channel.active.is_(True), Channel.platform.is_(None), Video.comments_backfilled.is_(False), Video.comments_disabled.is_(False)))
             print(int(n or 0))
+        elif args.cmd == "transcripts":
+            import time as _t
+
+            from .transcripts import fetch_transcripts
+
+            print(json.dumps(fetch_transcripts(session, deadline=_t.time() + 240)))
         elif args.cmd == "train":
             from .model import train
 

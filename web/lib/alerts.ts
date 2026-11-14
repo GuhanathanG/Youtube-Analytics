@@ -1,4 +1,5 @@
 import "server-only";
+import { engineFreshness } from "./freshness";
 import { sql, ensureRls } from "./db";
 
 /**
@@ -200,6 +201,13 @@ export async function checkHealth(): Promise<number> {
   if (Number(q?.units ?? 0) >= Number(process.env.DAILY_QUOTA ?? 9500) * 0.98 && ptHour < 18) {
     await alert("quota", "📉 YouTube quota used up early",
       `Today's YouTube quota ran out before 6 pm Pacific. New comments still arrive by RSS/push, but history and stats wait for the reset (midnight Pacific, about 1:30 pm India time).`);
+  }
+
+  // 6. Any engine well past its "should have run within" limit (docs/ENGINES_PHASE.md E1).
+  //    The job and the live engine have their own alarms above / in the GitHub job.
+  const checks = await engineFreshness().catch(() => []);
+  for (const c of checks.filter((x) => x.state === "bad" && x.key !== "job" && x.key !== "live")) {
+    await alert(`fresh-${c.key}`, `⏱ ${c.label} is behind`, `${c.what}: ${c.note}.`);
   }
 
   // 5. The engine itself keeps failing (same error on the last run).

@@ -167,11 +167,11 @@ class YouTubeClient:
         return items
 
     # -- comments ------------------------------------------------------------------
-    def list_comment_threads(self, video_id: str, page_token: str | None = None) -> dict:
+    def list_comment_threads(self, video_id: str, page_token: str | None = None, order: str = "time") -> dict:
         return self._get("commentThreads", {
             "part": "snippet,replies",
             "videoId": video_id,
-            "order": "time",
+            "order": order,
             "maxResults": 100,
             "textFormat": "plainText",
             "pageToken": page_token,

@@ -111,6 +111,11 @@ jobs:
         if: steps.alive.outputs.alive != '1'
         run: python -m ytanalytics ai --until ${{ steps.plan.outputs.ai_until }}
 
+      - name: Transcripts of new uploads (free captions; backs off for a day if YouTube refuses this machine)
+        if: steps.alive.outputs.alive != '1'
+        continue-on-error: true
+        run: python -m ytanalytics transcripts
+
       - name: Move comments older than 90 days to the archive databases (keeps the main database small and fast)
         if: steps.alive.outputs.alive != '1'
         continue-on-error: true

@@ -116,6 +116,8 @@ class Video(Base):
     # commentCount reported by YouTube the last time we checked for new comments.
     comment_count_checked: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     comments_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Engagement refresh (likes/replies on comments we already have): last time the top threads were re-read.
+    comments_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class VideoSnapshot(Base):
@@ -239,6 +241,19 @@ class SchemaMeta(Base):
 
     key: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[str] = mapped_column(String(200))
+
+
+class VideoTranscript(Base):
+    """What a video says (YouTube captions, usually auto-generated). Feeds topics, hooks and search (E3)."""
+
+    __tablename__ = "video_transcripts"
+
+    video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    status: Mapped[str] = mapped_column(String(20))  # ok | none (no captions) | blocked (YouTube refused this machine)
+    lang: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    generated: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class RunLog(Base):

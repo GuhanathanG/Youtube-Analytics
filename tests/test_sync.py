@@ -212,3 +212,44 @@ def test_lean_mode_skips_history_older_than_the_window(session, settings, monkey
     vids = session.scalars(select(Video)).all()
     assert vids and all(v.comments_backfilled for v in vids)
     assert all(v.comment_count_checked == v.comment_count for v in vids)
+
+
+def test_engagement_refresh_picks_up_new_replies_and_likes(session, settings, monkeypatch):
+    """E2: recent videos' top threads are re-read; new replies on old threads and new like counts arrive."""
+    yt = make_fake(session, settings)
+    yt.add_channel(CID, "@chan", n_videos=3, comments_per_video=4)
+    Syncer(session, yt, settings).add_channel("@chan")
+    run_sync(session, settings, yt=yt)
+    from ytanalytics.db import utcnow
+    for v in session.scalars(select(Video)):  # make them recent so they're in the refresh window
+        v.published_at = utcnow() - timedelta(days=2)
+        v.comments_refreshed_at = None
+    session.commit()
+
+    vid = yt.uploads["UU" + CID[2:]][0]
+    thread = yt.threads[vid][0]
+    tid = thread["id"]
+    # 7 new replies on an old thread (more than the 5 the thread listing includes) and more likes on it.
+    yt.replies[tid] = [{"id": f"{tid}.n{k}", "snippet": {"textOriginal": f"late reply {k}", "authorDisplayName": "R", "parentId": tid,
+                        "likeCount": 0, "publishedAt": "2026-02-01T00:00:00Z", "updatedAt": "2026-02-01T00:00:00Z"}} for k in range(7)]
+    thread["snippet"]["totalReplyCount"] = 7
+    thread["replies"] = {"comments": yt.replies[tid][:5]}
+    thread["snippet"]["topLevelComment"]["snippet"]["likeCount"] = 99
+
+    s = Syncer(session, yt, settings)
+    s.refresh_engagement()
+    assert count(session, Comment, Comment.parent_id == tid) == 7
+    assert session.scalar(select(Comment.like_count).where(Comment.id == tid)) == 99
+    assert s.stats.replies_refreshed == 1
+    assert all(v.comments_refreshed_at is not None for v in session.scalars(select(Video)))
+
+    # Nothing is due again right away, and the quota cap is respected.
+    yt.calls.clear()
+    Syncer(session, yt, settings).refresh_engagement()
+    assert "commentThreads" not in yt.calls
+    monkeypatch.setenv("REFRESH_QUOTA_CAP", "0")
+    for v in session.scalars(select(Video)):
+        v.comments_refreshed_at = None
+    session.commit()
+    Syncer(session, yt, settings).refresh_engagement()
+    assert "commentThreads" not in yt.calls
