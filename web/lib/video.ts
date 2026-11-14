@@ -1,4 +1,4 @@
-import { splitKeys } from "./ai";
+import { geminiModelList, splitKeys } from "./ai";
 import "server-only";
 import { sql, ensureRls, ensureColumns } from "./db";
 import { quotaDay } from "./queries";
@@ -96,6 +96,12 @@ async function secondsToday(): Promise<number> {
   return (r?.s as number) ?? 0;
 }
 
+/** Gemini models for watching videos: the ones this key can use today (newest first), retired ones never tried. */
+async function videoModels(): Promise<string[]> {
+  const found = (await geminiModelList()).filter((m) => !/(^|-)2\.[05]-/.test(m));
+  return found.length ? found.slice(0, 3) : ["gemini-3.5-flash-lite", "gemini-3.5-flash"];
+}
+
 export async function analyseVideo(videoId: string): Promise<{ ok: boolean; message: string }> {
   await ensureVideoTables();
   const db = sql();
@@ -128,7 +134,8 @@ export async function analyseVideo(videoId: string): Promise<{ ok: boolean; mess
       return { ok: false, message: `Couldn't get the reel: ${why.slice(0, 160)}` };
     }
   }
-  const models = (process.env.GEMINI_VIDEO_MODELS ?? "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-3.5-flash-lite").split(",").map((m) => m.trim());
+  // Models Google still offers this key (discovered), so a retired model never costs a wasted attempt.
+  const models = process.env.GEMINI_VIDEO_MODELS ? process.env.GEMINI_VIDEO_MODELS.split(",").map((m) => m.trim()) : await videoModels();
   const base = process.env.GEMINI_NATIVE_BASE ?? GEMINI; // overridable only for tests
   let lastError = "";
   const errors: string[] = [];

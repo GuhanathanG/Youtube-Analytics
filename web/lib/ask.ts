@@ -3,6 +3,7 @@ import { sql } from "./db";
 import { aiSlots, chatJson } from "./ai";
 import { memoryContext } from "./memory";
 import { searchArchive } from "./archive";
+import { within } from "./cache";
 
 /**
  * 1. Ask AI about your comments.
@@ -17,6 +18,7 @@ export type AskAnswer = {
     sentiment: string | null; video_id: string; video_title: string }[];
   searched: string[];
   model: string;
+  timings?: Record<string, number>;
 };
 
 const PLAN = `You turn a question about YouTube comments into database search terms.
@@ -45,47 +47,61 @@ export async function askComments(question: string, channelId: string | null, hi
   if (!aiSlots().length) return { error: "No AI key is set (GEMINI_API_KEY / GROQ_API_KEY / OPENROUTER_API_KEY in Vercel)." };
   const db = sql();
   const deadline = Date.now() + 50000;
+  const t0 = Date.now();
+  const timings: Record<string, number> = {};
+  const lap = (k: string) => { timings[k] = Date.now() - t0; };
   const convo = historyText(history);
-  const plan = await chatJson(PLAN, `${convo ? `Conversation so far:\n${convo}\n\n` : ""}Question: ${question}`, 700, deadline);
-  const standalone = String(plan?.data.standalone ?? "").trim() || question;
-  const terms = ((plan?.data.terms as string[] | undefined) ?? [])
-    .map((t) => String(t).trim()).filter((t) => t.length >= 2 && t.length <= 60).slice(0, 12);
-
   const scope = channelId ? db`c.channel_id = ${channelId}` : db`true`;
   const spam = db`(c.is_spam is null or not c.is_spam)`;
-  const matched = terms.length ? await db`
-    select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, v.title as video_title
-    from comments c join videos v on v.id = c.video_id
-    where ${scope} and ${spam} and (${terms
-      .map((t) => { const like = "%" + t.replace(/[%_]/g, "\\$&") + "%"; return db`(c.text ilike ${like} or c.translation ilike ${like})`; })
-      .reduce((acc, f) => db`${acc} or ${f}`)})
-    order by c.like_count desc, c.published_at desc limit 90` : [];
-  const popular = await db`
+  // These don't depend on the AI's search words: start them now, while the AI plans the search.
+  const popularP = db`
     select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, v.title as video_title
     from comments c join videos v on v.id = c.video_id
     where ${scope} and ${spam} and c.published_at >= (now() at time zone 'utc') - interval '60 days'
-    order by c.like_count desc limit ${matched.length >= 60 ? 20 : 60}`;
-  const fromArchive = terms.length ? await searchArchive(terms, channelId, 40) : [];
-  const seen = new Set<string>();
-  const pool = [...matched, ...fromArchive, ...popular].filter((r) => !seen.has(r.id as string) && seen.add(r.id as string)).slice(0, 120);
-  if (!pool.length) return { error: "There are no comments to answer from yet." };
-
-  const [stats] = await db`
+    order by c.like_count desc limit 60`;
+  const statsP = db`
     select count(*)::int as n,
       round(100.0 * avg(case when sentiment = 'positive' then 1 else 0 end))::int as pos,
       round(100.0 * avg(case when sentiment = 'negative' then 1 else 0 end))::int as neg
     from comments c where ${scope}`;
+  const memoryP = within(memoryContext(channelId).catch(() => ""), 4000, "");
+
+  const plan = await chatJson(PLAN, `${convo ? `Conversation so far:\n${convo}\n\n` : ""}Question: ${question}`, 700, deadline);
+  lap("plan");
+  const standalone = String(plan?.data.standalone ?? "").trim() || question;
+  const terms = ((plan?.data.terms as string[] | undefined) ?? [])
+    .map((t) => String(t).trim()).filter((t) => t.length >= 2 && t.length <= 60).slice(0, 12);
+
+  const [matched, fromArchive, popularAll, [stats], memory] = await Promise.all([
+    terms.length ? db`
+      select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, v.title as video_title
+      from comments c join videos v on v.id = c.video_id
+      where ${scope} and ${spam} and (${terms
+        .map((t) => { const like = "%" + t.replace(/[%_]/g, "\\$&") + "%"; return db`(c.text ilike ${like} or c.translation ilike ${like})`; })
+        .reduce((acc, f) => db`${acc} or ${f}`)})
+      order by c.like_count desc, c.published_at desc limit 90` : Promise.resolve([]),
+    // Older comments live in the archive databases (far away, may be asleep): never wait more than 3 s for them.
+    terms.length ? within(searchArchive(terms, channelId, 40), 3000, []) : Promise.resolve([]),
+    popularP, statsP, memoryP,
+  ]);
+  lap("search");
+  const popular = popularAll.slice(0, matched.length >= 60 ? 20 : 60);
+  const seen = new Set<string>();
+  const pool = [...matched, ...fromArchive, ...popular].filter((r) => !seen.has(r.id as string) && seen.add(r.id as string)).slice(0, 120);
+  if (!pool.length) return { error: "There are no comments to answer from yet." };
+
   const lines = pool.map((r, i) => {
     let t = `${i + 1}. (${r.sentiment ?? "?"}, ${r.like_count} likes, on "${String(r.video_title).slice(0, 60)}") ${String(r.text).split(/\s+/).join(" ").slice(0, 280)}`;
     if (r.translation) t += ` [EN: ${String(r.translation).slice(0, 160)}]`;
     return t;
   });
-  const memory = await memoryContext(channelId).catch(() => "");
   const prompt = [convo ? `Conversation so far:\n${convo}\n` : "", `Question: ${question}`,
     standalone !== question ? `(Meaning: ${standalone})` : "", `Statistics: ${stats.n} comments in scope, ${stats.pos}% positive, ${stats.neg}% negative.`,
     memory ? `\nCreator memory:\n${memory}\n` : "",
     terms.length ? `Search terms used: ${terms.join(", ")}` : "", "", "Comments:", ...lines].join("\n");
   const out = await chatJson(ANSWER, prompt, 2500, deadline);
+  lap("answer");
+  console.log(`[ask] plan ${timings.plan} ms, search +${timings.search - timings.plan} ms, answer +${timings.answer - timings.search} ms`);
   if (!out) return { error: "The free AI models are busy or used up right now. Try again in a minute." };
   const answer = String(out.data.answer ?? "").trim();
   const cited = new Set<number>([...answer.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])));
@@ -95,5 +111,5 @@ export async function askComments(question: string, channelId: string | null, hi
     return { n, id: r.id as string, text: r.text as string, translation: (r.translation as string) ?? null, author: (r.author_name as string) ?? null,
       likes: r.like_count as number, sentiment: (r.sentiment as string) ?? null, video_id: r.video_id as string, video_title: r.video_title as string };
   });
-  return { answer, citations, searched: terms, model: out.model };
+  return { answer, citations, searched: terms, model: out.model, timings };
 }

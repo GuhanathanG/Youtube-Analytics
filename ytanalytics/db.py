@@ -345,6 +345,10 @@ EXTRA_INDEXES = {
     "ix_comments_newest": "ON comments (published_at DESC NULLS LAST)",
     # "Saved in the last hour" (progress panel): a tiny BRIN index (comments are stored roughly in fetch order).
     "ix_comments_fetched_brin": "ON comments USING brin (fetched_at)",
+    # Ask AI's keyword search ("audio", "sound sariyilla"): ILIKE '%word%' on text and translation.
+    # Without these every question read the whole table (0.7 s+, more with each search word).
+    "ix_comments_text_trgm": "ON comments USING gin (text gin_trgm_ops)",
+    "ix_comments_translation_trgm": "ON comments USING gin (translation gin_trgm_ops)",
 }
 
 # Unused duplicates, removed without blocking writers (ix_comments_ai_next does the same job).
@@ -369,6 +373,11 @@ def ensure_extra_indexes(engine: Engine) -> None:
                                  "(quote_ident(schemaname) || '.' || quote_ident(indexname))::regclass) AS valid "
                                  "FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'comments'")).all()
     have = {r[0]: r[1] for r in rows}
+    try:  # the trigram indexes need this extension (available on Supabase and Neon)
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+    except Exception as e:
+        logging.getLogger(__name__).warning("pg_trgm not available: %s", str(e).splitlines()[0])
     for name in DROP_CONCURRENTLY:  # first, so the space is free for the new ones
         if name in have:
             try:
