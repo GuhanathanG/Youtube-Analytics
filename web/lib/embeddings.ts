@@ -49,8 +49,12 @@ async function embed(texts: string[], task: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QU
       method: "POST", headers: { "x-goog-api-key": key, "Content-Type": "application/json" }, signal: AbortSignal.timeout(20000),
       body: JSON.stringify({ requests: chunk.map((t) => ({ model: `models/${MODEL}`, content: { parts: [{ text: t.slice(0, 2000) }] },
         taskType: task, outputDimensionality: DIMS })) }),
-    }).catch(() => null);
-    if (!res?.ok) return null;
+    }).catch((e) => { lastError = `network: ${e instanceof Error ? e.message : e}`; return null; });
+    if (!res?.ok) {
+      if (res) lastError = `${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`;
+      await noteError(lastError);
+      return out.length ? out : null; // keep what earlier chunks returned
+    }
     const data = await res.json().catch(() => null);
     const vecs = (data?.embeddings ?? []).map((e: { values?: number[] }) => normalize(e.values ?? []));
     if (vecs.length !== chunk.length) return null;
@@ -61,6 +65,14 @@ async function embed(texts: string[], task: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QU
   return out;
 }
 
+let lastError = "";
+/** Remember why embedding failed (shown with the usage numbers; the 2-minute engine has no other log). */
+async function noteError(msg: string) {
+  console.log("[embeddings]", msg);
+  await sql()`insert into llm_usage (day, model_key, requests, tokens, exhausted, last_error) values (${quotaDay()}, ${"embed/" + MODEL}, 0, 0, false, ${msg.slice(0, 300)})
+    on conflict (day, model_key) do update set last_error = excluded.last_error`.catch(() => null);
+}
+
 /** Shorter-than-full vectors from Gemini aren't unit length; cosine search wants them to be. */
 function normalize(v: number[]): number[] {
   const n = Math.sqrt(v.reduce((a, x) => a + x * x, 0)) || 1;
@@ -69,7 +81,8 @@ function normalize(v: number[]): number[] {
 const literal = (v: number[]) => `[${v.join(",")}]`;
 
 /** Give vectors to the newest comments that don't have one yet. Returns how many were done. */
-export async function embedBacklog(limit = Number(process.env.EMBED_PER_TURN ?? 200)): Promise<number> {
+// Free tier: ~100 embedding texts a minute (each text counts), so one batch of 90 per engine turn.
+export async function embedBacklog(limit = Number(process.env.EMBED_PER_TURN ?? 90)): Promise<number> {
   if (!embeddingsConfigured()) return 0;
   const type = await ensureVectors();
   if (!type) return 0;
@@ -78,12 +91,14 @@ export async function embedBacklog(limit = Number(process.env.EMBED_PER_TURN ?? 
     order by published_at desc nulls last limit ${limit}`;
   if (!rows.length) return 0;
   // The English translation (when the AI made one) helps the meaning land; the original keeps the exact words.
-  const vecs = await embed(rows.map((r) => [r.text, r.translation].filter(Boolean).join(" \n ") as string), "RETRIEVAL_DOCUMENT");
-  if (!vecs) return 0;
+  const got = await embed(rows.map((r) => [r.text, r.translation].filter(Boolean).join(" \n ") as string), "RETRIEVAL_DOCUMENT");
+  if (!got?.length) return 0;
+  const vecs = got;
+  const keep = rows.slice(0, vecs.length); // a partial answer (limit hit mid-way) still saves what came back
   // One statement for the whole batch (one round trip).
   await db.unsafe(`update comments c set embedding = v.e::${type} from (select unnest($1::text[]) as id, unnest($2::text[]) as e) v where c.id = v.id`,
-    [rows.map((r) => r.id as string), vecs.map(literal)]);
-  return rows.length;
+    [keep.map((r) => r.id as string), vecs.map(literal)]);
+  return keep.length;
 }
 
 export type Near = { id: string; distance: number };
