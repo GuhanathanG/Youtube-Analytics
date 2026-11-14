@@ -98,8 +98,9 @@ async function secondsToday(): Promise<number> {
 
 /** Gemini models for watching videos: the ones this key can use today (newest first), retired ones never tried. */
 async function videoModels(): Promise<string[]> {
-  const found = (await geminiModelList()).filter((m) => !/(^|-)2\.[05]-/.test(m));
-  return found.length ? found.slice(0, 3) : ["gemini-3.5-flash-lite", "gemini-3.5-flash"];
+  // Up to 5 (Flash-Lite and Flash): when Google says one is busy (503 "high demand"), the next one usually isn't.
+  const found = (await geminiModelList()).filter((m) => !/(^|-)[12]\.\d+-/.test(m));
+  return found.length ? found.slice(0, 5) : ["gemini-3.5-flash-lite", "gemini-3.8-flash", "gemini-3.5-flash"];
 }
 
 export async function analyseVideo(videoId: string): Promise<{ ok: boolean; message: string }> {
