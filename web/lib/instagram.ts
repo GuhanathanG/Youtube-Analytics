@@ -373,14 +373,20 @@ export async function instagramTick(timeLeft: () => boolean): Promise<IgTickResu
     // Profile + newest 12 posts (one result): followers, new posts, likes and comment counts.
     if (hoursSince(last?.details_at) >= profileHours) {
       const quick = await profileNow(id).catch((e) => { console.log("[instagram]", e instanceof Error ? e.message : e); return null; });
-      if (quick !== null) { out.collected++; out.newPosts += quick; continue; }
-      if (!apifyConfigured()) continue;
-      if (await startRun(id, "details", { directUrls: [profileUrl(u)], resultsType: "details", resultsLimit: 1 }, 1)) out.started++;
-      else { out.note = "Instagram budget for today is used up"; break; }
-      continue;
+      if (quick !== null) { out.collected++; out.newPosts += quick; }
+      else if (apifyConfigured()) {
+        // Apify answers later (a run), so its comments step waits for the next check.
+        if (await startRun(id, "details", { directUrls: [profileUrl(u)], resultsType: "details", resultsLimit: 1 }, 1)) out.started++;
+        else { out.note = "Instagram budget for today is used up"; break; }
+        continue;
+      }
     }
     // Comments of posts whose comment count went up (newest posts first), or never read.
-    if (hoursSince(last?.comments_at) >= commentHours) {
+    // Same check as the profile: the profile is due on nearly every check, so comments used to never get a turn.
+    // A brand-new post (never read) is fetched straight away, whatever the comment timer says.
+    const freshPost = await db`select 1 from videos where channel_id = ${id} and comment_count_checked is null and comment_count > 0
+      and not comments_disabled and published_at >= (now() at time zone 'utc') - interval '3 days' limit 1`;
+    if (timeLeft() && (hoursSince(last?.comments_at) >= commentHours || freshPost.length)) {
       const due = await db`select id, comment_count from videos where channel_id = ${id} and not comments_disabled and comment_count > 0
           and (comment_count_checked is null or comment_count >= comment_count_checked + ${Number(process.env.IG_MIN_NEW_COMMENTS ?? 3)})
         order by (published_at >= (now() at time zone 'utc') - interval '30 days') desc, published_at desc nulls last
