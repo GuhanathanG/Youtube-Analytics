@@ -1,4 +1,5 @@
 import "server-only";
+import { embedBacklog } from "./embeddings";
 import { sql, ensureRls, ensureColumns } from "./db";
 import { aiSlots, labelBacklog, labelComments } from "./ai";
 import { writeDueIdeas, writeDueInsights } from "./insights";
@@ -34,6 +35,7 @@ export type TickResult = {
   backfilled?: number;
   aiBacklog?: number;
   insights?: number;
+  embedded?: number;
   source?: "browser" | "cron";
   durationMs?: number;
   alerts?: number;
@@ -545,6 +547,9 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 8. otherwise the AI works through the backlog of comments it hasn't read yet.
     const everyMin = Math.max(1, Number(process.env.INSIGHTS_EVERY_MINUTES ?? 10));
     const insightsTurn = Math.floor(Date.now() / 60000) % everyMin < 2;
+    // Search by meaning (E6): vectors for recent comments, ~200 every 10 minutes (inside the free embedding limits).
+    // Early in the turn: it's quick (one or two requests) and shouldn't wait behind slower upkeep.
+    if ((insightsTurn || process.env.EMBED_EVERY_TURN === "1") && timeLeft()) result.embedded = await embedBacklog().catch((e) => { console.log("[embeddings]", e instanceof Error ? e.message : e); return 0; });
     // 9. Quick upkeep first (alerts, health alarm, backup job start, reports): they must not wait
     //    behind the AI backlog below, which uses whatever time is left.
     // Alerts (new uploads, negative spikes, viral comments): checked on the same ~10-minute turn,

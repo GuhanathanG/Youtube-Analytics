@@ -46,7 +46,7 @@ await db`insert into channel_requests (query, status, created_at) values ('@live
 
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
-    GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
+    GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", EMBED_EVERY_TURN: "1", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
@@ -148,6 +148,17 @@ try {
     JSON.stringify({ answer: ask.answer, cited: ask.citations?.length, error: ask.error }));
   check("Ask AI cites a real stored comment", /audio/i.test(ask.citations?.[0]?.text ?? ""), ask.citations?.[0]?.text);
   check("Ask API refuses requests without a session", (await fetch(`${BASE}/api/ask`, { method: "POST", body: "{}" })).status === 401);
+  // E6: search by meaning — a comment that never says "audio" is found for an audio question.
+  await db`insert into comments (id, video_id, channel_id, text, like_count, reply_count, fetched_at, published_at)
+    values ('meaning-1', 'livevid0001', ${ch.id}, 'sound konjam sariyilla bro', 0, 0, now(), now())`;
+  await db`update live_state set last_tick_at = null, last_cron_at = null where id = 1`; // let the next turn run now
+  const liveTurn = await (await fetch(`${BASE}/api/live`, { method: "POST", headers: { cookie } })).json().catch(() => ({}));
+  const [emb] = await db`select count(*)::int as n, bool_or(id = 'meaning-1') as m1 from comments where embedding is not null`.catch(() => [{ n: -1 }]);
+  check("comments get meaning vectors (pgvector)", Number(emb.n) > 0 && emb.m1 === true, `embedded: ${emb.n}, sent ${sent.embeds ?? 0}, turn ${liveTurn.embedded}`);
+  const askMeaning = await (await fetch(`${BASE}/api/ask`, { method: "POST", headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({ question: "How is the audio?" }) })).json();
+  check("Ask AI finds a comment by meaning, not just by keyword", (askMeaning.timings?.meaning ?? 0) >= 1
+    && (sent.askPrompts ?? []).at(-1)?.includes("sound konjam sariyilla"), JSON.stringify({ t: askMeaning.timings, err: askMeaning.error }));
 
   // Feature 2: alerts (the new upload earlier should have raised one)
   const [{ n: uploadAlerts }] = await db`select count(*)::int n from alerts where kind = 'upload'`;

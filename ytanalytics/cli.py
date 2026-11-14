@@ -61,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("--minutes", type=float, default=None)
     sub.add_parser("history-left", help="print how many videos still have comment history to download")
     sub.add_parser("transcripts", help="fetch transcripts (captions) of recent uploads (E3)")
+    sub.add_parser("tanglish-train", help="train our own Tanglish-aware mood model on AI-labelled comments (E5)")
     sub.add_parser("forecast-refresh", help="update young videos' 30-day forecasts with their latest views (E4, no scikit-learn)")
     sub.add_parser("train", help="train the prediction engine (needs scikit-learn) and save forecasts + drivers")
     sub.add_parser("pending", help="number of comments waiting for analysis")
@@ -122,7 +123,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "analyze":
             from .sentiment import analyze_pending
 
-            n = analyze_pending(session, settings, limit=args.limit)
+            from .tanglish import load_head
+
+            head = load_head(session)  # our own Tanglish-aware model (E5), when it beat the default one
+            n = analyze_pending(session, settings, classifier=head, limit=args.limit)
             print(f"Analyzed {n} comments.")
         elif args.cmd == "ai":
             from .ai import run_ai
@@ -211,6 +215,10 @@ def main(argv: list[str] | None = None) -> int:
             from .transcripts import fetch_transcripts
 
             print(json.dumps(fetch_transcripts(session, deadline=_t.time() + 240)))
+        elif args.cmd == "tanglish-train":
+            from .tanglish import train_tanglish
+
+            print(json.dumps(train_tanglish(session), default=str))
         elif args.cmd == "forecast-refresh":
             from .model import refresh_forecasts
 
