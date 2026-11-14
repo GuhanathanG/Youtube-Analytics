@@ -61,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("--minutes", type=float, default=None)
     sub.add_parser("history-left", help="print how many videos still have comment history to download")
     sub.add_parser("transcripts", help="fetch transcripts (captions) of recent uploads (E3)")
+    sub.add_parser("forecast-refresh", help="update young videos' 30-day forecasts with their latest views (E4, no scikit-learn)")
     sub.add_parser("train", help="train the prediction engine (needs scikit-learn) and save forecasts + drivers")
     sub.add_parser("pending", help="number of comments waiting for analysis")
     sub.add_parser("status", help="summary of what is stored")
@@ -210,6 +211,10 @@ def main(argv: list[str] | None = None) -> int:
             from .transcripts import fetch_transcripts
 
             print(json.dumps(fetch_transcripts(session, deadline=_t.time() + 240)))
+        elif args.cmd == "forecast-refresh":
+            from .model import refresh_forecasts
+
+            print(json.dumps({"refreshed": refresh_forecasts(session)}))
         elif args.cmd == "train":
             from .model import train
 

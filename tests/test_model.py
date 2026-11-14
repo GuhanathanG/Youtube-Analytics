@@ -74,3 +74,20 @@ def test_linear_export_shape():
     lin = M.fit_linear(train)
     assert len(lin["coef"]) == len(lin["features"]) == len(lin["mean"]) == len(lin["scale"])
     assert lin["coef"][lin["features"].index("has_number")] > 0
+
+
+def test_blend_moves_from_prior_to_real_numbers_and_keeps_prior():
+    prior = math.log1p(10000)
+    early = M.blend(prior, 50, 5, 1 / 24, 8000, M.DEFAULT_CURVE)  # 1 hour old: mostly the model
+    late = M.blend(prior, 9000, 900, 3, 8000, M.DEFAULT_CURVE)     # 3 days old: mostly its real views
+    assert early["confidence"] < 0.1 and late["confidence"] == 0.9
+    assert abs(early["views_30d"] - 10000) / 10000 < 0.5
+    assert late["views_30d"] > 9000 and late["low"] < late["views_30d"] < late["high"]
+    assert early["prior_30d"] == late["prior_30d"] == 10000
+    assert (early["high"] / early["low"]) > (late["high"] / late["low"])  # surer as it ages
+
+
+def test_instagram_needs_fewer_posts(monkeypatch):
+    assert M.min_train("youtube") == 40 and M.min_train("instagram") == 20
+    monkeypatch.setenv("MIN_TRAIN_INSTAGRAM", "12")
+    assert M.min_train("instagram") == 12

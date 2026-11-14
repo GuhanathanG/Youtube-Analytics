@@ -75,6 +75,11 @@ jobs:
         if: steps.alive.outputs.alive != '1'
         run: python -m ytanalytics sync --until ${{ steps.plan.outputs.sync_until }}
 
+      - name: Update young videos' forecasts with their latest views
+        if: steps.alive.outputs.alive != '1'
+        continue-on-error: true
+        run: python -m ytanalytics forecast-refresh
+
       - name: Count comments waiting for analysis
         if: steps.alive.outputs.alive != '1'
         id: pending
