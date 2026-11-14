@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /** Sticky jump chips for long pages; the chip of the section on screen lights up and slides into view. */
 export function SectionNav({ items }: { items: { id: string; label: string }[] }) {
@@ -14,9 +14,15 @@ export function SectionNav({ items }: { items: { id: string; label: string }[] }
     items.forEach((i) => { const el = document.getElementById(i.id); if (el) io.observe(el); });
     return () => io.disconnect();
   }, [items]);
-  useEffect(() => { document.getElementById(`sn-${active}`)?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" }); }, [active]);
+  // Slide the chip row sideways only. (scrollIntoView would also scroll the page itself, which jumps on iPhone.)
+  const row = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = row.current, chip = document.getElementById(`sn-${active}`);
+    if (!nav || !chip) return;
+    nav.scrollTo({ left: chip.offsetLeft - (nav.clientWidth - chip.offsetWidth) / 2, behavior: "smooth" });
+  }, [active]);
   return (
-    <nav aria-label="On this page" className="sticky top-[76px] z-10 -mx-1 mb-4 flex gap-1.5 overflow-x-auto rounded-2xl border border-line bg-[#05070d]/75 p-1.5 backdrop-blur-xl scrollbar-thin">
+    <nav ref={row} aria-label="On this page" className="sticky top-[76px] z-10 -mx-1 mb-4 flex gap-1.5 overflow-x-auto rounded-2xl border border-line bg-[#05070d]/75 p-1.5 backdrop-blur-xl scrollbar-thin">
       {items.map((i) => (
         <a key={i.id} id={`sn-${i.id}`} href={`#${i.id}`}
           className={`shrink-0 rounded-xl px-3 py-1.5 text-[12.5px] transition ${active === i.id ? "bg-accent/15 text-accent shadow-[0_0_14px_-4px_#22d3ee]" : "text-ink-2 hover:text-ink"}`}>

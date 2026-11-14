@@ -2,7 +2,7 @@
 
 import { Radio } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 
 type Tick = { status: string; message?: string; newComments: number; newVideos: number; labelled: number; backfilled?: number; at: string };
 type Toast = { id: number; text: string; tone: "info" | "warn" };
@@ -21,6 +21,29 @@ export function LiveProvider({ children, initial }: { children: ReactNode; initi
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const busyRef = useRef(false);
+  // New data while you're reading further down: offer it instead of reloading under you.
+  const [waiting, setWaiting] = useState<string | null>(null);
+  const [refreshing, startRefresh] = useTransition();
+  const keep = useRef<{ y: number; touched: boolean } | null>(null);
+
+  /** Swap in fresh data without moving the page: remember where you were and put you back if the page jumped. */
+  const refreshInPlace = useCallback(() => {
+    setWaiting(null);
+    keep.current = { y: window.scrollY, touched: false };
+    startRefresh(() => router.refresh());
+  }, [router]);
+  useEffect(() => {
+    const k = keep.current;
+    if (refreshing || !k) return;
+    keep.current = null;
+    requestAnimationFrame(() => { if (!k.touched && Math.abs(window.scrollY - k.y) > 40) window.scrollTo({ top: k.y }); });
+  }, [refreshing]);
+  useEffect(() => {
+    const touch = () => { if (keep.current) keep.current.touched = true; };
+    const opts = { passive: true } as const;
+    window.addEventListener("wheel", touch, opts); window.addEventListener("touchmove", touch, opts); window.addEventListener("keydown", touch);
+    return () => { window.removeEventListener("wheel", touch); window.removeEventListener("touchmove", touch); window.removeEventListener("keydown", touch); };
+  }, []);
 
   useEffect(() => {
     try { if (localStorage.getItem("cp-live") === "off") setEnabledState(false); } catch { /* storage blocked */ }
@@ -48,16 +71,19 @@ export function LiveProvider({ children, initial }: { children: ReactNode; initi
         const parts = [];
         if (tick.newComments) parts.push(`${tick.newComments} new comment${tick.newComments === 1 ? "" : "s"}`);
         if (tick.newVideos) parts.push(`${tick.newVideos} new video${tick.newVideos === 1 ? "" : "s"}`);
-        notify(`✦ ${parts.join(" · ")}${tick.labelled ? ` — ${tick.labelled} read by AI` : ""}`);
-        router.refresh();
+        const text = parts.join(" · ");
+        // At the top of the page: update straight away. Further down (reading, typing): offer a button instead.
+        const typing = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+        if (window.scrollY < 160 && !typing) { notify(`✦ ${text}${tick.labelled ? ` — ${tick.labelled} read by AI` : ""}`); refreshInPlace(); }
+        else setWaiting(text);
       } else if (tick.backfilled) {
-        router.refresh(); // history arrived quietly; no pop-up
+        // Older history arrived quietly: it shows on the next page you open; nothing moves now.
       } else if (tick.status === "quota") {
         notify("YouTube's daily quota is used up — live mode resumes after midnight Pacific.", "warn");
       }
     } catch { /* offline: try again next minute */ }
     finally { busyRef.current = false; setBusy(false); }
-  }, [notify, router]);
+  }, [notify, refreshInPlace]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -71,6 +97,14 @@ export function LiveProvider({ children, initial }: { children: ReactNode; initi
   return (
     <LiveCtx.Provider value={{ enabled, setEnabled, last, busy, checkNow, notify }}>
       {children}
+      {waiting && (
+        <div className="pointer-events-none fixed inset-x-0 top-20 z-50 flex justify-center px-4">
+          <button onClick={refreshInPlace}
+            className="anim-toast-in pointer-events-auto flex items-center gap-2 rounded-full border border-accent/50 bg-[#07141a]/90 px-4 py-2 text-[13px] text-ink shadow-[0_0_24px_-6px_#22d3ee] backdrop-blur-xl">
+            <Radio size={14} className="text-accent" />{waiting} · <span className="text-accent">Update</span>
+          </button>
+        </div>
+      )}
       <div className="pointer-events-none fixed bottom-24 right-4 z-50 flex flex-col items-end gap-2 lg:bottom-6" aria-live="polite">
                   {toasts.map((t) => (
             <div key={t.id}
