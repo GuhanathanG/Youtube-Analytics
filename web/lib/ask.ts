@@ -4,6 +4,7 @@ import { aiSlots, chatJson } from "./ai";
 import { memoryContext } from "./memory";
 import { searchArchive } from "./archive";
 import { within } from "./cache";
+import { nearestComments } from "./embeddings";
 
 /**
  * 1. Ask AI about your comments.
@@ -65,6 +66,8 @@ export async function askComments(question: string, channelId: string | null, hi
       round(100.0 * avg(case when sentiment = 'negative' then 1 else 0 end))::int as neg
     from comments c where ${scope}`;
   const memoryP = within(memoryContext(channelId).catch(() => ""), 4000, "");
+  // Search by meaning (E6): comments closest to the question, whatever words they use. Runs while the AI plans.
+  const nearP = within(nearestComments(question, channelId, 60).catch(() => []), 6000, []);
 
   const plan = await chatJson(PLAN, `${convo ? `Conversation so far:\n${convo}\n\n` : ""}Question: ${question}`, 700, deadline);
   lap("plan");
@@ -72,7 +75,7 @@ export async function askComments(question: string, channelId: string | null, hi
   const terms = ((plan?.data.terms as string[] | undefined) ?? [])
     .map((t) => String(t).trim()).filter((t) => t.length >= 2 && t.length <= 60).slice(0, 12);
 
-  const [matched, fromArchive, popularAll, [stats], memory] = await Promise.all([
+  const [matched, fromArchive, popularAll, [stats], memory, near] = await Promise.all([
     terms.length ? db`
       select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, v.title as video_title
       from comments c join videos v on v.id = c.video_id
@@ -82,12 +85,27 @@ export async function askComments(question: string, channelId: string | null, hi
       order by c.like_count desc, c.published_at desc limit 90` : Promise.resolve([]),
     // Older comments live in the archive databases (far away, may be asleep): never wait more than 3 s for them.
     terms.length ? within(searchArchive(terms, channelId, 40), 3000, []) : Promise.resolve([]),
-    popularP, statsP, memoryP,
+    popularP, statsP, memoryP, nearP,
   ]);
+  // Close-in-meaning comments (only the clearly related ones), fetched with the same columns as the rest.
+  const nearIds = near.filter((n) => n.distance <= Number(process.env.EMBED_MAX_DISTANCE ?? 0.55)).map((n) => n.id);
+  const byMeaning = nearIds.length ? await db`
+    select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, v.title as video_title
+    from comments c join videos v on v.id = c.video_id where c.id in ${db(nearIds)}` : [];
+  const rank = new Map(nearIds.map((id, i) => [id, i]));
+  byMeaning.sort((a, b) => (rank.get(a.id as string) ?? 0) - (rank.get(b.id as string) ?? 0));
+  timings.meaning = byMeaning.length;
+  timings.near = near.length;
   lap("search");
   const popular = popularAll.slice(0, matched.length >= 60 ? 20 : 60);
   const seen = new Set<string>();
-  const pool = [...matched, ...fromArchive, ...popular].filter((r) => !seen.has(r.id as string) && seen.add(r.id as string)).slice(0, 120);
+  // Keyword and meaning matches take turns at the top (both kinds of evidence get in), then archive, then popular.
+  const mixed: Record<string, unknown>[] = [];
+  for (let i = 0; i < Math.max(matched.length, byMeaning.length); i++) {
+    if (matched[i]) mixed.push(matched[i]);
+    if (byMeaning[i]) mixed.push(byMeaning[i]);
+  }
+  const pool = [...mixed, ...fromArchive, ...popular].filter((r) => !seen.has(r.id as string) && seen.add(r.id as string)).slice(0, 120);
   if (!pool.length) return { error: "There are no comments to answer from yet." };
 
   const lines = pool.map((r, i) => {

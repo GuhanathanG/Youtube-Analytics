@@ -224,6 +224,27 @@ export function startFake(port = 4100) {
       res.writeHead(200, { "Content-Type": "video/mp4" }); return res.end(Buffer.from("fake-mp4-bytes"));
     }
     if (p.startsWith("/votes")) return send({ id: u.searchParams.get("videoId"), likes: 50, dislikes: 42, viewCount: 1000 });
+    if (p.includes(":batchEmbedContents")) { // E6: words that mean the same thing land on the same spot
+      let body = "";
+      req.on("data", (c) => (body += c));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        const CONCEPTS = { audio: ["audio", "sound", "mic", "voice", "sariyilla"], editing: ["edit", "editing", "cuts"], price: ["price", "cost", "rate"] };
+        sent.embeds = (sent.embeds ?? 0) + parsed.requests.length;
+        const embeddings = parsed.requests.map((r) => {
+          const dims = r.outputDimensionality ?? 256, text = String(r.content?.parts?.[0]?.text ?? "").toLowerCase();
+          const v = new Array(dims).fill(0.01);
+          Object.values(CONCEPTS).forEach((words, k) => { if (words.some((w) => text.includes(w))) v[k * 7] += 1; });
+          for (const w of text.split(/\W+/).filter(Boolean)) v[(w.length * 31 + w.charCodeAt(0)) % dims] += 0.05;
+          // A little text-specific texture, like real embeddings (identical vectors make vector indexes misbehave).
+          let h = 7; for (const ch of text) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+          for (let i = 0; i < dims; i++) { h = (h * 1103515245 + 12345) >>> 0; v[i] += (h % 1000) / 50000; }
+          return { values: v };
+        });
+        return send({ embeddings });
+      });
+      return;
+    }
     if (p.includes(":generateContent")) {
       let body = "";
       req.on("data", (c) => (body += c));
