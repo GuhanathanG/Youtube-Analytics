@@ -13,7 +13,7 @@ function Bar({ value, total, color }: { value: number; total: number; color: str
   );
 }
 
-type Job = { key: string; label: string; done: number; total: number; left: number; perHour: number; unit: string; note: string; color: string };
+type Job = { key: string; label: string; done: number; total: number; left: number; perHour: number; unit: string; note: string; color: string; doneNote?: string };
 
 /** Finish time (ms) for `left` items at `perHour`, or null when nothing is moving yet. 0 = done. */
 const finishAt = (left: number, perHour: number, now: number): number | null => (left <= 0 ? 0 : perHour > 0 ? now + (left / perHour) * 3600_000 : null);
@@ -29,25 +29,37 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
     <Panel title="Jobs & time left" subtitle="Every job for each channel, how fast it's going (last hour, or the last day for slow jobs) and when it should be done. Jobs run in parallel.">
       <div className="space-y-6">
         {rows.map((p) => {
-          const videosLeft = p.videos_total ? Math.max(0, p.videos_total - p.videos_known) : 0;
-          const commentsLeft = Math.max(0, p.comments_on_youtube - p.comments_stored);
+          // A handful of videos are always "missing" (private, removed, members-only): not a job left to do.
+          const videosGap = p.videos_total ? Math.max(0, p.videos_total - p.videos_known) : 0;
+          const videosLeft = videosGap > Math.max(5, (p.videos_total ?? 0) * 0.01) ? videosGap : 0;
+          // History is done when every video's comments are downloaded. YouTube's count also includes replies and
+          // hidden or deleted comments the API never returns, so stored < YouTube's number is normal.
+          const historyDone = (p.history_left ?? 1) === 0;
+          const commentsLeft = historyDone ? 0 : Math.max(0, p.comments_on_youtube - p.comments_stored);
+          // Reading jobs work on the main database; older comments moved to the archive are kept as they were.
+          const inMain = Math.max(0, p.comments_stored - (p.archived ?? 0));
+          const sWait = p.sentiment_waiting ?? Math.max(0, p.comments_stored - p.sentiment_done);
+          const aWait = p.ai_waiting ?? Math.max(0, p.comments_stored - p.ai_read);
+          const archivedNote = p.archived ? ` · ${fmt(p.archived)} older ones kept in the archive` : "";
           const jobs: Job[] = [
             { key: "videos", label: "Find every video", done: p.videos_known, total: Math.max(p.videos_total ?? 0, p.videos_known), left: videosLeft,
               perHour: videosLeft ? 3000 / Math.max(1, rows.filter((r) => r.videos_total && r.videos_total > r.videos_known).length) : 0, unit: "videos",
-              note: "about 100 videos every 2 minutes (estimate)", color: "#8b7cf6" },
-            { key: "comments", label: "Download comment history", done: p.comments_stored, total: Math.max(p.comments_on_youtube, p.comments_stored), left: commentsLeft,
-              perHour: p.saved_last_hour, unit: "comments", note: `${fmt(p.saved_last_hour)}/hour`, color: "#22d3ee" },
-            { key: "sentiment", label: "Sentiment & language (local model)", done: p.sentiment_done, total: Math.max(p.comments_stored, p.sentiment_done),
-              left: Math.max(0, p.comments_stored - p.sentiment_done) + commentsLeft, perHour: p.sentiment_last_hour, unit: "comments",
-              note: `${fmt(p.sentiment_last_hour)}/hour · runs every 30 min`, color: "#0ca30c" },
-            { key: "ai", label: "AI reads every comment", done: p.ai_read, total: Math.max(p.comments_stored, p.ai_read),
-              left: Math.max(0, p.comments_stored - p.ai_read) + commentsLeft, perHour: p.ai_last_hour, unit: "comments",
-              note: `${fmt(p.ai_last_hour)}/hour`, color: "#3987e5" },
+              note: "about 100 videos every 2 minutes (estimate)", color: "#8b7cf6",
+              doneNote: videosGap ? `${fmt(videosGap)} private or removed` : undefined },
+            { key: "comments", label: "Download comment history", done: p.comments_stored, total: historyDone ? p.comments_stored : Math.max(p.comments_on_youtube, p.comments_stored),
+              left: commentsLeft, perHour: p.saved_last_hour, unit: "comments", note: `${fmt(p.saved_last_hour)}/hour`, color: "#22d3ee",
+              doneNote: historyDone && p.comments_on_youtube > p.comments_stored ? "every video downloaded (YouTube's total also counts hidden replies)" : undefined },
+            { key: "sentiment", label: "Sentiment & language (local model)", done: Math.max(0, inMain - sWait), total: inMain,
+              left: sWait + commentsLeft, perHour: p.sentiment_last_hour, unit: "comments",
+              note: `${fmt(p.sentiment_last_hour)}/hour · runs every 30 min`, color: "#0ca30c", doneNote: archivedNote ? `all caught up${archivedNote}` : undefined },
+            { key: "ai", label: "AI reads every comment", done: Math.max(0, inMain - aWait), total: inMain,
+              left: aWait + commentsLeft, perHour: p.ai_last_hour, unit: "comments",
+              note: `${fmt(p.ai_last_hour)}/hour`, color: "#3987e5", doneNote: archivedNote ? `all caught up${archivedNote}` : undefined },
           ];
           if (p.videos_to_watch != null) jobs.push({ key: "watch", label: "AI watches new videos (30 days)", done: 0, total: 0, left: p.videos_to_watch,
             perHour: (p.watch_per_hour ?? 0) / share("videos_to_watch"), unit: "videos", note: "about 1 every 2 hours", color: "#fab219" });
           if (p.thumbs_to_check != null) jobs.push({ key: "thumbs", label: "AI checks thumbnails", done: 0, total: 0, left: p.thumbs_to_check,
-            perHour: (p.thumbs_per_hour ?? 0) / share("thumbs_to_check"), unit: "thumbnails", note: "25 every 2 hours", color: "#e66767" });
+            perHour: (p.thumbs_per_hour ?? 0) / share("thumbs_to_check"), unit: "thumbnails", note: "up to 75 every 2 hours", color: "#e66767" });
           if (p.months_to_remember != null) jobs.push({ key: "memory", label: "Creator Memory (months)", done: 0, total: 0, left: p.months_to_remember,
             perHour: (p.memory_per_hour ?? 0) / share("months_to_remember"), unit: "months", note: "about 6 an hour across channels", color: "#8b7cf6" });
           const finishes = jobs.map((j) => finishAt(j.left, j.perHour, now));
@@ -73,7 +85,7 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
                     </div>
                     <Bar value={j.total ? j.done : j.left ? 0 : 1} total={j.total || 1} color={j.color} />
                     <div className="mt-1 flex justify-between gap-2 text-[12px] text-ink-3">
-                      <span>{j.left > 0 ? j.note : "done"}</span>
+                      <span>{j.left > 0 ? j.note : j.doneNote ? `done · ${j.doneNote}` : "done"}</span>
                       {j.left > 0 && <Countdown at={finishes[i]} className="tabular text-ink-2" />}
                     </div>
                   </li>

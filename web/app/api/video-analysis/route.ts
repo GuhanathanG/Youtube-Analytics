@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   // Several videos per call while time allows (each takes ~10-60 s); stop starting new ones after ~2.5 minutes.
   const video = await analyseDueVideos(Number(process.env.VIDEO_AI_PER_CALL ?? 8), started + 150_000);
   // Thumbnails are small and quick: use the rest of the time (leave a minute of margin).
-  const thumbnails = await analyseDueThumbnails(25, started + (maxDuration - 60) * 1000).catch(() => 0);
+  const thumbnails = await analyseDueThumbnails(Number(process.env.THUMBS_PER_CALL ?? 75), started + (maxDuration - 60) * 1000).catch(() => 0);
   return NextResponse.json({ ...video, thumbnails });
 }
 
