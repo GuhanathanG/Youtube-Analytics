@@ -1,3 +1,4 @@
 # Prediction engine (python -m ytanalytics train), installed only by .github/workflows/model.yml and tests.
 -r requirements.txt
 scikit-learn>=1.5
+ruptures>=1.1

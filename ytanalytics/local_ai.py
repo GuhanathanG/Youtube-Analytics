@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import re
 import time
 from collections import Counter
@@ -154,6 +155,57 @@ def kmeans(x, k: int, iters: int = 30, seed: int = 7):
     return labels
 
 
+def separation(x, labels) -> float:
+    """How cleanly the groups separate (a quick, centroid-based silhouette, -1..1; higher = cleaner)."""
+    import numpy as np
+
+    labels = np.asarray(labels)
+    groups = sorted(set(labels.tolist()))
+    if len(groups) < 2:
+        return -1.0
+    cents = np.array([x[labels == g].mean(0) for g in groups])
+    cents = cents / np.clip(np.linalg.norm(cents, axis=1, keepdims=True), 1e-9, None)
+    d = 1 - x @ cents.T  # cosine distance of every point to every centre
+    own = d[np.arange(len(x)), [groups.index(g) for g in labels.tolist()]]
+    d[np.arange(len(x)), [groups.index(g) for g in labels.tolist()]] = np.inf
+    other = d.min(1)
+    s = (other - own) / np.clip(np.maximum(own, other), 1e-9, None)
+    return float(np.mean(s))
+
+
+def choose_topics(x, n: int, seed: int = 7):
+    """Topic count chosen from the data (like BERTopic, without its heavy dependencies): try a few k around
+    sqrt(n/8), keep the one whose groups separate most cleanly, then merge groups that say the same thing."""
+    import numpy as np
+
+    base = max(4, min(10, round(math.sqrt(n / 8))))
+    best, best_labels = -2.0, None
+    for k in sorted({max(3, base - 2), max(3, base - 1), base, base + 1, min(14, base + 2), min(14, base + 3)}):
+        if k >= n:
+            continue
+        labels = kmeans(x, k, seed=seed)
+        score = separation(x, labels)
+        if score > best:
+            best, best_labels = score, labels
+    labels = np.asarray(best_labels)
+    # Merge near-duplicate groups (centres pointing the same way).
+    merged = True
+    while merged:
+        merged = False
+        groups = sorted(set(labels.tolist()))
+        if len(groups) < 3:
+            break
+        cents = np.array([x[labels == g].mean(0) for g in groups])
+        cents = cents / np.clip(np.linalg.norm(cents, axis=1, keepdims=True), 1e-9, None)
+        sim = cents @ cents.T
+        np.fill_diagonal(sim, -1)
+        i, j = np.unravel_index(np.argmax(sim), sim.shape)
+        if sim[i, j] >= float(os.environ.get("TOPIC_MERGE_SIMILARITY", "0.93")):
+            labels[labels == groups[j]] = groups[i]
+            merged = True
+    return labels.tolist()
+
+
 def keywords(docs_by_cluster: dict[int, list[str]], top: int = 5) -> dict[int, list[str]]:
     """Class-based TF-IDF: words common in one group but not across all groups."""
     tf = {c: Counter(w for d in docs for w in _TOKEN.findall(d.lower()) if w not in STOP)
@@ -206,8 +258,7 @@ def build_topics(session: Session, embed=None, router=None, *, min_comments: int
                 return updated
         texts = [(r.translation or r.text or "")[:300] for r in rows]
         x = embed(texts)
-        k = max(4, min(10, round(math.sqrt(len(rows) / 8))))
-        labels = kmeans(x, k)
+        labels = choose_topics(x, len(rows))
         groups: dict[int, list[int]] = {}
         for i, lab in enumerate(labels):
             groups.setdefault(int(lab), []).append(i)

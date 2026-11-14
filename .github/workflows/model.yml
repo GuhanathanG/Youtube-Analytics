@@ -28,6 +28,12 @@ jobs:
           cache-dependency-path: requirements*.txt
       - run: pip install -r requirements-model.txt
       - run: python -m ytanalytics train
+      - name: Detect lasting shifts and spikes in views and mood (Telegram + timeline pins)
+        continue-on-error: true
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m ytanalytics changes
       # E5: our own Tanglish-aware mood model (sentence model + small trained head). Weekly is plenty; the
       # analyse step switches to it only when it agrees with the cloud AI at least as often as the default model.
       - name: Train the Tanglish mood model (Sundays, or when run by hand)

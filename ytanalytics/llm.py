@@ -69,9 +69,14 @@ PROVIDERS = {
     "sambanova": ("https://api.sambanova.ai/v1/", "SAMBANOVA", "Meta-Llama-3.3-70B-Instruct,Meta-Llama-3.1-8B-Instruct", 400, 3.0),
     # NVIDIA NIM (free with the NVIDIA Developer Program, ~40 requests/minute): needs NVIDIA_API_KEY.
     "nvidia": ("https://integrate.api.nvidia.com/v1/", "NVIDIA", "meta/llama-3.3-70b-instruct,openai/gpt-oss-20b", 500, 2.0),
+    # E8: a small open model served by llama.cpp (OpenAI-compatible) on a machine you run, opt-in with
+    # LOCAL_LLM_API_KEY (any value) and LOCAL_LLM_BASE_URL. Measured on a 4-core CPU: Qwen2.5-1.5B labels ~5
+    # comments a minute with weak Tanglish quality, so it is NOT run on GitHub Actions; the worker's local mood,
+    # emotion and question models already cover the "cloud AI used up" case. Worth it on a GPU or a fast box.
+    "local": ("http://127.0.0.1:8080/v1/", "LOCAL_LLM", "local", 100000, 0.0),
 }
 
-DEFAULT_ORDER = "gemini,mistral,groq,cloudflare,github,sambanova,nvidia,openrouter"
+DEFAULT_ORDER = "gemini,mistral,groq,cloudflare,github,sambanova,nvidia,openrouter,local"
 
 
 def split_keys(raw: str) -> list[str]:
@@ -120,7 +125,7 @@ def reasoning_for(provider: str, model: str) -> str:
     comments doesn't need it. Gemini 2.5 can switch it off; Gemini 3 only down to minimal."""
     if provider == "gemini":
         return "none" if model.startswith("gemini-2.5") else "minimal"
-    if provider.split("#")[0] in ("openrouter", "mistral", "cloudflare", "github", "sambanova", "nvidia"):
+    if provider.split("#")[0] in ("openrouter", "mistral", "cloudflare", "github", "sambanova", "nvidia", "local"):
         return ""  # not part of these APIs; don't send the parameter
     return "low"
 
@@ -148,6 +153,7 @@ def slots_from_env(env: dict | None = None, discover: bool = False) -> list[Mode
         if name not in PROVIDERS:
             continue
         base_url, prefix, models, daily, gap = PROVIDERS[name]
+        base_url = env.get(f"{prefix}_BASE_URL", base_url)
         keys = split_keys(env.get(f"{prefix}_API_KEY", ""))
         if not keys:
             continue

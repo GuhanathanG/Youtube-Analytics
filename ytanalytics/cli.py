@@ -61,6 +61,9 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("--minutes", type=float, default=None)
     sub.add_parser("history-left", help="print how many videos still have comment history to download")
     sub.add_parser("transcripts", help="fetch transcripts (captions) of recent uploads (E3)")
+    sub.add_parser("changes", help="detect lasting shifts and spikes in each channel's views and mood (E9)")
+    sub.add_parser("ai-waiting", help="number of comments the AI hasn't read yet")
+    sub.add_parser("spam-sweep", help="mark copy-paste spam (same text from 3+ accounts) (E7)")
     sub.add_parser("tanglish-train", help="train our own Tanglish-aware mood model on AI-labelled comments (E5)")
     sub.add_parser("forecast-refresh", help="update young videos' 30-day forecasts with their latest views (E4, no scikit-learn)")
     sub.add_parser("train", help="train the prediction engine (needs scikit-learn) and save forecasts + drivers")
@@ -215,6 +218,16 @@ def main(argv: list[str] | None = None) -> int:
             from .transcripts import fetch_transcripts
 
             print(json.dumps(fetch_transcripts(session, deadline=_t.time() + 240)))
+        elif args.cmd == "changes":
+            from .changes import detect_changes
+
+            print(json.dumps({"new_events": [e["note"] for e in detect_changes(session)]}))
+        elif args.cmd == "ai-waiting":
+            print(int(session.scalar(select(func.count()).select_from(Comment).where(Comment.ai_at.is_(None))) or 0))
+        elif args.cmd == "spam-sweep":
+            from .spam import sweep_copy_paste
+
+            print(json.dumps({"marked": sweep_copy_paste(session)}))
         elif args.cmd == "tanglish-train":
             from .tanglish import train_tanglish
 

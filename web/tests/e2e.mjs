@@ -46,7 +46,7 @@ await db`insert into channel_requests (query, status, created_at) values ('@live
 
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
-    GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", EMBED_EVERY_TURN: "1", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
+    GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", EMBED_EVERY_TURN: "1", CHANNEL_VISUAL_SECONDS: "0", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
@@ -648,6 +648,14 @@ try {
   const refreshRun = spawnSync("python", ["-m", "ytanalytics", "forecast-refresh"], { cwd: "..", encoding: "utf8", env: { ...process.env, DATABASE_URL: DB } });
   const refreshed = Number((/"refreshed": (\d+)/.exec(refreshRun.stdout ?? "") ?? [])[1] ?? 0);
   check("hourly forecast refresh re-blends young videos without scikit-learn", refreshed > 0, (refreshRun.stdout + refreshRun.stderr).slice(-300));
+  // E9: change detection runs on the real tables; a found shift shows as a pin on the channel timeline.
+  const detect = spawnSync("python", ["-m", "ytanalytics", "changes"], { cwd: "..", encoding: "utf8", env: { ...process.env, DATABASE_URL: DB } });
+  check("change detection (shifts and spikes) runs nightly without errors", detect.status === 0 && /"new_events"/.test(detect.stdout ?? ""), (detect.stdout + detect.stderr).slice(-300));
+  await db`insert into channel_events (channel_id, day, metric, kind, before, after, pct, note, created_at)
+    values (${ch.id}, (now() at time zone 'utc')::date - 3, 'views', 'shift', 1000, 2100, 110, 'daily views stepped up 110% (test)', now())
+    on conflict do nothing`;
+  const chPin = await (await fetch(`${BASE}/channels/${ch.id}`, { headers: { cookie } })).text();
+  check("timeline shows the shift as a pin", chPin.includes("shift or spike") && chPin.includes("daily views stepped up 110% (test)"));
   // Training kept this script busy for a while, so the server may have closed the idle connection: retry once.
   const getF = (path) => fetch(`${BASE}${path}`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } })
     .catch(() => fetch(`${BASE}${path}`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}`, connection: "close" } }));
