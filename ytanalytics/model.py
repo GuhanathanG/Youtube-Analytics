@@ -32,7 +32,15 @@ from datetime import datetime, timedelta, timezone
 
 log = logging.getLogger(__name__)
 
-MIN_TRAIN = 40          # fewer usable videos than this: no model yet
+MIN_TRAIN = 40          # fewer usable videos than this: no model yet (YouTube)
+# Instagram accounts are small (tens of posts, not thousands), so their model starts earlier; MIN_TRAIN_<PLATFORM> overrides.
+MIN_TRAIN_BY_PLATFORM = {"youtube": 40, "instagram": 20}
+
+
+def min_train(platform: str) -> int:
+    import os
+
+    return int(os.environ.get(f"MIN_TRAIN_{platform.upper()}", MIN_TRAIN_BY_PLATFORM.get(platform, MIN_TRAIN)))
 BASELINE_WINDOW = 15    # "channel normal" = median views of the previous N uploads
 MATURE_DAYS = 7         # only videos at least this old teach the model
 TZ_OFFSET_HOURS = 5.5   # publishing hour is read in India time (MODEL_TZ_OFFSET to change)
@@ -191,14 +199,14 @@ def _fit(X, y):
     return m
 
 
-def backtest(train: list[Example]) -> dict:
+def backtest(train: list[Example], minimum: int = MIN_TRAIN) -> dict:
     """Learn on the older 80%, predict the newest 20%."""
     import numpy as np
 
     ordered = sorted(train, key=lambda e: e.published_at)
     cut = int(len(ordered) * 0.8)
     old, new = ordered[:cut], ordered[cut:]
-    if len(old) < MIN_TRAIN or len(new) < 8:
+    if len(old) < minimum or len(new) < 5:
         return {"tested": 0}
     m = _fit(matrix(old), np.array([e.target for e in old]))
     pred = m.predict(matrix(new))
@@ -352,25 +360,60 @@ def fit_linear(train: list[Example]) -> dict:
             "coef": r.coef_.round(5).tolist(), "intercept": round(float(r.intercept_), 5)}
 
 
-def forecast(model, e: Example, curve: list[tuple[float, float]]) -> dict:
-    """30-day views for a young video: model expectation blended with its real numbers so far."""
-    import numpy as np
-
-    prior_log = float(model.predict(matrix([e], age_days=30))[0]) + math.log1p(e.baseline)
-    hours = max(0.25, e.age_days * 24)
+def blend(prior_log: float, views: float | None, likes: float | None, age_days: float, baseline: float,
+          curve: list[tuple[float, float]]) -> dict:
+    """The engine's expectation (prior) blended with the video's real numbers so far: real numbers count more as
+    the video ages. Shared by the nightly training and the hourly refresh (which has no model, only the saved prior)."""
+    hours = max(0.25, age_days * 24)
     share = max(0.03, curve_share(curve, min(hours, 720)))
-    if e.views is not None and e.views > 0:
-        momentum_log = math.log1p(e.views / share)
-        w = min(0.9, hours / 72)  # real numbers count more as the video ages
+    if views is not None and views > 0:
+        momentum_log = math.log1p(views / share)
+        w = min(0.9, hours / 72)
         est_log = (1 - w) * prior_log + w * momentum_log
     else:
         est_log, w = prior_log, 0.0
     spread = 0.9 * (1 - w) + 0.25  # wider when it's mostly the model talking
-    est = float(np.expm1(est_log))
-    like_rate = (e.likes / e.views) if e.views and e.likes is not None and e.views > 50 else None
-    return {"views_30d": round(est), "low": round(float(np.expm1(est_log - spread))), "high": round(float(np.expm1(est_log + spread))),
-            "vs_normal": est / max(1.0, e.baseline), "baseline": round(e.baseline), "confidence": round(w, 2),
-            "likes_30d": None if like_rate is None else round(est * like_rate)}
+    est = math.expm1(est_log)
+    like_rate = (likes / views) if views and likes is not None and views > 50 else None
+    return {"views_30d": round(est), "low": round(math.expm1(est_log - spread)), "high": round(math.expm1(est_log + spread)),
+            "vs_normal": est / max(1.0, baseline), "baseline": round(baseline), "confidence": round(w, 2),
+            "likes_30d": None if like_rate is None else round(est * like_rate), "prior_30d": round(math.expm1(prior_log))}
+
+
+def forecast(model, e: Example, curve: list[tuple[float, float]]) -> dict:
+    """30-day views for a young video: model expectation blended with its real numbers so far."""
+    prior_log = float(model.predict(matrix([e], age_days=30))[0]) + math.log1p(e.baseline)
+    return blend(prior_log, e.views, e.likes, e.age_days, e.baseline, curve)
+
+
+def refresh_forecasts(session, now: datetime | None = None) -> int:
+    """Hourly (in the sync job, no scikit-learn needed): re-blend each young video's saved prior with its latest
+    views, so forecasts follow a new upload through its first days instead of waiting for the nightly training."""
+    from sqlalchemy import text
+
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    try:
+        rows = session.execute(text("""
+            select f.video_id, f.channel_id, f.prior_30d, f.baseline, v.view_count, v.like_count, v.published_at, m.curve
+            from video_forecast f join videos v on v.id = f.video_id left join engine_model m on m.id = f.channel_id
+            where f.prior_30d is not null and v.published_at >= :since"""), {"since": now - timedelta(days=30)}).all()
+    except Exception:  # tables appear with the first training
+        session.rollback()
+        return 0
+    n = 0
+    for r in rows:
+        curve = [tuple(p) for p in json.loads(r.curve)] if r.curve else DEFAULT_CURVE
+        age = max(0.01, (now - r.published_at).total_seconds() / 86400)
+        f = blend(math.log1p(r.prior_30d), None if r.view_count is None else float(r.view_count),
+                  None if r.like_count is None else float(r.like_count), age, float(r.baseline or 1), curve)
+        session.execute(text("""update video_forecast set updated_at = :t, views_30d = :views_30d, low = :low, high = :high,
+            vs_normal = :vs_normal, confidence = :confidence, likes_30d = :likes_30d,
+            first_views_30d = coalesce(first_views_30d, case when :age_h >= 20 then :views_30d end),
+            first_at = coalesce(first_at, case when :age_h >= 20 then :t end)
+            where video_id = :v"""), {**f, "t": now.replace(microsecond=0), "age_h": age * 24, "v": r.video_id})
+        n += 1
+    session.commit()
+    return n
 
 
 def channel_curve(snaps: list[dict]) -> list[tuple[float, float]]:
@@ -411,7 +454,7 @@ def _ensure_tables(session) -> None:
         low double precision, high double precision, vs_normal double precision, baseline double precision,
         confidence double precision, likes_30d double precision)"""))
     # The first forecast made once a video is a day old is kept, to grade the engine when the video turns 30 days.
-    for col in ("first_views_30d double precision", "first_at timestamp", "actual_30d double precision"):
+    for col in ("first_views_30d double precision", "first_at timestamp", "actual_30d double precision", "prior_30d double precision"):
         session.execute(text(f"alter table video_forecast add column if not exists {col}"))
     for t in ("engine_model", "video_forecast"):
         session.execute(text(f"alter table {t} enable row level security"))
@@ -443,10 +486,11 @@ def _train_platform(session, platform: str, now: datetime) -> dict:
     examples = build_examples(rows, now)
     train_set = [e for e in examples if e.age_days >= MATURE_DAYS and e.views is not None]
     channels = sorted({e.channel_id for e in train_set})
-    if len(train_set) < MIN_TRAIN:
-        log.info("Prediction engine (%s): %d usable videos, need %d", platform, len(train_set), MIN_TRAIN)
-        return {"trained": False, "videos": len(train_set)}
-    metrics = backtest(train_set)
+    need = min_train(platform)
+    if len(train_set) < need:
+        log.info("Prediction engine (%s): %d usable videos, need %d", platform, len(train_set), need)
+        return {"trained": False, "videos": len(train_set), "need": need}
+    metrics = backtest(train_set, need)
     graded = session.execute(text("""select f.first_views_30d f, f.actual_30d a from video_forecast f
         join channels c on c.id = f.channel_id
         where f.first_views_30d > 0 and f.actual_30d > 0 and coalesce(c.platform, 'youtube') = :p"""), {"p": platform}).all()
@@ -476,11 +520,11 @@ def _train_platform(session, platform: str, now: datetime) -> dict:
             if e.age_days < 30:
                 f = forecast(model, e, curve)
                 session.execute(text("""insert into video_forecast (video_id, channel_id, updated_at, views_30d, low, high, vs_normal,
-                    baseline, confidence, likes_30d, first_views_30d, first_at) values (:v, :c, :t, :views_30d, :low, :high, :vs_normal,
-                    :baseline, :confidence, :likes_30d, case when :age_h >= 20 then :views_30d end, case when :age_h >= 20 then :t end)
+                    baseline, confidence, likes_30d, prior_30d, first_views_30d, first_at) values (:v, :c, :t, :views_30d, :low, :high, :vs_normal,
+                    :baseline, :confidence, :likes_30d, :prior_30d, case when :age_h >= 20 then :views_30d end, case when :age_h >= 20 then :t end)
                     on conflict (video_id) do update set updated_at = excluded.updated_at, views_30d = excluded.views_30d, low = excluded.low,
                     high = excluded.high, vs_normal = excluded.vs_normal, baseline = excluded.baseline, confidence = excluded.confidence,
-                    likes_30d = excluded.likes_30d,
+                    likes_30d = excluded.likes_30d, prior_30d = excluded.prior_30d,
                     first_views_30d = coalesce(video_forecast.first_views_30d, case when :age_h >= 20 then excluded.views_30d end),
                     first_at = coalesce(video_forecast.first_at, case when :age_h >= 20 then excluded.updated_at end)"""),
                     {"v": e.video_id, "c": ch, "t": stamp, "age_h": e.age_days * 24, **f})

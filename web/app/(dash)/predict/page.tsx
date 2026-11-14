@@ -31,7 +31,7 @@ export default async function PredictPage({ searchParams }: { searchParams: Prom
   );
   if (!me) return <>{header}<Empty>Add one of your channels on the Manage page first.</Empty></>;
   const [engine, forecasts] = await Promise.all([within(engineFor(me.id), 8000, null), within(forecastsFor(me.id), 8000, [])]);
-  if (!engine && me.id.startsWith("ig_")) return (<>{header}<Empty>Instagram predictions start once this account has about 40 posts that are
+  if (!engine && me.id.startsWith("ig_")) return (<>{header}<Empty>Instagram predictions start once the tracked accounts have about 20 posts that are
     at least a week old to learn from (the engine checks every night). New posts are collected automatically.</Empty></>);
   if (!engine) return (<>{header}<Empty>The engine trains every night (02:11 India time). To train it now: GitHub → Actions → “Prediction engine” → Run workflow.</Empty></>);
 

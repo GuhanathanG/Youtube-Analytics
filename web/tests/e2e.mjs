@@ -634,6 +634,9 @@ try {
   const trainRun = spawnSync("python", ["-m", "ytanalytics", "train"], { cwd: "..", encoding: "utf8", env: { ...process.env, DATABASE_URL: DB } });
   const trained = /"trained": true/.test(trainRun.stdout ?? "");
   check("prediction engine trains on the channel history", trained, (trainRun.stdout + trainRun.stderr).slice(-400));
+  const refreshRun = spawnSync("python", ["-m", "ytanalytics", "forecast-refresh"], { cwd: "..", encoding: "utf8", env: { ...process.env, DATABASE_URL: DB } });
+  const refreshed = Number((/"refreshed": (\d+)/.exec(refreshRun.stdout ?? "") ?? [])[1] ?? 0);
+  check("hourly forecast refresh re-blends young videos without scikit-learn", refreshed > 0, (refreshRun.stdout + refreshRun.stderr).slice(-300));
   // Training kept this script busy for a while, so the server may have closed the idle connection: retry once.
   const getF = (path) => fetch(`${BASE}${path}`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}` } })
     .catch(() => fetch(`${BASE}${path}`, { headers: { cookie: `${cookie}; cp_focus=${ch.id}`, connection: "close" } }));
