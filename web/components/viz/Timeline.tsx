@@ -27,8 +27,9 @@ export function Timeline({ weeks, pins }: { weeks: Week[]; pins: Pin[] }) {
         <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: "#3987e5" }} />comments that week</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#fab219" }} />breakout (3×+)</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#8b7cf6" }} />title change</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rotate-45 rounded-[2px]" style={{ background: "#22d3ee" }} />shift or spike</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="block h-[260px] w-full overflow-visible" role="img" aria-label="Views and comments by week, with breakouts and title changes">
+      <svg viewBox={`0 0 ${W} ${H}`} className="block h-[260px] w-full overflow-visible" role="img" aria-label="Views and comments by week, with breakouts, title changes and shifts">
         <defs>
           <linearGradient id="tl-bar" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#22d3ee" /><stop offset="100%" stopColor="#8b7cf6" stopOpacity=".25" /></linearGradient>
         </defs>
@@ -44,18 +45,19 @@ export function Timeline({ weeks, pins }: { weeks: Week[]; pins: Pin[] }) {
         ))}
         <path d={line} fill="none" stroke="#3987e5" strokeWidth="2.5" pathLength={1} className="viz-draw" style={{ filter: "drop-shadow(0 0 4px #3987e5)" }} />
         {[...byWeek.entries()].map(([i, ps]) => ps.slice(0, 3).map((p, k) => {
-          const c = p.kind === "breakout" ? "#fab219" : "#8b7cf6";
+          const c = p.kind === "breakout" ? "#fab219" : p.kind === "shift" ? "#22d3ee" : "#8b7cf6";
           const cy = top - 22 - k * 16;
-          return (
-            <Link key={`${p.id}-${p.kind}-${k}`} href={`/videos/${p.id}`}>
-              <g className="pin-drop" style={{ animationDelay: `${600 + i * 30}ms` }}>
-                <line x1={x(i)} x2={x(i)} y1={cy} y2={yV(weeks[i].views)} stroke={c} strokeOpacity=".35" strokeDasharray="2 3" />
-                <circle cx={x(i)} cy={cy} r="7" fill={c} style={{ filter: `drop-shadow(0 0 6px ${c})` }} />
-                {p.kind === "breakout" && <text x={x(i)} y={cy + 3.5} textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#05070d">{Math.round(p.score ?? 0)}×</text>}
-                <title>{p.kind === "breakout" ? `${p.label} · ${(p.score ?? 0).toFixed(1)}× normal` : p.label}</title>
-              </g>
-            </Link>
+          const pin = (
+            <g className="pin-drop" style={{ animationDelay: `${600 + i * 30}ms` }}>
+              <line x1={x(i)} x2={x(i)} y1={cy} y2={yV(weeks[i].views)} stroke={c} strokeOpacity=".35" strokeDasharray="2 3" />
+              {p.kind === "shift"
+                ? <rect x={x(i) - 6} y={cy - 6} width="12" height="12" rx="2" fill={c} transform={`rotate(45 ${x(i)} ${cy})`} style={{ filter: `drop-shadow(0 0 6px ${c})` }} />
+                : <circle cx={x(i)} cy={cy} r="7" fill={c} style={{ filter: `drop-shadow(0 0 6px ${c})` }} />}
+              {p.kind === "breakout" && <text x={x(i)} y={cy + 3.5} textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#05070d">{Math.round(p.score ?? 0)}×</text>}
+              <title>{p.kind === "breakout" ? `${p.label} · ${(p.score ?? 0).toFixed(1)}× normal` : p.label}</title>
+            </g>
           );
+          return p.id ? <Link key={`${p.id}-${p.kind}-${k}`} href={`/videos/${p.id}`}>{pin}</Link> : <g key={`ev-${i}-${k}`}>{pin}</g>;
         }))}
       </svg>
     </div>

@@ -9,12 +9,12 @@ import { outlierData } from "./outliers";
  * Saved for 30 minutes.
  */
 export type Week = { week: string; views: number; uploads: number; comments: number };
-export type Pin = { week: string; kind: "breakout" | "title"; id: string; label: string; score?: number };
+export type Pin = { week: string; kind: "breakout" | "title" | "shift"; id: string | null; label: string; score?: number };
 export type WallItem = { id: string; title: string; thumb: string | null; views: number; score: number | null; published_at: string };
 export type ChannelVisual = { weeks: Week[]; pins: Pin[]; wall: WallItem[] };
 
 export function channelVisual(channelId: string): Promise<ChannelVisual> {
-  return stored(`chvis:${channelId}`, 30 * 60_000, () => compute(channelId));
+  return stored(`chvis:${channelId}`, Number(process.env.CHANNEL_VISUAL_SECONDS ?? 1800) * 1000, () => compute(channelId));
 }
 
 const weekOf = (iso: string) => {
@@ -35,6 +35,9 @@ async function compute(channelId: string): Promise<ChannelVisual> {
       .catch(() => [] as never[]), // the table appears the first time the Growth page is opened
     outlierData(),
   ]);
+  // E9: lasting shifts and spikes the nightly job found in views or mood.
+  const events = await db`select day::text as day, note from channel_events where channel_id = ${channelId}
+    and day >= (now() at time zone 'utc')::date - 182 order by day`.catch(() => [] as never[]);
   // 26 weeks, oldest first, Monday-based (same as Postgres date_trunc('week')).
   const now = new Date();
   const weeks: Week[] = Array.from({ length: 26 }, (_, i) => {
@@ -54,6 +57,7 @@ async function compute(channelId: string): Promise<ChannelVisual> {
   for (const c of changes as { video_id: string; new_value: string; at: string }[]) {
     pins.push({ week: weekOf(c.at), kind: "title", id: c.video_id, label: `Title changed: ${c.new_value}` });
   }
+  for (const e of events as { day: string; note: string }[]) pins.push({ week: weekOf(e.day), kind: "shift", id: null, label: e.note });
   const wall: WallItem[] = vids.slice(0, 18).map((v) => ({ id: v.id as string, title: v.title as string, thumb: (v.thumbnail_url as string) ?? null,
     views: Number(v.views), score: score.get(v.id as string) ?? null, published_at: v.published_at as string }));
   return { weeks, pins: pins.filter((p) => at.has(p.week)), wall };

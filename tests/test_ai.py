@@ -371,3 +371,11 @@ def test_several_keys_and_new_free_providers():
     assert [(s.provider, s.api_key) for s in slots] == [("mistral", "k1"), ("mistral#2", "k2"), ("github", "ghs_x"), ("nvidia", "nv")]
     assert len({s.key for s in slots}) == len(slots)  # each key has its own daily count
     assert slots[2].base_url == "https://models.github.ai/inference/" and not slots[2].extra  # no reasoning parameter
+
+
+def test_local_model_is_opt_in_and_last():
+    assert not any(s.key.startswith("local/") for s in slots_from_env({"GEMINI_API_KEY": "g"}))
+    slots = slots_from_env({"GEMINI_API_KEY": "g", "GEMINI_MODELS": "a", "LOCAL_LLM_API_KEY": "x",
+                            "LOCAL_LLM_BASE_URL": "http://box:8080/v1/"})
+    assert slots[-1].key == "local/local" and slots[-1].base_url == "http://box:8080/v1/"
+    assert "reasoning_effort" not in slots[-1].extra

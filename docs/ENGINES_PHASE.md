@@ -72,3 +72,17 @@ Budget: stay under ~6,000 of 10,000 units a day.
 Infra notes:
 - E5, E8 and BERTopic run on GitHub Actions CPU runners, which are free on public repos and limited on private ones (the budget.py minutes planner already handles this).
 - Model files are cached between runs with actions/cache.
+
+## 4. Status (built 14 Nov 2026)
+
+| Step | Status | Notes |
+|---|---|---|
+| E1 Freshness watchdog | ✅ live | A light per engine on Manage, Telegram alert when red. |
+| E2 Spare YouTube quota | ✅ live | Top threads of the last 90 days re-read (likes, new replies); capped at 6,000 units/day. View curves were already dense. |
+| E3 Transcripts | ⚠️ built, likely blocked | youtube-transcript-api; YouTube answered "IpBlocked" to a cloud machine in testing. Backs off for a day; the board says "blocked" rather than red. |
+| E4 Prediction v2 | ✅ live | Forecasts re-blended with real views on every sync run; Instagram model starts at 20 posts. |
+| E5 Tanglish mood model | ✅ built | Sentence model + trained head on our Gemini-labelled comments (+ TamilMixSentiment); used only if it beats the current model on held-out comments. Trains Sundays. |
+| E6 Search by meaning | ✅ built | Gemini embeddings (256) in pgvector (halfvec, HNSW); hybrid keyword + meaning search in Ask AI. |
+| E7 Topics v2 + spam v2 | ✅ built | Topic count chosen from the data and near-duplicate topics merged (BERTopic-style, without its heavy deps); copy-paste spam (same text from 3+ accounts). |
+| E8 Local LLM fallback | ⚠️ opt-in only | Measured: Qwen2.5-1.5B on CPU labelled ~5 comments/minute with weak Tanglish quality (missed a complaint and a question, no translations). Not worth GitHub minutes; the worker's local mood/emotion/question models already cover "cloud AI used up". `LOCAL_LLM_API_KEY` + `LOCAL_LLM_BASE_URL` enable it on a faster machine. |
+| E9 Change alerts | ✅ built | ruptures (PELT) for lasting shifts + robust z-score spikes on daily views and mood; nightly, Telegram + diamond pins on the channel timeline. |
