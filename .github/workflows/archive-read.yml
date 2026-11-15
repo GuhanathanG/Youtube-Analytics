@@ -1,0 +1,55 @@
+name: Read archived comments
+
+# The older comments that moved to the archive before the AI read them get the same reading as new ones:
+# 1. a fast local pass (mood with our Tanglish model, language, question/request) for all of them, then
+# 2. the full AI reading (emotion, intent, spam, aspects, translation), most-liked first, with the free cloud models
+#    other than Gemini (the website keeps Gemini's allowance), only while new comments are all read.
+# Results go straight into the archive databases; the archive's daily totals are rebuilt so charts include them.
+# Public repository: GitHub Actions minutes are free, so each run may take up to ~5.5 hours.
+on:
+  schedule:
+    - cron: "23 1,7,13,19 * * *"   # every 6 hours
+  workflow_dispatch: {}
+
+concurrency:
+  group: archive-read
+  cancel-in-progress: false
+
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    permissions:
+      contents: read
+      models: read
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ARCHIVE_DATABASE_URL: ${{ secrets.ARCHIVE_DATABASE_URL }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+      CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      GITHUB_MODELS_API_KEY: ${{ secrets.GITHUB_TOKEN }}
+      SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install packages (CPU models)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-model.txt -r requirements-ai.txt
+      - name: Cache the AI models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-archive-v1
+      - name: Read archived comments (local pass, then AI pass)
+        run: python -m ytanalytics archive-read --until $(( $(date +%s) + 330 * 60 ))

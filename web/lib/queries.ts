@@ -429,6 +429,8 @@ export type Progress = {
   sentiment_done: number; sentiment_last_hour: number;
   /** What's really left in the main database (the archive keeps older comments as they were). */
   history_left?: number; sentiment_waiting?: number; ai_waiting?: number; archived?: number;
+  /** Older comments being read inside the archive (the "Read archived comments" job). */
+  arch_comments?: number; arch_analyzed?: number; arch_ai?: number; arch_analyzed_per_hour?: number; arch_ai_per_hour?: number;
   // Slower AI jobs (filled in by jobExtras; null when that job's table doesn't exist yet)
   videos_to_watch?: number | null; thumbs_to_check?: number | null; months_to_remember?: number | null;
   watch_per_hour?: number; thumbs_per_hour?: number; memory_per_hour?: number;
@@ -465,6 +467,17 @@ async function progressUncached(): Promise<Progress[]> {
   const by = (rs: Record<string, unknown>[]) => new Map(rs.map((r) => [r.channel_id as string, Number(r.n)]));
   const [ws, wa, ar] = [by(waitS), by(waitA), by(arch)];
   for (const r of rows) { r.sentiment_waiting = ws.get(r.channel_id) ?? 0; r.ai_waiting = wa.get(r.channel_id) ?? 0; r.archived = ar.get(r.channel_id) ?? 0; }
+  const ap = await db`select channel_id, comments, analyzed, ai_read,
+      case when prev_at is not null and updated_at > prev_at then (analyzed - prev_analyzed) / greatest(0.1, extract(epoch from updated_at - prev_at) / 3600) end as an_h,
+      case when prev_at is not null and updated_at > prev_at then (ai_read - prev_ai_read) / greatest(0.1, extract(epoch from updated_at - prev_at) / 3600) end as ai_h
+    from archive_progress`.catch(() => []);
+  const apBy = new Map(ap.map((r) => [r.channel_id as string, r]));
+  for (const r of rows) {
+    const a = apBy.get(r.channel_id);
+    if (!a) continue;
+    Object.assign(r, { arch_comments: Number(a.comments), arch_analyzed: Number(a.analyzed), arch_ai: Number(a.ai_read),
+      arch_analyzed_per_hour: Math.max(0, Number(a.an_h ?? 0)), arch_ai_per_hour: Math.max(0, Number(a.ai_h ?? 0)) });
+  }
   // The slow-job numbers are optional: use them if ready within 3 s (they keep loading in the background).
   const extra = await within(cached("job-extras", 10 * 60_000, jobExtras), 3000, null);
   if (extra) for (const r of rows) Object.assign(r, extra.perChannel.get(r.channel_id) ?? {}, extra.rates);
