@@ -61,6 +61,9 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("--minutes", type=float, default=None)
     sub.add_parser("history-left", help="print how many videos still have comment history to download")
     sub.add_parser("transcripts", help="fetch transcripts (captions) of recent uploads (E3)")
+    rd = sub.add_parser("archive-read", help="read archived (older) comments like new ones: local mood pass + AI pass")
+    rd.add_argument("--until", type=float, required=True, help="unix time to stop")
+    rd.add_argument("--only", choices=["local", "ai"], default=None)
     sub.add_parser("changes", help="detect lasting shifts and spikes in each channel's views and mood (E9)")
     sub.add_parser("ai-waiting", help="number of comments the AI hasn't read yet")
     sub.add_parser("spam-sweep", help="mark copy-paste spam (same text from 3+ accounts) (E7)")
@@ -218,6 +221,11 @@ def main(argv: list[str] | None = None) -> int:
             from .transcripts import fetch_transcripts
 
             print(json.dumps(fetch_transcripts(session, deadline=_t.time() + 240)))
+        elif args.cmd == "archive-read":
+            from .archive_ai import read_archive
+
+            print(json.dumps(read_archive(session, args.until, do_local=args.only in (None, "local"),
+                                          do_ai=args.only in (None, "ai")), default=str))
         elif args.cmd == "changes":
             from .changes import detect_changes
 

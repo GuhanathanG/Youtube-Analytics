@@ -40,7 +40,7 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
           const inMain = Math.max(0, p.comments_stored - (p.archived ?? 0));
           const sWait = p.sentiment_waiting ?? Math.max(0, p.comments_stored - p.sentiment_done);
           const aWait = p.ai_waiting ?? Math.max(0, p.comments_stored - p.ai_read);
-          const archivedNote = p.archived ? ` · ${fmt(p.archived)} older ones kept in the archive` : "";
+          const archivedNote = p.archived ? ` · ${fmt(p.archived)} older ones are read in the archive (below)` : "";
           const jobs: Job[] = [
             { key: "videos", label: "Find every video", done: p.videos_known, total: Math.max(p.videos_total ?? 0, p.videos_known), left: videosLeft,
               perHour: videosLeft ? 3000 / Math.max(1, rows.filter((r) => r.videos_total && r.videos_total > r.videos_known).length) : 0, unit: "videos",
@@ -56,6 +56,15 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
               left: aWait + commentsLeft, perHour: p.ai_last_hour, unit: "comments",
               note: `${fmt(p.ai_last_hour)}/hour`, color: "#3987e5", doneNote: archivedNote ? `all caught up${archivedNote}` : undefined },
           ];
+          // The "Read archived comments" job (every 6 hours on GitHub): older comments get the same reading.
+          if (p.arch_comments) {
+            jobs.push({ key: "arch-mood", label: "Older comments: mood & language", done: p.arch_analyzed ?? 0, total: p.arch_comments,
+              left: Math.max(0, p.arch_comments - (p.arch_analyzed ?? 0)), perHour: p.arch_analyzed_per_hour ?? 0, unit: "comments",
+              note: p.arch_analyzed_per_hour ? `${fmt(p.arch_analyzed_per_hour)}/hour · in the archive` : "in the archive · runs every 6 hours", color: "#0ca30c" });
+            jobs.push({ key: "arch-ai", label: "Older comments: AI reads them", done: p.arch_ai ?? 0, total: p.arch_comments,
+              left: Math.max(0, p.arch_comments - (p.arch_ai ?? 0)), perHour: p.arch_ai_per_hour ?? 0, unit: "comments",
+              note: p.arch_ai_per_hour ? `${fmt(p.arch_ai_per_hour)}/hour · most-liked first` : "most-liked first · runs every 6 hours", color: "#3987e5" });
+          }
           if (p.videos_to_watch != null) jobs.push({ key: "watch", label: "AI watches new videos (30 days)", done: 0, total: 0, left: p.videos_to_watch,
             perHour: (p.watch_per_hour ?? 0) / share("videos_to_watch"), unit: "videos", note: "about 1 every 2 hours", color: "#fab219" });
           if (p.thumbs_to_check != null) jobs.push({ key: "thumbs", label: "AI checks thumbnails", done: 0, total: 0, left: p.thumbs_to_check,
