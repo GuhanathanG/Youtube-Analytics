@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { linkedInstagram } from "@/lib/linked";
 import { within } from "@/lib/cache";
 import { channels as getChannels } from "@/lib/queries";
 import { sideBySide, type Side, type SideBySide } from "@/lib/platforms";
@@ -19,7 +20,9 @@ export default async function PlatformsPage({ searchParams }: { searchParams: Pr
   const chs = (await getChannels()).filter((c) => c.active);
   const yts = chs.filter((c) => !c.id.startsWith("ig_")), igs = chs.filter((c) => c.id.startsWith("ig_"));
   const ytId = yts.find((c) => c.id === q.yt)?.id ?? yts[0]?.id ?? null;
-  const igId = igs.find((c) => c.id === q.ig)?.id ?? igs[0]?.id ?? null;
+  // No account chosen: the Instagram account linked to this YouTube channel (Linked accounts), else the first one.
+  const paired = ytId && !q.ig ? await linkedInstagram(ytId).catch(() => null) : null;
+  const igId = igs.find((c) => c.id === q.ig)?.id ?? igs.find((c) => c.id === paired)?.id ?? igs[0]?.id ?? null;
   const data: SideBySide = await within(sideBySide(ytId, igId), 15_000, { yt: null, ig: null, ideas: [] });
   const { yt, ig } = data;
 

@@ -258,3 +258,19 @@ console.log("nav: ok");
   assert.equal(fmtMin(30), "30 min"); assert.equal(fmtMin(180), "3 h"); assert.equal(fmtMin(4000), "3 days");
   console.log("freshness: ok");
 }
+
+// Linked accounts found in a YouTube description
+{
+  const { findSocialLinks } = await import("../lib/social-links.ts");
+  const desc = `Love Love ❤\nRam & Jaanu\n\nWanna be friends??  Follow\nRam's Instagram id:\nhttps://www.instagram.com/raam_me/?hl=en\n\nJaanu's Instagram id:\nhttps://instagram.com/keerthishrathah?igshid=n7f1e3iapka1\n\nFacebook Page:\nhttps://www.facebook.com/Ramwithjaanu/\nWatch: https://www.instagram.com/reel/Cx12/ and twitter.com/ramjaanu tiktok.com/@ramjaanu`;
+  const links = findSocialLinks(desc);
+  const ig = links.filter((l) => l.platform === "instagram");
+  assert.deepEqual(ig.map((l) => l.handle), ["raam_me", "keerthishrathah"]); // the reel link is not a profile
+  assert.equal(ig[0].label, "Ram's Instagram id");
+  assert.equal(ig[1].url, "https://www.instagram.com/keerthishrathah");
+  assert.ok(links.some((l) => l.platform === "facebook" && l.handle === "ramwithjaanu"));
+  assert.ok(links.some((l) => l.platform === "x" && l.handle === "ramjaanu"));
+  assert.ok(links.some((l) => l.platform === "tiktok" && l.handle === "ramjaanu"));
+  assert.deepEqual(findSocialLinks(null), []);
+  console.log("social-links: ok");
+}

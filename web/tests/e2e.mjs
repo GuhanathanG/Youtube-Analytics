@@ -682,6 +682,14 @@ try {
   const pf = await (await getF(`/platforms?yt=${ch.id}&ig=ig_pulsecreator`)).text();
   check("YouTube vs Instagram: both sides, head to head, timing and repurpose sections", pf.includes("Head to head") && pf.includes("Pulse Creator")
     && pf.includes("When to post") && pf.includes("Carry it across") && pf.includes("Typical views per upload"), pf.slice(0, 300));
+  // Linked accounts: Instagram profiles listed in the YouTube description, with track / tracked state.
+  await db`update channels set description = ${"Follow us!\nOur Instagram: https://www.instagram.com/pulsecreator/\nRam's Instagram id: instagram.com/someone_else"} where id = ${ch.id}`;
+  const linkedPage = (await (await getF(`/channels/${ch.id}`)).text()).replace(/<!-- -->/g, "");
+  check("channel page lists linked Instagram accounts with Track for new ones", linkedPage.includes("Linked accounts") && linkedPage.includes("@someone_else")
+    && linkedPage.includes("Ram&#x27;s Instagram id") && /Track<\/button>/.test(linkedPage), linkedPage.slice(linkedPage.indexOf("Linked accounts"), linkedPage.indexOf("Linked accounts") + 600));
+  await db`insert into channel_links (youtube_id, other_id) values (${ch.id}, 'ig_pulsecreator') on conflict do nothing`;
+  const pairPage = await (await getF(`/platforms?yt=${ch.id}`)).text();
+  check("YT vs IG opens on the linked Instagram account", pairPage.includes("Pulse Creator"));
   // Coherence: a saved section far past its lifetime is worked out fresh when opened, not shown as old results.
   const pkey = `platforms:${ch.id}:ig_pulsecreator`;
   await db`update panel_cache set computed_at = computed_at - interval '10 days' where key = ${pkey}`;

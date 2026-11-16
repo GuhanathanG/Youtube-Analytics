@@ -1,4 +1,6 @@
 import { ExternalLink, Play } from "lucide-react";
+import { linkedAccounts, type LinkedAccount } from "@/lib/linked";
+import { LinkedAccounts } from "@/components/LinkedAccounts";
 import { channelUrl, isInstagram } from "@/lib/platform";
 import { within } from "@/lib/cache";
 import { Suspense } from "react";
@@ -39,7 +41,8 @@ export default async function ChannelPage({ params, searchParams }:
   const c = await getChannel(id);
   if (!c) notFound();
   const emptyMix = { positive: 0, neutral: 0, negative: 0, pending: 0 };
-  const mix = await within(panel("mix", id, key), 6000, emptyMix);
+  const [mix, linked] = await Promise.all([within(panel("mix", id, key), 6000, emptyMix),
+    isInstagram(id) ? Promise.resolve([]) : within(linkedAccounts(id), 3000, [] as LinkedAccount[])]);
 
   // The header shows straight away; each section below appears as soon as its data is ready.
   return (
@@ -65,6 +68,7 @@ export default async function ChannelPage({ params, searchParams }:
             </div>
             <div className="w-full sm:w-72"><MixBar mix={mix} /></div>
           </div>
+          <div className="relative"><LinkedAccounts channelId={id} accounts={linked} /></div>
         </div>
       </Reveal>
 

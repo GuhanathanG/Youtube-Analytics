@@ -76,6 +76,26 @@ export async function addInstagram(_: { ok?: string; error?: string } | undefine
   }
 }
 
+/** "Linked accounts" on a channel page: start tracking an Instagram account the creator lists, and pair it. */
+export async function trackLinkedInstagram(youtubeId: string, handle: string): Promise<{ ok: boolean; message: string }> {
+  await requireSession();
+  try {
+    const { linkAccounts } = await import("@/lib/linked");
+    const id = `ig_${handle.toLowerCase()}`;
+    const [have] = await sql()`select id from channels where id = ${id}`;
+    if (!have) {
+      const res = await addInstagramNow(handle);
+      if (!res.ok) return { ok: false, message: res.message };
+    }
+    await linkAccounts(youtubeId, id);
+    clearCache();
+    revalidatePath("/", "layout");
+    return { ok: true, message: have ? `Linked @${handle} to this channel.` : `Now tracking @${handle}: profile and posts arrive within a few minutes.` };
+  } catch (e) {
+    return { ok: false, message: `Something went wrong: ${e instanceof Error ? e.message.slice(0, 200) : "unknown error"}` };
+  }
+}
+
 /** Top-bar channel switcher: remember the channel the site should focus on ("all" = combined). */
 export async function setFocus(channelId: string) {
   await requireSession();
