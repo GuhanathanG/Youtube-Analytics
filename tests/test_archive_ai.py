@@ -83,7 +83,7 @@ def test_archive_gets_the_same_reading(dbs):
     s, arch = dbs
     router = FakeRouter()
     out = read_archive(s, time.time() + 120, classifier=Mood(), router=router)
-    assert out["local"] == 120 and out["ai"] == 120 and router.calls == 3  # 40 a batch
+    assert out["local"] == 120 and out["ai"] == 120 and router.calls == 4  # 30 a batch
     with arch.connect() as c:
         left = c.execute(text("select count(*) filter (where analyzed_at is null), count(*) filter (where ai_at is null) from comments")).one()
         row = c.execute(text("select sentiment, sentiment_source, emotion, is_suggestion, aspects, translation, ai_model from comments where id = 'a119'")).one()
