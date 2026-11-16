@@ -15,9 +15,12 @@ export async function engineFreshness(): Promise<EngineCheck[]> {
   const [live, job, yt, ytStats, igProf, igCom, ai, fc, vid, tr, trs, hasYt, hasIg] = await Promise.all([
     one(db`select extract(epoch from (now() at time zone 'utc') - max(last_cron_at)) / 60 as m from live_state`, { m: null }),
     one(db`select extract(epoch from (now() at time zone 'utc') - max(started_at)) / 60 as m from run_log`, { m: null }),
-    one(db`select extract(epoch from (now() at time zone 'utc') - max(c.fetched_at)) / 60 as m from comments c
-      where c.fetched_at >= (now() at time zone 'utc') - interval '7 days'
-        and c.channel_id in (select id from channels where active and coalesce(platform, 'youtube') = 'youtube')`, { m: null }),
+    // When the engine last checked YouTube for comments: a new comment saved, or a channel sync (which checks every
+    // video's comment count). Quiet hours with no new comments are not "stuck".
+    one(db`select extract(epoch from (now() at time zone 'utc') - greatest(
+        (select max(c.fetched_at) from comments c where c.fetched_at >= (now() at time zone 'utc') - interval '7 days'
+           and c.channel_id in (select id from channels where active and coalesce(platform, 'youtube') = 'youtube')),
+        (select max(last_synced_at) from channels where active and coalesce(platform, 'youtube') = 'youtube'))) / 60 as m`, { m: null }),
     one(db`select extract(epoch from (now() at time zone 'utc') - max(s.taken_at)) / 60 as m from channel_snapshots s
       where s.taken_at >= (now() at time zone 'utc') - interval '7 days'
         and s.channel_id in (select id from channels where active and coalesce(platform, 'youtube') = 'youtube')`, { m: null }),

@@ -9,7 +9,7 @@ export type EngineCheck = { key: EngineKey; label: string; what: string; ageMin:
 export const RULES: Record<EngineKey, { label: string; what: string; limitMin: number }> = {
   live: { label: "Live engine", what: "the 2-minute timer that checks for new comments", limitMin: 15 },
   job: { label: "Background job", what: "history download, bulk AI and archive (GitHub)", limitMin: 120 },
-  yt_comments: { label: "YouTube comments", what: "newest comment saved", limitMin: 60 },
+  yt_comments: { label: "YouTube comments", what: "last check for new comments", limitMin: 60 },
   yt_stats: { label: "YouTube stats", what: "subscribers and views snapshot", limitMin: 180 },
   ig_profiles: { label: "Instagram profiles", what: "followers and newest posts", limitMin: 240 },
   ig_comments: { label: "Instagram comments", what: "comments on posts from the last 3 days", limitMin: 360 },

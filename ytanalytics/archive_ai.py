@@ -121,7 +121,18 @@ def ai_pass(engine, router, titles, deadline: float, batch: int = 40, touched: s
     from .llm import NoModelAvailable
 
     done, since_vacuum, empty = 0, 0, 0
-    while time.monotonic() < deadline and should_continue():
+    limit_mb = float(os.environ.get("ARCHIVE_DB_LIMIT_MB", "1000")) * 0.9
+    while time.monotonic() < deadline:
+        if not should_continue():  # new comments are waiting: let them go first, then carry on
+            log.info("archive AI pass: new comments waiting in the main database; trying again in 2 minutes")
+            time.sleep(min(120.0, max(0.0, deadline - time.monotonic())))
+            continue
+        if done % 2000 < batch:  # now and then: never fill the free archive database
+            with engine.connect() as c:
+                mb = float(c.execute(text("select pg_database_size(current_database())")).scalar() or 0) / 1048576
+            if mb > limit_mb:
+                log.warning("archive AI pass stopped: this archive is %.0f MB (limit %.0f MB)", mb, limit_mb)
+                break
         with engine.connect() as c:
             rows = c.execute(text("""select id, channel_id, video_id, published_at::date as day, text from comments
                 where ai_at is null order by like_count desc nulls last limit :n"""), {"n": batch}).all()
@@ -250,6 +261,7 @@ def read_archive(session: Session, until: float, classifier=None, router=None, d
             env["AI_PROVIDER_ORDER"] = os.environ.get("ARCHIVE_AI_PROVIDERS",
                                                       "mistral,groq,cloudflare,github,sambanova,nvidia,openrouter")
             slots = slots_from_env(env)
+            log.info("archive AI pass: %d models available (%s)", len(slots), ", ".join(sorted({x.key.split("/")[0] for x in slots})) or "none")
             router = LLMRouter(session, slots) if slots else None
         if router is not None:
             cache: dict[str, str] = {}
@@ -269,6 +281,7 @@ def read_archive(session: Session, until: float, classifier=None, router=None, d
             rebuild_stats(session, engines, touched)
         else:
             out["ai_skipped"] = "no non-Gemini AI keys on this worker"
+            log.warning("archive AI pass skipped: no AI keys other than Gemini on this worker (ARCHIVE_AI_PROVIDERS)")
     save_progress(session, engines)
     for e in engines:
         e.dispose()

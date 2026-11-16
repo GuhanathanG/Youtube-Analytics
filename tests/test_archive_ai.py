@@ -105,4 +105,4 @@ def test_local_pass_alone_and_live_backlog_pauses_ai(dbs):
         s.execute(text("insert into comments (id, video_id, channel_id, text, like_count, reply_count, fetched_at) values (:i, 'v1', 'UCx', 'new', 0, 0, now())"), {"i": f"n{i}"})
     s.commit()
     router = FakeRouter()
-    assert read_archive(s, time.time() + 60, classifier=Mood(), router=router, do_local=False)["ai"] == 0 and router.calls == 0
+    assert read_archive(s, time.time() + 3, classifier=Mood(), router=router, do_local=False)["ai"] == 0 and router.calls == 0
