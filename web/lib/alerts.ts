@@ -181,7 +181,9 @@ export async function checkHealth(): Promise<number> {
   }
 
   // 2. The AI read nothing in the last hour although comments are waiting (keys used up or wrong).
-  const [ai] = await db`select coalesce(sum(ai_hour), 0)::int as hour, coalesce(sum(comments - ai_read), 0)::int as waiting from channel_summary`.catch(() => [{ hour: 1, waiting: 0 }]);
+  // Waiting = actually unread in the main database (archived older comments are read by their own job).
+  const [ai] = await db`select (select coalesce(sum(ai_hour), 0) from channel_summary)::int as hour,
+      (select count(*) from comments where ai_at is null)::int as waiting`.catch(() => [{ hour: 1, waiting: 0 }]);
   if (Number(ai?.hour) === 0 && Number(ai?.waiting) > Number(process.env.HEALTH_AI_BACKLOG ?? 200)) {
     await alert("ai", "🤖 AI stopped reading comments",
       `${Number(ai.waiting).toLocaleString("en")} comments are waiting and none were read in the last hour. Free AI limits may be used up, or a key expired — run GitHub → Actions → "Check AI keys".`);
