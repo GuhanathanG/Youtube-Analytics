@@ -12,13 +12,19 @@ on:
   workflow_dispatch: {}
 
 concurrency:
-  group: archive-read
+  group: archive-read      # one set of readers at a time; the next scheduled set waits
   cancel-in-progress: false
 
 jobs:
   read:
     runs-on: ubuntu-latest
     timeout-minutes: 345
+    # Parallel readers (free on a public repository): each takes its own slice of the comments. The AI services
+    # limit requests per minute, and each reader mostly waits for answers, so 6 readers read ~6x as much.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
     permissions:
       contents: read
       models: read
@@ -51,5 +57,7 @@ jobs:
         with:
           path: ~/.cache/huggingface
           key: hf-models-archive-v1
-      - name: Read archived comments (local pass, then AI pass)
-        run: python -m ytanalytics archive-read --until $(( $(date +%s) + 330 * 60 ))
+      - name: Read archived comments (local pass on reader 0, then the AI pass on every reader)
+        run: |
+          ONLY=""; [ "${{ matrix.shard }}" != "0" ] && ONLY="--only ai"
+          python -m ytanalytics archive-read --until $(( $(date +%s) + 330 * 60 )) $ONLY --shard ${{ matrix.shard }} --shards 6

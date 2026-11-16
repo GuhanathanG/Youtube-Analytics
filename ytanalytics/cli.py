@@ -64,6 +64,8 @@ def main(argv: list[str] | None = None) -> int:
     rd = sub.add_parser("archive-read", help="read archived (older) comments like new ones: local mood pass + AI pass")
     rd.add_argument("--until", type=float, required=True, help="unix time to stop")
     rd.add_argument("--only", choices=["local", "ai"], default=None)
+    rd.add_argument("--shard", type=int, default=0, help="this reader's slice (0..shards-1)")
+    rd.add_argument("--shards", type=int, default=1, help="parallel readers splitting the comments")
     sub.add_parser("changes", help="detect lasting shifts and spikes in each channel's views and mood (E9)")
     sub.add_parser("ai-waiting", help="number of comments the AI hasn't read yet")
     sub.add_parser("spam-sweep", help="mark copy-paste spam (same text from 3+ accounts) (E7)")
@@ -225,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
             from .archive_ai import read_archive
 
             print(json.dumps(read_archive(session, args.until, do_local=args.only in (None, "local"),
-                                          do_ai=args.only in (None, "ai")), default=str))
+                                          do_ai=args.only in (None, "ai"), shard=(args.shard, args.shards)), default=str))
         elif args.cmd == "changes":
             from .changes import detect_changes
 
