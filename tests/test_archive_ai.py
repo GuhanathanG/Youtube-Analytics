@@ -113,3 +113,41 @@ def test_local_pass_alone_and_live_backlog_pauses_ai(dbs):
     s.commit()
     router = FakeRouter()
     assert read_archive(s, time.time() + 3, classifier=Mood(), router=router, do_local=False)["ai"] == 0 and router.calls == 0
+
+
+def test_busy_models_get_another_chance(dbs, monkeypatch):
+    """Every model busy for a while: the AI pass waits and carries on instead of quitting the whole run."""
+    import time
+
+    import ytanalytics.archive_ai as A
+    from ytanalytics.llm import NoModelAvailable
+
+    s, arch = dbs
+    monkeypatch.setattr(A.time, "sleep", lambda x: None)
+
+    class Flaky(FakeRouter):
+        def __init__(self):
+            super().__init__()
+            self.errors = {"mistral/x": "rate limited (429): busy", "groq/y": "API key rejected (401): no"}
+            self.fails = 2
+
+        def chat_json(self, *a, **k):
+            if self.fails:
+                self.fails -= 1
+                raise NoModelAvailable("No AI model answered in time this run: busy")
+            return super().chat_json(*a, **k)
+
+    r = Flaky()
+    out = read_archive(s, time.time() + 600, classifier=Mood(), router=r)
+    assert out["ai"] == 120
+    assert "mistral/x" not in r.errors and "groq/y" in r.errors  # busy forgiven, bad key kept
+
+    class UsedUp(FakeRouter):
+        def chat_json(self, *a, **k):
+            self.calls += 1
+            raise NoModelAvailable("All AI models are used up for today; they reset at midnight Pacific time")
+
+    with arch.begin() as c:
+        c.execute(text("update comments set ai_at = null"))
+    u = UsedUp()
+    assert read_archive(s, time.time() + 600, classifier=Mood(), router=u, do_local=False)["ai"] == 0 and u.calls == 1

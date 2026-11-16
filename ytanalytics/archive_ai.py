@@ -120,7 +120,7 @@ def ai_pass(engine, router, titles, deadline: float, batch: int = 40, touched: s
     from .ai import COMMENT_SYSTEM, _comment_update
     from .llm import NoModelAvailable
 
-    done, since_vacuum, empty = 0, 0, 0
+    done, since_vacuum, empty, idle, last_reset = 0, 0, 0, 0, time.monotonic()
     limit_mb = float(os.environ.get("ARCHIVE_DB_LIMIT_MB", "1000")) * 0.9
     while time.monotonic() < deadline:
         if not should_continue():  # new comments are waiting: let them go first, then carry on
@@ -146,8 +146,23 @@ def ai_pass(engine, router, titles, deadline: float, batch: int = 40, touched: s
             data, model = router.chat_json(COMMENT_SYSTEM, "\n".join(lines), max_tokens=min(16000, 1000 + 130 * len(rows)),
                                            deadline=deadline)
         except NoModelAvailable as e:
-            log.info("archive AI pass paused: %s", e)
-            break
+            # Long run: a model that was slow once or busy for a few minutes gets another chance. Stop only when every
+            # model's daily allowance is used up, or nothing has answered for ~10 minutes.
+            if "used up for today" in str(e) or time.monotonic() > deadline - 60:
+                log.info("archive AI pass stopped: %s", e)
+                break
+            idle += 1
+            if idle > int(os.environ.get("ARCHIVE_AI_IDLE_TRIES", "10")):
+                log.info("archive AI pass stopped: no model answered for %d minutes (%s)", idle - 1, e)
+                break
+            _retry_busy(router)
+            log.info("archive AI pass: every model busy (%s); trying again in a minute", str(e)[:200])
+            time.sleep(min(60.0, max(0.0, deadline - time.monotonic())))
+            continue
+        idle = 0
+        if time.monotonic() - last_reset > 900:  # every 15 min, give models skipped as "busy" a fresh try
+            _retry_busy(router)
+            last_reset = time.monotonic()
         results = {}
         for item in data.get("results") or []:
             try:
@@ -171,6 +186,14 @@ def ai_pass(engine, router, titles, deadline: float, batch: int = 40, touched: s
             since_vacuum = 0
         log.info("archive AI pass: %d (%s)", done, model)
     return done
+
+
+def _retry_busy(router) -> None:
+    """Forget per-run skips that were temporary (too slow, rate limited); keep rejected keys skipped."""
+    errors = getattr(router, "errors", None)
+    if isinstance(errors, dict):
+        for k in [k for k, v in errors.items() if not str(v).startswith("API key rejected")]:
+            errors.pop(k, None)
 
 
 def rebuild_stats(session: Session, engines: list, touched: set) -> int:
@@ -263,7 +286,7 @@ def read_archive(session: Session, until: float, classifier=None, router=None, d
 
             env = dict(os.environ)
             env["AI_PROVIDER_ORDER"] = os.environ.get("ARCHIVE_AI_PROVIDERS",
-                                                      "mistral,groq,cloudflare,github,sambanova,nvidia,openrouter")
+                                                      "mistral,github,cloudflare,groq,sambanova,nvidia,openrouter")
             slots = slots_from_env(env)
             log.info("archive AI pass: %d models available (%s)", len(slots), ", ".join(sorted({x.key.split("/")[0] for x in slots})) or "none")
             router = LLMRouter(session, slots) if slots else None
