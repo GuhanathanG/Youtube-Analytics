@@ -128,7 +128,7 @@ def ai_pass(engine, router, titles, deadline: float, batch: int | None = None, t
     from .ai import COMMENT_SYSTEM, _comment_update
     from .llm import NoModelAvailable
 
-    batch = batch or int(os.environ.get("ARCHIVE_AI_BATCH", "50"))
+    batch = batch or int(os.environ.get("ARCHIVE_AI_BATCH", "30"))
     done, since_vacuum, empty, idle, last_reset = 0, 0, 0, 0, time.monotonic()
     limit_mb = float(os.environ.get("ARCHIVE_DB_LIMIT_MB", "1000")) * 0.9
     while time.monotonic() < deadline:
@@ -298,6 +298,18 @@ def read_archive(session: Session, until: float, classifier=None, router=None, d
             env["AI_PROVIDER_ORDER"] = os.environ.get("ARCHIVE_AI_PROVIDERS",
                                                       "mistral,github,cloudflare,groq,sambanova,nvidia,openrouter")
             slots = slots_from_env(env)
+            # Its own Gemini key (a separate Google project = its own free allowance): used first, under its own usage
+            # counters ("gemini-archive/..."), so the website's Gemini allowance is never touched.
+            own = os.environ.get("ARCHIVE_GEMINI_API_KEY", "").strip()
+            if own:
+                genv = {"GEMINI_API_KEY": own, "AI_PROVIDER_ORDER": "gemini",
+                        "GEMINI_MODELS": os.environ.get("ARCHIVE_GEMINI_MODELS",
+                                                        "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-flash-lite-latest"),
+                        "GEMINI_DAILY_REQUESTS": os.environ.get("ARCHIVE_GEMINI_DAILY_REQUESTS", "900")}
+                gslots = slots_from_env(genv)
+                for g in gslots:
+                    g.provider = g.provider.replace("gemini", "gemini-archive", 1)
+                slots = gslots + slots
             log.info("archive AI pass: %d models available (%s)", len(slots), ", ".join(sorted({x.key.split("/")[0] for x in slots})) or "none")
             router = LLMRouter(session, slots) if slots else None
         if router is not None:

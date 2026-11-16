@@ -20,17 +20,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 345
     # Parallel readers (free on a public repository): each takes its own slice of the comments. The AI services
-    # limit requests per minute, and each reader mostly waits for answers, so 6 readers read ~6x as much.
+    # limit requests per minute, and each reader mostly waits for answers, so a few readers keep them busy (more just hit the per-minute limits).
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5]
+        shard: [0, 1, 2]
     permissions:
       contents: read
       models: read
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ARCHIVE_DATABASE_URL: ${{ secrets.ARCHIVE_DATABASE_URL }}
+      # Optional: a Gemini key from a SEPARATE Google project, only for this job (its own free allowance; the
+      # website's Gemini key is never used here). Without it, the job uses Mistral / GitHub Models / Cloudflare / Groq.
+      ARCHIVE_GEMINI_API_KEY: ${{ secrets.ARCHIVE_GEMINI_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
@@ -60,4 +63,4 @@ jobs:
       - name: Read archived comments (local pass on reader 0, then the AI pass on every reader)
         run: |
           ONLY=""; [ "${{ matrix.shard }}" != "0" ] && ONLY="--only ai"
-          python -m ytanalytics archive-read --until $(( $(date +%s) + 330 * 60 )) $ONLY --shard ${{ matrix.shard }} --shards 6
+          python -m ytanalytics archive-read --until $(( $(date +%s) + 330 * 60 )) $ONLY --shard ${{ matrix.shard }} --shards 3
