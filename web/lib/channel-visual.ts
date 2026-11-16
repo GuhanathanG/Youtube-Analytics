@@ -14,7 +14,7 @@ export type WallItem = { id: string; title: string; thumb: string | null; views:
 export type ChannelVisual = { weeks: Week[]; pins: Pin[]; wall: WallItem[] };
 
 export function channelVisual(channelId: string): Promise<ChannelVisual> {
-  return stored(`chvis:${channelId}`, Number(process.env.CHANNEL_VISUAL_SECONDS ?? 1800) * 1000, () => compute(channelId));
+  return stored(`chvis:${channelId}`, Number(process.env.CHANNEL_VISUAL_SECONDS ?? 1800) * 1000, () => computeChannelVisual(channelId));
 }
 
 const weekOf = (iso: string) => {
@@ -23,7 +23,7 @@ const weekOf = (iso: string) => {
   return monday.toISOString().slice(0, 10);
 };
 
-async function compute(channelId: string): Promise<ChannelVisual> {
+export async function computeChannelVisual(channelId: string): Promise<ChannelVisual> {
   const db = sql();
   const [vids, comm, changes, data] = await Promise.all([
     db`select id, title, thumbnail_url, coalesce(view_count, 0)::float8 as views, published_at::text as published_at

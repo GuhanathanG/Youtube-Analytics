@@ -46,7 +46,7 @@ await db`insert into channel_requests (query, status, created_at) values ('@live
 
 const server = spawn("npx", ["next", "start", "-p", String(PORT)], {
   env: { ...process.env, APP_PASSWORD: PASSWORD, YOUTUBE_API_KEY: "test", YOUTUBE_API_BASE: "http://localhost:4100",
-    GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", EMBED_EVERY_TURN: "1", CHANNEL_VISUAL_SECONDS: "0", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
+    GEMINI_API_KEY: "test", GEMINI_BASE_URL: "http://localhost:4100/", GEMINI_MODELS: "slow-model,fake-model", EMBED_EVERY_TURN: "1", CHANNEL_VISUAL_SECONDS: "0", MOVES_CACHE_SECONDS: "0", STORED_MEMORY_SECONDS: "0", AI_REQUEST_TIMEOUT: "3", LIVE_BACKFILL_PAGES: "5",
     CRON_SECRET: "e2e-cron-secret-0123456789", ENGINE_BUDGET_SECONDS: "45", INSIGHTS_EVERY_MINUTES: "1",
     GEMINI_NATIVE_BASE: "http://localhost:4100/v1beta", RYD_API_BASE: "http://localhost:4100", VIDEO_AI_RETRY_MS: "50", ANALYTICS_CACHE_SECONDS: "0", WEEKLY_REPORT_ANY_DAY: "1", PUSH_ALLOW_HTTP: "1", MEMORY_DUE_CACHE_SECONDS: "0", SUMMARY_EVERY_MINUTES: "0", PAGE_CACHE_SECONDS: "0", ARCHIVE_DATABASE_URL: ARCHIVE_DB, JOB_MAX_GAP_MINUTES: "0",
     TELEGRAM_BOT_TOKEN: "123:test", TELEGRAM_CHAT_ID: "42", TELEGRAM_API_BASE: "http://localhost:4100",
@@ -682,6 +682,12 @@ try {
   const pf = await (await getF(`/platforms?yt=${ch.id}&ig=ig_pulsecreator`)).text();
   check("YouTube vs Instagram: both sides, head to head, timing and repurpose sections", pf.includes("Head to head") && pf.includes("Pulse Creator")
     && pf.includes("When to post") && pf.includes("Carry it across") && pf.includes("Typical views per upload"), pf.slice(0, 300));
+  // Coherence: a saved section far past its lifetime is worked out fresh when opened, not shown as old results.
+  const pkey = `platforms:${ch.id}:ig_pulsecreator`;
+  await db`update panel_cache set computed_at = computed_at - interval '10 days' where key = ${pkey}`;
+  const pf2 = await (await getF(`/platforms?yt=${ch.id}&ig=ig_pulsecreator`)).text();
+  const [pc] = await db`select extract(epoch from ((now() at time zone 'utc') - computed_at)) as age from panel_cache where key = ${pkey}`;
+  check("a section 10 days past its lifetime is recomputed on open (no stale results)", pf2.includes("Head to head") && Number(pc?.age) < 120, `age ${pc?.age}`);
   const wi = await (await getF("/predict?title=Top+7+tips&format=long&minutes=12&day=5&hour=18")).text();
   const wo = await (await getF("/predict?title=My+day+out&format=long&minutes=12&day=5&hour=18")).text();
   const mult = (h) => Number((/([\d.]+)×(?:<!-- -->)? this channel/.exec(h) ?? [])[1] ?? NaN);

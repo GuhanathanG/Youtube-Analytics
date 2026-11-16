@@ -11,8 +11,7 @@ import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
 import { C, HeroStage, KpiOrb, MoodGlyph, PulseRing } from "@/components/viz";
 import { channelHealth } from "@/lib/creator-insights";
-import { nextMoves } from "@/lib/recommendations";
-import { stored } from "@/lib/stored";
+import { movesFor } from "@/lib/recommendations";
 import { ago, compact, score } from "@/lib/format";
 import { LiveFeed } from "@/components/LiveFeed";
 import { AlertsPanel, NewVideosPanel } from "@/components/FeaturePanels";
@@ -46,7 +45,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const heroId = focus ?? allChs.find((c) => c.active && c.role !== "competitor")?.id ?? null;
   const [health, top] = heroId ? await Promise.all([
     within(channelHealth(heroId), 4000, null),
-    within(stored(`moves:${heroId}`, 30 * 60_000, () => nextMoves(heroId)), 4000, null),
+    within(movesFor(heroId), 4000, null),
   ]) : [null, null];
   const heroCh = heroId ? allChs.find((c) => c.id === heroId) : null;
   const one = focus ? sums.get(focus) : null;

@@ -471,6 +471,10 @@ def train(session, now: datetime | None = None) -> dict:
     results = {p: _train_platform(session, p, now) for p in ("youtube", "instagram")}
     out = dict(results["youtube"])
     out["platforms"] = results
+    # New forecasts and drivers: sections built on them (Next moves, timeline, predictions, Studio) refresh.
+    from .freshness import mark_stale
+
+    mark_stale(session, patterns=["moves:%", "chvis:%", "ch:%:preds", "platforms:%"])
     return out
 
 

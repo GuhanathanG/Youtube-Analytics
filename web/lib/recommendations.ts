@@ -29,6 +29,12 @@ async function uploadRhythm(channelId: string): Promise<{ last: number | null; g
   return { last: (Date.now() - t[0]) / 86400000, gap: gaps.length ? gaps[Math.floor(gaps.length / 2)] : null };
 }
 
+export const MOVES_AGE = () => Number(process.env.MOVES_CACHE_SECONDS ?? 600) * 1000;
+/** Next moves as one saved result (10 min, kept warm by the engine) so Overview and Next moves always agree. */
+export function movesFor(channelId: string) {
+  return stored(`moves:${channelId}`, MOVES_AGE(), () => nextMoves(channelId));
+}
+
 export async function nextMoves(channelId: string): Promise<{ moves: Move[]; health: Command["health"] }> {
   const empty = { top: [], superfans: [], critics: [] };
   const [a, health, questions, ideas, trend, people, preds, rhythm] = await Promise.all([
