@@ -4,7 +4,7 @@ import { ArrowRight, Sparkles } from "lucide-react";
 import { within } from "@/lib/cache";
 import { focusChannel } from "@/lib/focus";
 import { channels as getChannels } from "@/lib/queries";
-import { dailyBrief, nextMoves } from "@/lib/recommendations";
+import { dailyBrief, movesFor } from "@/lib/recommendations";
 import type { Move } from "@/lib/moves";
 import { RingGauge } from "@/components/RingGauge";
 import { Reveal } from "@/components/Reveal";
@@ -38,7 +38,7 @@ export default async function CommandPage() {
 }
 
 async function Moves({ id, title, subs, comments }: { id: string; title: string; subs: number | null; comments: number }) {
-  const { moves, health } = await within(nextMoves(id), 20_000, { moves: [], health: null });
+  const { moves, health } = await within(movesFor(id), 20_000, { moves: [], health: null });
   const brief = await within(dailyBrief(id, title, moves, health).catch(() => null), 6000, null);
   return (
     <>

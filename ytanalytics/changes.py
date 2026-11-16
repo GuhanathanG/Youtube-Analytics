@@ -125,6 +125,10 @@ def detect_changes(session: Session, today: date | None = None, notify=None) -> 
         if inserted:
             fresh.append({**e, "note": note})
     session.commit()
+    if fresh:  # new pins for the channel timeline
+        from .freshness import mark_stale
+
+        mark_stale(session, patterns=[f"chvis:{c}" for c in sorted({e['channel_id'] for e in fresh})])
     if notify is None:
         from .health import send_telegram as notify
     for e in fresh:

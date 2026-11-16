@@ -57,6 +57,10 @@ def dbs(monkeypatch):
         if stmt.strip():
             s.execute(text(stmt))
     s.commit()
+    s.execute(text("create table if not exists panel_cache (key text primary key, data text not null, computed_at timestamp not null, ms integer)"))
+    for k in ("ch:UCx:all:mix", "overview:all:daily", "kw:other"):
+        s.execute(text("insert into panel_cache values (:k, '{}', now() at time zone 'utc', 1)"), {"k": k})
+    s.commit()
     arch = create_engine(normalize_db_url(arch_url))
     with arch.begin() as c:
         for stmt in ARCHIVE_TABLE.strip().split(";"):
@@ -90,6 +94,9 @@ def test_archive_gets_the_same_reading(dbs):
     assert tuple(stats) == (120, 120, 120, 120)
     prog = s.execute(text("select comments, analyzed, ai_read from archive_progress where channel_id = 'UCx'")).one()
     assert tuple(prog) == (120, 120, 120)
+    # The channel's saved page sections were marked for refresh (pages follow the new totals).
+    ages = dict(s.execute(text("select key, extract(epoch from (now() at time zone 'utc') - computed_at) / 86400 from panel_cache")).all())
+    assert ages["ch:UCx:all:mix"] > 20 and ages["overview:all:daily"] > 20 and ages["kw:other"] < 1
 
 
 def test_local_pass_alone_and_live_backlog_pauses_ai(dbs):

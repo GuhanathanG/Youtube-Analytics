@@ -18,7 +18,7 @@ export function radar(mine: string): Promise<Radar> {
   return stored(`radar:${mine}`, Number(process.env.RADAR_CACHE_SECONDS ?? 1800) * 1000, () => computeRadar(mine));
 }
 
-async function computeRadar(mine: string): Promise<Radar> {
+export async function computeRadar(mine: string): Promise<Radar> {
   const db = sql();
   const chans = await db`select id, title, thumbnail_url, subscriber_count::float8 as subs from channels
     where active and (id = ${mine} or role = 'competitor')`;

@@ -1,7 +1,7 @@
 import "server-only";
 import { after } from "next/server";
 import { sql, ensureRls } from "./db";
-import { cached } from "./cache";
+import { cached, within } from "./cache";
 
 /**
  * Saved results for heavy page sections (top commenters, topic trends, analytics …).
@@ -25,7 +25,8 @@ function ensureTable() {
 }
 
 const refreshing = new Set<string>();
-const MEMORY_MS = 30_000;
+const MEMORY_MS = Number(process.env.STORED_MEMORY_SECONDS ?? 30) * 1000;
+const STALE_FACTOR = Number(process.env.STALE_FACTOR ?? 6);
 
 async function compute<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const t = Date.now();
@@ -59,8 +60,19 @@ export function stored<T>(key: string, maxAgeMs: number, fn: () => Promise<T>): 
     const [row] = await sql()`select data, extract(epoch from ((now() at time zone 'utc') - computed_at)) * 1000 as age
       from panel_cache where key = ${key}`;
     if (!row) return compute(key, fn);
-    if (Number(row.age) > maxAgeMs && !isHeavy(key)) refreshLater(key, fn);
-    return JSON.parse(row.data as string) as T;
+    const saved = JSON.parse(row.data as string) as T;
+    if (Number(row.age) > maxAgeMs && !isHeavy(key)) {
+      // Far past its lifetime (e.g. a section nobody opened for a day): work it out now rather than show old
+      // results, but never make the page wait more than a few seconds (then the saved copy is shown and the
+      // fresh one still lands for the next visit).
+      if (Number(row.age) > maxAgeMs * STALE_FACTOR && !refreshing.has(key)) {
+        refreshing.add(key);
+        const fresh = compute(key, fn).finally(() => refreshing.delete(key));
+        return within(fresh, Number(process.env.STALE_WAIT_MS ?? 5000), saved).catch(() => saved);
+      }
+      refreshLater(key, fn);
+    }
+    return saved;
   });
 }
 

@@ -9,6 +9,7 @@ import { pollLiveChats, saveLiveInfo, summariseEndedChats } from "./livechat";
 import { writeDueMemory } from "./memory";
 import { refreshDueSummaries } from "./summary";
 import { warmChannel } from "./panels";
+import { warmExtras } from "./warm-extras";
 import { renewSubscriptions, rssLatest } from "./uploads";
 import { pullDueReports } from "./owner";
 import { kickBackgroundJob } from "./github";
@@ -492,11 +493,15 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 3a+. Heavy page sections worked out in advance, one channel per run (rotating), at most ~8 s,
     //      so opening a channel or analytics page only reads saved results.
     if (timeLeft()) {
-      const chans = await db`select id from channels where active order by id`;
+      const chans = await db`select id, role from channels where active order by id`;
       if (chans.length) {
         const c = chans[Math.floor(Date.now() / 120_000) % chans.length];
         const until = Date.now() + Number(process.env.WARM_SECONDS ?? 8) * 1000;
         result.warmed = await warmChannel(c.id as string, () => timeLeft() && Date.now() < until).catch(() => 0);
+        // The other per-channel sections (Next moves, Radar, timeline, questions) follow the same rotation.
+        const extraUntil = Date.now() + Number(process.env.WARM_EXTRA_SECONDS ?? 6) * 1000;
+        result.warmed = (result.warmed ?? 0) + await warmExtras(c.id as string, () => timeLeft() && Date.now() < extraUntil, c.role !== "competitor")
+          .catch(() => 0);
       }
     }
 

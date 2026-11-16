@@ -14,8 +14,14 @@ export type OpenQuestion = {
 };
 
 /** Top-level viewer questions from the last 6 months that the creator never replied to, most liked first. */
+/** One saved list per channel (the top 40), cut to length per caller, so every page shows the same questions. */
 export function unansweredQuestions(channelId: string, limit = 40): Promise<OpenQuestion[]> {
-  return sizedAge(channelId, TTL).then((age) => stored(`questions:${channelId}:${limit}`, age, async () => {
+  return sizedAge(channelId, TTL).then((age) => stored(`questions:${channelId}:40`, age, () => computeQuestions(channelId, 40)))
+    .then((rows) => rows.slice(0, limit));
+}
+
+export async function computeQuestions(channelId: string, limit = 40): Promise<OpenQuestion[]> {
+  return (async () => {
     const db = sql();
     // Step 1: the most-liked recent questions (uses the channel index).
     const candidates = (await db`
@@ -33,7 +39,7 @@ export function unansweredQuestions(channelId: string, limit = 40): Promise<Open
       where channel_id = ${channelId} and author_channel_id = ${channelId} and parent_id in ${db(candidates.map((q) => q.id))}`)
       .map((r) => r.parent_id as string));
     return candidates.filter((q) => !answered.has(q.id)).slice(0, limit);
-  }));
+  })();
 }
 
 /* ================================================================== 7. channel health score */

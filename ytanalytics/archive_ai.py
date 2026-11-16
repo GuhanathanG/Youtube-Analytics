@@ -195,6 +195,10 @@ def rebuild_stats(session: Session, engines: list, touched: set) -> int:
                 t = totals[(r.channel_id, r.day)]
                 for j, v in enumerate((r.n, r.pos, r.neu, r.neg, float(r.s), r.sn, r.an, r.ai)):
                     t[j] += v
+    if totals:  # the archive's totals changed: pages built on them refresh
+        from .freshness import mark_stale
+
+        mark_stale(session, channel_ids=sorted({c for c, _ in totals}), patterns=["overview:%"])
     for (c, d), t in totals.items():
         session.execute(text("""insert into archive_stats (channel_id, day, comments, positive, neutral, negative, sentiment_sum,
                 sentiment_n, analyzed, ai_read) values (:c, :d, :n, :p, :u, :g, :s, :sn, :an, :ai)
