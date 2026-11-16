@@ -151,3 +151,18 @@ def test_busy_models_get_another_chance(dbs, monkeypatch):
         c.execute(text("update comments set ai_at = null"))
     u = UsedUp()
     assert read_archive(s, time.time() + 600, classifier=Mood(), router=u, do_local=False)["ai"] == 0 and u.calls == 1
+
+
+def test_parallel_readers_split_the_work(dbs):
+    """Readers with different slices never read the same comment, and together they read them all."""
+    import time
+
+    s, arch = dbs
+    seen = []
+    for k in range(3):
+        r = FakeRouter()
+        out = read_archive(s, time.time() + 600, classifier=Mood(), router=r, do_local=(k == 0), shard=(k, 3))
+        seen.append(out["ai"])
+    with arch.connect() as c:
+        left = c.execute(text("select count(*) from comments where ai_at is null")).scalar()
+    assert left == 0 and sum(seen) == 120 and all(0 < n < 120 for n in seen)

@@ -35,6 +35,14 @@ AI_COLS = ["sentiment", "sentiment_value", "sentiment_score", "sentiment_source"
            "is_question", "is_suggestion", "is_spam", "is_toxic", "aspects", "translation", "ai_at", "ai_model", "language"]
 
 
+def _shard_sql(shard: tuple[int, int] | None) -> str:
+    """Parallel readers split the comments by id, so no two read the same one."""
+    if not shard or shard[1] <= 1:
+        return ""
+    k, n = int(shard[0]), int(shard[1])
+    return f" and mod(abs(hashtext(id)), {n}) = {k}"
+
+
 def _now():
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
@@ -114,12 +122,13 @@ def local_pass(engine, classifier, deadline: float, batch: int = 1000, touched: 
     return done
 
 
-def ai_pass(engine, router, titles, deadline: float, batch: int = 40, touched: set | None = None,
-            should_continue=lambda: True) -> int:
+def ai_pass(engine, router, titles, deadline: float, batch: int | None = None, touched: set | None = None,
+            should_continue=lambda: True, shard: tuple[int, int] | None = None) -> int:
     """The full AI reading for archived comments, most-liked first."""
     from .ai import COMMENT_SYSTEM, _comment_update
     from .llm import NoModelAvailable
 
+    batch = batch or int(os.environ.get("ARCHIVE_AI_BATCH", "50"))
     done, since_vacuum, empty, idle, last_reset = 0, 0, 0, 0, time.monotonic()
     limit_mb = float(os.environ.get("ARCHIVE_DB_LIMIT_MB", "1000")) * 0.9
     while time.monotonic() < deadline:
@@ -135,7 +144,7 @@ def ai_pass(engine, router, titles, deadline: float, batch: int = 40, touched: s
                 break
         with engine.connect() as c:
             rows = c.execute(text("""select id, channel_id, video_id, published_at::date as day, text from comments
-                where ai_at is null order by like_count desc nulls last limit :n"""), {"n": batch}).all()
+                where ai_at is null""" + _shard_sql(shard) + """ order by like_count desc nulls last limit :n"""), {"n": batch}).all()
         if not rows:
             break
         vids = list(dict.fromkeys(r.video_id for r in rows))
@@ -253,7 +262,8 @@ def save_progress(session: Session, engines: list) -> None:
     session.commit()
 
 
-def read_archive(session: Session, until: float, classifier=None, router=None, do_local: bool = True, do_ai: bool = True) -> dict:
+def read_archive(session: Session, until: float, classifier=None, router=None, do_local: bool = True, do_ai: bool = True,
+                 shard: tuple[int, int] | None = None) -> dict:
     """Both passes over every archive database until `until` (time.time()). Returns counts."""
     urls = archive_urls(session)
     if not urls:
@@ -304,7 +314,7 @@ def read_archive(session: Session, until: float, classifier=None, router=None, d
             per_db = max(60.0, (deadline - time.monotonic()) / max(1, len(engines)))
             for e in engines:
                 out["ai"] += ai_pass(e, router, titles, min(deadline, time.monotonic() + per_db), touched=touched,
-                                     should_continue=live_caught_up)
+                                     should_continue=live_caught_up, shard=shard)
             rebuild_stats(session, engines, touched)
         else:
             out["ai_skipped"] = "no non-Gemini AI keys on this worker"
