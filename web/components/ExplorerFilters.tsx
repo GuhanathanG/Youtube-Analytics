@@ -11,7 +11,7 @@ function Select({ name, value, options, onChange, label }: { name: string; value
     <label className="flex flex-col gap-1">
       <span className="label">{label}</span>
       <select value={value} onChange={(e) => onChange(name, e.target.value)}
-        className="h-10 rounded-xl border border-line bg-[#0a0e1a] px-3 text-[13.5px] text-ink outline-none transition hover:border-line-2 focus:border-accent/60">
+        className="h-10 rounded-md border border-line-2 bg-[#0b0b10] px-3 text-[13.5px] text-ink outline-none transition hover:border-accent/40 focus:border-accent">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </label>
@@ -42,14 +42,14 @@ export function ExplorerFilters({ channels, languages, emotions, count, defaultC
   const active = ["channel", "sentiment", "lang", "emotion", "type", "q"].some((k) => sp.get(k));
 
   return (
-    <div className="panel p-4 sm:p-5">
+    <div className="border border-line p-4 sm:p-6">
       <div className="relative">
-        <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-accent" />
+        <Search size={17} className="absolute left-1 top-1/2 -translate-y-1/2 text-accent" />
         <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search comments" placeholder="Search every comment… e.g. audio, thumbnail, part 2, semma"
-          className="h-12 w-full rounded-xl border border-line-2 bg-white/[0.03] pl-10 pr-10 text-[15px] text-ink outline-none transition placeholder:text-ink-3 focus:border-accent/60" />
+          className="h-12 w-full border-0 border-b border-line-2 bg-transparent pl-9 pr-10 text-[16px] text-ink outline-none transition placeholder:text-ink-3 focus:border-accent" />
         {pending && <span className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin rounded-full border-2 border-accent border-t-transparent" />}
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+      <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         <Select label="Channel" name="channel" value={v("channel", defaultChannel ?? "all")} onChange={set} options={[...channels, { value: "all", label: "All channels (combined)" }]} />
         <Select label="Sentiment" name="sentiment" value={v("sentiment")} onChange={set}
           options={[{ value: "", label: "Any" }, { value: "positive", label: "Positive" }, { value: "neutral", label: "Neutral" }, { value: "negative", label: "Negative" }]} />
@@ -73,7 +73,7 @@ export function ExplorerFilters({ channels, languages, emotions, count, defaultC
             <X size={14} />Clear filters
           </button>
         )}
-        <a href={`/api/export?${sp.toString()}`} className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-ink-2 transition hover:border-accent/50 hover:text-ink">
+        <a href={`/api/export?${sp.toString()}`} className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-line-2 px-3.5 py-1.5 text-ink-2 transition hover:border-accent hover:text-accent">
           <Download size={14} />Download CSV
         </a>
       </div>
