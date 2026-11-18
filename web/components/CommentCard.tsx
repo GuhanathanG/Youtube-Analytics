@@ -14,7 +14,8 @@ export function CommentCard({ c, showVideo = true }: { c: CommentRow; showVideo?
           ? <Link href={`/people/${c.author_channel_id}${c.channel_id ? `?c=${c.channel_id}` : ""}`} className="font-medium text-ink-2 hover:text-accent" title="All comments by this person">{c.author_name ?? "Viewer"}</Link>
           : <span className="font-medium text-ink-2">{c.author_name ?? "Viewer"}</span>}
         {c.is_reply && <span>↳ reply</span>}
-        <span>{ago(c.published_at)}</span>
+        {/* "3m ago" is worked out on the server and again in the browser; a minute boundary between them is fine. */}
+        <span suppressHydrationWarning>{ago(c.published_at)}</span>
         {showVideo && <Link href={`/videos/${c.video_id}`} className="truncate text-ink-3 hover:text-accent">on {c.video_title}</Link>}
       </header>
       <p className="mt-2 whitespace-pre-line break-words text-[14.5px] leading-relaxed text-ink">{c.text}</p>
