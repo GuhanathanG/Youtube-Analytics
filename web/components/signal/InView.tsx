@@ -26,9 +26,13 @@ export function InView({ as: Tag = "div", className = "", children, id }: { as?:
 export function Words({ text, className = "", step = 70 }: { text: string; className?: string; step?: number }) {
   return (
     <span className={className}>
-      {text.split(" ").map((w, i) => (
-        <span key={i} className="word"><span style={{ transitionDelay: `${i * step}ms` }}>{w}&nbsp;</span></span>
-      ))}
+      {/* The sentence as plain text for screen readers and search; the animated words are decoration. */}
+      <span className="sr-only">{text}</span>
+      <span aria-hidden>
+        {text.split(" ").map((w, i) => (
+          <span key={i} className="word"><span style={{ transitionDelay: `${i * step}ms` }}>{w}&nbsp;</span></span>
+        ))}
+      </span>
     </span>
   );
 }

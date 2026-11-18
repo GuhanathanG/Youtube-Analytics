@@ -1,10 +1,17 @@
-/* Signal design system (UI rebuild R0). Scoped to .sig so the rest of the site is untouched. */
+/* Signal design system (docs/UI_REBUILD.md). Rebuilt pages wrap their content in .sig; .sig-page adds the
+   full-screen background for pages outside the app shell (concept, glance). */
 .sig {
   --bg: #07070a; --ink: #ededea; --ink-2: #b4b4bb; --ink-3: #8a8a93; --hair: rgba(255, 255, 255, 0.08); --hair-2: rgba(255, 255, 255, 0.14);
   --cyan: #22e1ff; --magenta: #ff3d7f; --neutral: #6b6b75;
-  position: relative; z-index: 1; min-height: 100vh; background: var(--bg); color: var(--ink);
-  font-family: var(--f-body), system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip;
+  color: var(--ink); font-family: var(--f-body), system-ui, sans-serif; -webkit-font-smoothing: antialiased;
 }
+.sig-page { position: relative; z-index: 1; min-height: 100vh; background: var(--bg); overflow-x: clip; }
+/* In-app sections: lighter rhythm than the concept page (these are working dashboards). */
+.sig .sec { padding-block: 56px; border-top: 1px solid var(--hair); }
+.sig .sec:first-child { border-top: 0; padding-top: 8px; }
+@media (min-width: 768px) { .sig .sec { padding-block: 72px; } }
+.sig .sec-head { margin-bottom: 32px; }
+@media (min-width: 768px) { .sig .sec-head { margin-bottom: 40px; } }
 .sig ::selection { background: var(--cyan); color: var(--bg); }
 .sig .display { font-family: var(--f-display), sans-serif; font-weight: 800; letter-spacing: -0.005em; line-height: 1.08; }
 /* Readable body copy: a comfortable size, line-height and measure (about 60 characters a line). */

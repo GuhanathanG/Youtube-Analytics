@@ -2,6 +2,7 @@ import { preconnect } from "react-dom";
 import type { Metadata, Viewport } from "next";
 import { DM_Mono, Inter_Tight, Syne } from "next/font/google";
 import "./globals.css";
+import "./signal.css";
 import { RegisterSW } from "@/components/RegisterSW";
 
 // Signal type system: Syne (wide display), Inter Tight (body), DM Mono (labels and small numbers).

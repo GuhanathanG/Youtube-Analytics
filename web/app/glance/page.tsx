@@ -7,9 +7,11 @@ import { comments } from "@/lib/queries";
 import { liveNow } from "@/lib/livechat";
 import { ago, compact, score } from "@/lib/format";
 import { GlanceRefresh } from "@/components/glance/GlanceRefresh";
-import { MixBar } from "@/components/charts/MixBar";
-import { Empty, Panel, Tag } from "@/components/ui";
-import { Logo } from "@/components/Logo";
+import { Empty } from "@/components/ui";
+import { Wordmark } from "@/components/Shell";
+import { InView, Words } from "@/components/signal/InView";
+import { Decode } from "@/components/signal/Decode";
+import { PulseOrb } from "@/components/signal/PulseOrb";
 
 /**
  * Pulse Glance: a phone-sized summary of every channel, built from the same pieces as the rest of the
@@ -34,111 +36,129 @@ export default async function GlancePage() {
     within(recentAlerts(3), 6000, []), within(comments({ hideSpam: true }, "newest", 4), 6000, []), within(liveNow(), 5000, []),
   ]);
   const ok = data.engine === "ok" || data.engine === "skipped";
+  const today = data.channels.reduce((n, c) => n + c.comments24h, 0);
+  const maxC = Math.max(1, ...data.channels.map((c) => c.comments));
+  const sats = data.channels.map((c) => ({ id: c.id, title: c.title, thumb: c.thumb, weight: Math.sqrt(c.comments / maxC), mood: (c.sentiment ?? 0) / 100 }));
+  const mood = (s: string | null) => (s === "positive" ? "var(--cyan)" : s === "negative" ? "var(--magenta)" : "var(--neutral)");
   return (
-    <main className="mx-auto max-w-xl px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))] text-ink">
+    <main className="sig sig-page mx-auto max-w-xl px-5 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-[calc(0.75rem+env(safe-area-inset-top))]">
       <GlanceRefresh />
-      <header className="flex items-center justify-between gap-3 py-2">
-        <Link href="/" aria-label="Open Creator Pulse"><Logo size={26} /></Link>
-        <Tag tone={ok ? "accent" : "warn"}>
-          <span className={`h-1.5 w-1.5 rounded-full ${ok ? "bg-accent" : "bg-warn"}`} />
+      <header className="flex h-12 items-center justify-between gap-3">
+        <Link href="/" aria-label="Open Creator Pulse"><Wordmark size={17} /></Link>
+        <span className="mono flex items-center gap-2" style={{ fontSize: 10, color: ok ? "var(--ink-2)" : "var(--magenta)" }}>
+          <i className={ok ? "live" : ""} style={ok ? undefined : { width: 7, height: 7, background: "var(--magenta)", display: "inline-block" }} />
           {ok ? "Live" : data.engine ?? "Engine"} · {data.engineAt ? ago(data.engineAt) : "—"}
-        </Tag>
+        </span>
       </header>
 
-      <div className="mt-5">
-        <div className="label">Glance</div>
-        <h1 className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight">
-          {data.channels.length} channel{data.channels.length === 1 ? "" : "s"} <span className="glow-text">live</span>
-        </h1>
-      </div>
+      <InView as="section" className="mt-6">
+        <div className="mono rise" style={{ color: "var(--cyan)" }}>■ <span>Glance</span></div>
+        <div className="label sr-only">Glance</div>
+        <h1 className="display mt-3 text-[40px]"><Words text={`${data.channels.length} channel${data.channels.length === 1 ? "" : "s"} live.`} /></h1>
+        <p className="rise lede mt-3" style={{ fontSize: 15, transitionDelay: "250ms" }}>
+          <Decode value={today} format="int" /> comments in the last 24 hours. The core beats faster when they arrive.
+        </p>
+        <div className="rise -mx-2 mt-2" style={{ transitionDelay: "150ms" }}><PulseOrb perDay={today} satellites={sats} size={360} /></div>
+      </InView>
 
       {live.length > 0 && (
-        <Link href={`/videos/${live[0].id}`} className="panel panel-hover mt-4 flex items-center gap-2 px-4 py-3">
+        <Link href={`/videos/${live[0].id}`} className="cell mt-2 flex items-center gap-3 border border-[var(--magenta)] px-4 py-3">
           <span className="h-2 w-2 shrink-0 animate-[pulse-dot_1.2s_ease-out_infinite] rounded-full bg-neg" />
-          <Tag tone="warn">Live now</Tag>
-          <span className="truncate text-[13px]">{live[0].channel}: {live[0].title}</span>
+          <span className="mono" style={{ color: "var(--magenta)", fontSize: 10 }}>Live now</span>
+          <span className="truncate text-[13.5px]">{live[0].channel}: {live[0].title}</span>
         </Link>
       )}
 
-      {/* Channel cards (same as Overview), swipe sideways */}
-      <section className="glance-rail -mx-4 mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2" aria-label="Channels">
+      {/* Channel cards, swipe sideways */}
+      <section className="glance-rail -mx-5 mt-6 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2" aria-label="Channels">
         {data.channels.length === 0 && <div className="w-full"><Empty>No channels yet. <Link href="/manage" className="text-accent">Add one</Link>.</Empty></div>}
-        {data.channels.map((c) => (
-          <div key={c.id} className="panel w-[86%] shrink-0 snap-center p-5">
-            <Link href={`/channels/${c.id}`} className="block">
-              <div className="flex items-center gap-3">
-                {c.thumb ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img decoding="async" src={c.thumb} alt="" referrerPolicy="no-referrer" className="h-11 w-11 rounded-full object-cover ring-2 ring-white/10" />
-                ) : <div className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-accent/30 to-accent-2/30 font-semibold">{c.title.slice(0, 1)}</div>}
-                <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium text-ink">{c.title}</div>
-                  <div className="truncate text-[12.5px] text-ink-3">{compact(c.followers)} {c.platform === "instagram" ? "followers" : "subs"} · {c.platform === "instagram" ? "Instagram" : "YouTube"}</div>
-                </div>
-              </div>
-              <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4">
-                {([["Sentiment", c.sentiment === null ? "–" : score(c.sentiment / 100)], ["Today", `+${compact(c.comments24h)}`],
-                  ["Comments", compact(c.comments)], ["Read by AI", `${c.aiRead}%`]] as [string, string][]).map(([k, v]) => (
-                  <div key={k}>
-                    <div className="label">{k}</div>
-                    <div className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold tabular">{v}</div>
+        {data.channels.map((c) => {
+          const n = c.positive + c.neutral + c.negative;
+          return (
+            <div key={c.id} className="w-[86%] shrink-0 snap-center border border-[var(--hair-2)] p-5">
+              <Link href={`/channels/${c.id}`} className="block">
+                <div className="flex items-center gap-3">
+                  {c.thumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img decoding="async" src={c.thumb} alt="" referrerPolicy="no-referrer" className="h-11 w-11 rounded-full object-cover ring-1 ring-white/15" />
+                  ) : <div className="grid h-11 w-11 place-items-center rounded-full bg-white/10 font-semibold">{c.title.slice(0, 1)}</div>}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[15px] font-medium">{c.title}</div>
+                    <div className="mono mt-0.5 truncate" style={{ fontSize: 9.5 }}>{c.platform === "instagram" ? "Instagram" : "YouTube"} / {compact(c.followers)} {c.platform === "instagram" ? "followers" : "subs"}</div>
                   </div>
+                </div>
+                <div className="mt-6 grid grid-cols-2 gap-x-4 gap-y-5">
+                  {([["Sentiment", c.sentiment === null ? "–" : score(c.sentiment / 100), (c.sentiment ?? 0) >= 0 ? "var(--cyan)" : "var(--magenta)"], ["Today", `+${compact(c.comments24h)}`, "var(--ink)"],
+                    ["Comments", compact(c.comments), "var(--ink)"], ["Read by AI", `${c.aiRead}%`, "var(--magenta)"]] as [string, string, string][]).map(([k, v, col]) => (
+                    <div key={k}>
+                      <div className="mono" style={{ fontSize: 9.5 }}>{k}</div>
+                      <div className="display mt-1.5 text-[26px] tabular" style={{ color: col }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="bar mt-5" style={{ display: "flex" }}>
+                  {[["positive", c.positive], ["neutral", c.neutral], ["negative", c.negative]].map(([k, v]) => (
+                    <span key={k as string} style={{ width: `${n ? ((v as number) / n) * 100 : 0}%`, background: mood(k as string), transform: "none" }} />
+                  ))}
+                </div>
+              </Link>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {[["Analytics", `/analytics?c=${encodeURIComponent(c.id)}`], ["Report", `/report/${encodeURIComponent(c.id)}`], ["Comments", `/comments?channel=${encodeURIComponent(c.id)}`]].map(([l, h]) => (
+                  <Link key={l} href={h} className="pill pill-line" style={{ padding: "5px 12px", fontSize: 12 }}>{l}</Link>
                 ))}
               </div>
-              <div className="mt-4"><MixBar mix={{ positive: c.positive, neutral: c.neutral, negative: c.negative }} size="sm" /></div>
-            </Link>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[["Analytics", `/analytics?c=${encodeURIComponent(c.id)}`], ["Report", `/report/${encodeURIComponent(c.id)}`], ["Comments", `/comments?channel=${encodeURIComponent(c.id)}`]].map(([l, h]) => (
-                <Link key={l} href={h} className="rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-ink-2 hover:border-accent/50 hover:text-ink">{l}</Link>
-              ))}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </section>
 
-      {/* Every page one tap away (same tiles as the phone menu) */}
-      <nav className="mt-5 grid grid-cols-3 gap-2" aria-label="Open">
+      {/* Every page one tap away */}
+      <nav className="mt-6 grid grid-cols-3 border-l border-t border-[var(--hair)]" aria-label="Open">
         {DOCK.map(({ href, label, Icon }) => (
-          <Link key={href} href={href} className="flex flex-col items-center gap-1 rounded-xl border border-line bg-white/[0.02] px-2 py-3 text-[12.5px] text-ink-2 hover:border-accent/40 hover:text-ink">
+          <Link key={href} href={href} className="flex flex-col items-center gap-1.5 border-b border-r border-[var(--hair)] px-2 py-4 text-[12.5px] transition hover:bg-white/[0.03] hover:text-[var(--cyan)]" style={{ color: "var(--ink-2)" }}>
             <Icon size={19} />{label}
           </Link>
         ))}
       </nav>
 
-      <div className="mt-5 space-y-4">
-        <Panel title="Alerts" subtitle="New uploads, negative spikes and viral comments">
-          {alerts.length === 0 ? <p className="text-[13px] text-ink-3">All quiet for now.</p> : (
-            <ul className="space-y-2.5">
-              {alerts.map((a) => (
-                <li key={a.id}>
-                  <Link href={a.link ?? "/"} className="block rounded-xl border border-line bg-white/[0.02] p-3 hover:border-accent/40">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="line-clamp-1 text-[13px] text-ink">{a.title}</span>
-                      <span className="shrink-0 text-[11.5px] text-ink-3">{ago(a.created_at)}</span>
-                    </div>
-                    <p className="mt-0.5 line-clamp-1 text-[12.5px] text-ink-2">{a.body}</p>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
+      <section className="mt-8">
+        <div className="mono" style={{ color: "var(--cyan)" }}>■ Alerts</div>
+        <p className="mt-1 text-[13px]" style={{ color: "var(--ink-3)" }}>New uploads, negative spikes and viral comments</p>
+        {alerts.length === 0 ? <p className="mt-4 text-[13.5px]" style={{ color: "var(--ink-3)" }}>All quiet for now.</p> : (
+          <ul className="mt-3 divide-y divide-[var(--hair)] border-y border-[var(--hair)]">
+            {alerts.map((a) => (
+              <li key={a.id}>
+                <Link href={a.link ?? "/"} className="block py-3 transition hover:text-[var(--cyan)]">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="line-clamp-1 text-[14px]">{a.title}</span>
+                    <span className="mono shrink-0" style={{ fontSize: 9.5 }}>{ago(a.created_at)}</span>
+                  </div>
+                  <p className="mt-0.5 line-clamp-1 text-[13px]" style={{ color: "var(--ink-2)" }}>{a.body}</p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-        <Panel title="Latest comments" action={<Link href="/comments" className="text-[13px] text-ink-3 hover:text-accent">All comments →</Link>}>
-          {latest.length === 0 ? <p className="text-[13px] text-ink-3">Comments appear here as they arrive.</p> : (
-            <ul className="space-y-3">
-              {latest.map((c) => (
-                <li key={c.id} className="border-l-2 pl-3" style={{ borderColor: c.sentiment === "positive" ? "var(--color-pos)" : c.sentiment === "negative" ? "var(--color-neg)" : "var(--color-neu)" }}>
-                  <p className="line-clamp-2 text-[13.5px] text-ink">{c.translation || c.text}</p>
-                  <p className="mt-0.5 text-[11.5px] text-ink-3">{c.author_name ?? "Viewer"} · {c.channel_title}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-      </div>
+      <section className="mt-8">
+        <div className="flex items-baseline justify-between">
+          <div className="mono" style={{ color: "var(--cyan)" }}>■ Latest comments</div>
+          <Link href="/comments" className="text-[13px] hover:text-[var(--cyan)]" style={{ color: "var(--ink-3)" }}>All comments →</Link>
+        </div>
+        {latest.length === 0 ? <p className="mt-4 text-[13.5px]" style={{ color: "var(--ink-3)" }}>Comments appear here as they arrive.</p> : (
+          <ul className="mt-4 space-y-4">
+            {latest.map((c) => (
+              <li key={c.id} className="border-l-2 pl-3.5" style={{ borderColor: mood(c.sentiment) }}>
+                <p className="line-clamp-2 text-[14px] leading-relaxed">{c.translation || c.text}</p>
+                <p className="mono mt-1" style={{ fontSize: 9.5 }}>{c.author_name ?? "Viewer"} / {c.channel_title}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
-      <p className="mt-6 text-center text-[12px] text-ink-3">Updated {ago(data.at)} · refreshes every minute</p>
+      <p className="mono mt-10 text-center" style={{ fontSize: 9.5 }}>Updated {ago(data.at)} · refreshes every minute</p>
     </main>
   );
 }
