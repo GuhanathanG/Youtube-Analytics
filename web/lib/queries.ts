@@ -424,6 +424,8 @@ export async function searchEverything(q: string) {
 
 export type Progress = {
   channel_id: string; title: string; videos_total: number | null; videos_known: number; videos_complete: number;
+  /** "competitor": only stats and uploads are tracked (no comment download), so history is never "waiting". */
+  role?: string | null;
   comments_on_youtube: number; comments_stored: number; ai_read: number;
   saved_last_hour: number; ai_last_hour: number;
   sentiment_done: number; sentiment_last_hour: number;
@@ -445,7 +447,7 @@ async function progressUncached(): Promise<Progress[]> {
   const db = sql();
   await ensureSummary();
   const rows = (await db`
-    select ch.id as channel_id, ch.title, ch.video_count::int as videos_total,
+    select ch.id as channel_id, ch.title, ch.role, ch.video_count::int as videos_total,
       coalesce(v.known, 0)::int as videos_known, coalesce(v.complete, 0)::int as videos_complete,
       (coalesce(v.known, 0) - coalesce(v.complete, 0))::int as history_left,
       coalesce(v.on_yt, 0)::float8 as comments_on_youtube,

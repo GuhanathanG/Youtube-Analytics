@@ -174,6 +174,8 @@ def ai_pass(engine, router, titles, deadline: float, batch: int | None = None, t
             last_reset = time.monotonic()
         results = {}
         for item in data.get("results") or []:
+            if not isinstance(item, dict):  # a malformed item is skipped, never fatal
+                continue
             try:
                 results[int(item.get("i"))] = item
             except (TypeError, ValueError):
@@ -248,11 +250,21 @@ def save_progress(session: Session, engines: list) -> None:
         analyzed integer, ai_read integer, updated_at timestamp, prev_analyzed integer, prev_ai_read integer, prev_at timestamp)"""))
     agg: dict = defaultdict(lambda: [0, 0, 0])
     for eng in engines:
-        with eng.connect() as conn:
-            for r in conn.execute(text("""select channel_id, count(*) n, count(analyzed_at) an, count(ai_at) ai
-                    from comments group by 1""")).all():
-                a = agg[r.channel_id]
-                a[0] += r.n; a[1] += r.an; a[2] += r.ai
+        try:
+            with eng.connect() as conn:
+                # A full count over a big archive on a small free database can take minutes: capped, so a slow count
+                # skips this update instead of running the job past its time limit.
+                if eng.dialect.name == "postgresql":
+                    conn.execute(text("set statement_timeout = '6min'"))
+                rows = conn.execute(text("""select channel_id, count(*) n, count(analyzed_at) an, count(ai_at) ai
+                    from comments group by 1""")).all()
+        except Exception as e:  # noqa: BLE001
+            log.warning("archive progress not updated (count too slow: %s)", str(e)[:200])
+            session.rollback()
+            return
+        for r in rows:
+            a = agg[r.channel_id]
+            a[0] += r.n; a[1] += r.an; a[2] += r.ai
     for c, (n, an, ai) in agg.items():
         session.execute(text("""insert into archive_progress (channel_id, comments, analyzed, ai_read, updated_at)
             values (:c, :n, :an, :ai, :t) on conflict (channel_id) do update set comments = excluded.comments,
@@ -331,7 +343,8 @@ def read_archive(session: Session, until: float, classifier=None, router=None, d
         else:
             out["ai_skipped"] = "no non-Gemini AI keys on this worker"
             log.warning("archive AI pass skipped: no AI keys other than Gemini on this worker (ARCHIVE_AI_PROVIDERS)")
-    save_progress(session, engines)
+    if shard is None or shard[0] == 0:  # one reader counts; three at once on the same small database was the slow part
+        save_progress(session, engines)
     for e in engines:
         e.dispose()
     return out

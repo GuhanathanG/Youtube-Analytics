@@ -53,8 +53,9 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const k = one && fc ? { ...kAll, channels: 1, comments: one.comments, analyzed: one.analyzed, ai_read: one.ai_read, comments_24h: one.comments_24h,
     videos: fc.videos_stored, videos_backfilling: Math.max(0, fc.videos_stored - fc.videos_backfilled) } : kAll;
   const prog = progAll.filter((p) => !focus || p.channel_id === focus);
-  const historyBusy = prog.some((p) => p.comments_stored < p.comments_on_youtube * 0.98 || p.ai_read < p.comments_stored * 0.98
-    || (p.videos_total ?? 0) > p.videos_known);
+  // Work really waiting (not "YouTube's total is bigger": the archive holds older comments, competitors skip comments).
+  const historyBusy = prog.some((p) => (p.role !== "competitor" && (p.history_left ?? 0) > 0) || (p.ai_waiting ?? 0) > 200
+    || (p.videos_total ?? 0) > p.videos_known + Math.max(5, (p.videos_total ?? 0) * 0.01));
   const analysed = chs.reduce((s, c) => s + c.positive + c.neutral + c.negative, 0);
   const weighted = analysed ? chs.reduce((s, c) => s + (c.avg_sentiment ?? 0) * (c.positive + c.neutral + c.negative), 0) / analysed : 0;
   // Shapes for the numbers: comments per period and net mood per period, from the same series as the chart below.
