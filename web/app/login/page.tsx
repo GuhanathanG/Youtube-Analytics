@@ -1,25 +1,24 @@
 import { LoginForm } from "./LoginForm";
 import { safeNext } from "@/lib/safe-next";
-import { Logo } from "@/components/Logo";
+import { Wordmark } from "@/components/Shell";
 
 export const metadata = { title: "Sign in" };
 
+/** Signal sign-in: one pulsing dot and a single hairline password field. */
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const { next } = await searchParams;
   return (
-    <main className="grid min-h-dvh place-items-center px-4">
-      <div className="w-full max-w-[400px]">
-        <div className="mb-8 flex justify-center"><Logo size={36} /></div>
-        <div className="panel relative overflow-hidden p-7">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px overflow-hidden">
-            <div className="h-px w-1/2 bg-gradient-to-r from-transparent via-accent to-transparent animate-[scan_3.2s_linear_infinite]" />
-          </div>
-          <div className="label">Restricted</div>
-          <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight">Audience intelligence</h1>
-          <p className="mt-1.5 text-[14px] text-ink-3">Every comment, every language, read by AI. Enter your password to continue.</p>
-          <LoginForm next={safeNext(next)} />
-        </div>
+    <main className="safe-top relative flex min-h-dvh flex-col px-5 sm:px-10">
+      <header className="flex h-16 items-center justify-between">
+        <Wordmark />
+        <span className="label hidden sm:inline">Restricted access</span>
+      </header>
+      <div className="flex flex-1 items-center justify-center py-10">
+        <LoginForm next={safeNext(next)} />
       </div>
+      <footer className="label flex flex-wrap justify-between gap-2 pb-6" style={{ paddingBottom: "calc(24px + env(safe-area-inset-bottom))" }}>
+        <span>Audience intelligence</span><span>Every comment · every language</span>
+      </footer>
     </main>
   );
 }

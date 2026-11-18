@@ -1,18 +1,17 @@
 "use client";
 
-import { Activity, BrainCircuit, ChartNoAxesCombined, Clapperboard, Columns2, Flame, Gauge, GitCompareArrows, Globe, LayoutDashboard, Lightbulb,
-  LogOut, MessageSquareText, Radar, Rocket, Search, Settings2, Sparkles, Target, TrendingUp, Users, type LucideIcon } from "lucide-react";
+import { Activity, ArrowUpRight, BrainCircuit, ChartNoAxesCombined, Check, ChevronDown, Clapperboard, Columns2, Flame, Gauge, GitCompareArrows, Globe,
+  LayoutDashboard, Lightbulb, LogOut, MessageSquareText, Radar, Rocket, Search, Settings2, Sparkles, Target, TrendingUp, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { logout, setFocus } from "@/app/actions";
 import dynamic from "next/dynamic";
+import { LivePill } from "./LivePill";
+import { ACCOUNT_PAGES, HUBS, hubOf, pageMatches } from "@/lib/nav";
 
 // The search palette (and its library) loads the first time it's opened, not with every page.
 const CommandPalette = dynamic(() => import("./CommandPalette").then((m) => m.CommandPalette), { ssr: false });
-import { LivePill } from "./LivePill";
-import { Logo } from "./Logo";
-import { ACCOUNT_PAGES, HUBS, hubOf, pageMatches } from "@/lib/nav";
 
 type NavChannel = { id: string; title: string; thumb: string | null; active: boolean; rival?: boolean };
 
@@ -20,19 +19,111 @@ const ICONS: Record<string, LucideIcon> = { Activity, BrainCircuit, ChartNoAxesC
   LayoutDashboard, Lightbulb, MessageSquareText, Radar, Rocket, Search, Settings2, Sparkles, Target, TrendingUp, Users };
 const Icon = ({ name, ...p }: { name: string; size?: number; className?: string }) => { const I = ICONS[name] ?? Activity; return <I {...p} />; };
 
-/** Which channel the whole site shows. Switching reloads the page's data for that channel only. */
-function FocusSwitcher({ channels, focus }: { channels: NavChannel[]; focus: string | null }) {
+/** The Signal wordmark: "creator·pulse" in the wide display face with a live cyan dot. */
+export function Wordmark({ size = 19 }: { size?: number }) {
+  return (
+    <span className="font-[family-name:var(--font-display)] font-extrabold tracking-[-0.01em] text-ink" style={{ fontSize: size }}>
+      creator<span className="text-accent" style={{ textShadow: "0 0 12px rgba(34,225,255,.8)" }}>·</span>pulse
+    </span>
+  );
+}
+
+const Avatar = ({ c, size = 22 }: { c: NavChannel | undefined; size?: number }) => c?.thumb ? (
+  // eslint-disable-next-line @next/next/no-img-element
+  <img decoding="async" src={c.thumb} alt="" width={size} height={size} className="shrink-0 rounded-full object-cover ring-1 ring-white/15" style={{ width: size, height: size }} />
+) : <span className="grid shrink-0 place-items-center rounded-full bg-white/10 text-[10px]" style={{ width: size, height: size }}>{c?.title.slice(0, 1) ?? "∗"}</span>;
+
+/** Close a menu on outside click or Escape. */
+function useDismiss(open: boolean, close: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) close(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("mousedown", onDown); document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open, close]);
+  return ref;
+}
+
+/**
+ * Which channel the whole site shows, plus quick links to every watched channel (this replaces the old sidebar list).
+ * The list is always in the page (hidden until opened) so it is there for assistive tech and tests.
+ */
+function ChannelMenu({ channels, focus }: { channels: NavChannel[]; focus: string | null }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const active = channels.filter((c) => c.active && !c.rival); // competitors are on the Radar, not in the switcher
-  if (active.length < 2) return null;
+  const [open, setOpen] = useState(false);
+  const ref = useDismiss(open, () => setOpen(false));
+  const focusable = channels.filter((c) => c.active && !c.rival); // competitors are on the Radar, not the site's focus
+  const others = channels.filter((c) => !c.active || c.rival);
+  const current = focusable.find((c) => c.id === focus);
+  const choose = (v: string) => { setOpen(false); start(async () => { await setFocus(v); router.refresh(); }); };
+  if (!channels.length) return null;
   return (
-    <select aria-label="Channel shown across the site" value={focus ?? "all"} disabled={pending}
-      onChange={(e) => { const v = e.target.value; start(async () => { await setFocus(v); router.refresh(); }); }}
-      className="h-10 min-w-0 flex-1 truncate rounded-xl border border-accent/40 bg-accent/10 px-3 text-[13.5px] text-ink outline-none sm:max-w-[240px] sm:flex-none">
-      {active.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-      <option value="all">All channels (combined)</option>
-    </select>
+    <div ref={ref} className="relative min-w-0">
+      <button onClick={() => setOpen((v) => !v)} aria-label="Channel shown across the site" aria-expanded={open} aria-haspopup="listbox" disabled={pending}
+        className={`flex h-9 min-w-0 items-center gap-2 rounded-full border border-line-2 pl-1.5 pr-3 text-[13px] text-ink transition hover:border-accent/60 ${pending ? "opacity-60" : ""}`}>
+        {current ? <Avatar c={current} /> : (
+          <span className="flex -space-x-2">{focusable.slice(0, 3).map((c) => <Avatar key={c.id} c={c} size={20} />)}</span>
+        )}
+        <span className="hidden max-w-[12rem] truncate sm:inline">{current?.title ?? "All channels"}</span>
+        <ChevronDown size={14} className={`shrink-0 text-ink-3 transition ${open ? "rotate-180" : ""}`} />
+      </button>
+      <div hidden={!open} role="listbox" aria-label="Channels"
+        className="menu-in absolute right-0 top-11 z-50 w-[min(320px,calc(100vw-24px))] border border-line-2 bg-[#0b0b10]/95 p-2 shadow-[0_24px_60px_-20px_rgba(0,0,0,.9)] backdrop-blur-xl sm:left-0 sm:right-auto">
+        <div className="label px-2 pb-2 pt-1">Show across the site</div>
+        {focusable.map((c) => (
+          <div key={c.id} className="group flex items-center rounded-md hover:bg-white/[0.05]">
+            <button role="option" aria-selected={c.id === focus} onClick={() => choose(c.id)} className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-[13.5px]">
+              <Avatar c={c} /><span className="truncate">{c.title}</span>
+              {c.id === focus && <Check size={14} className="ml-auto shrink-0 text-accent" />}
+            </button>
+            <Link href={`/channels/${c.id}`} onClick={() => setOpen(false)} title="Open channel" aria-label={`Open ${c.title}`}
+              className="mr-1 grid h-7 w-7 shrink-0 place-items-center rounded text-ink-3 opacity-0 transition hover:text-accent group-hover:opacity-100 focus:opacity-100"><ArrowUpRight size={14} /></Link>
+          </div>
+        ))}
+        <button role="option" aria-selected={!focus} onClick={() => choose("all")} className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left text-[13.5px] hover:bg-white/[0.05]">
+          <span className="grid h-[22px] w-[22px] place-items-center rounded-full border border-line-2 text-[11px] text-ink-3">∗</span>All channels (combined)
+          {!focus && <Check size={14} className="ml-auto text-accent" />}
+        </button>
+        {others.length > 0 && (
+          <>
+            <div className="label mt-2 border-t border-line px-2 pb-2 pt-3">Rivals & paused</div>
+            {others.map((c) => (
+              <Link key={c.id} href={`/channels/${c.id}`} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-2 py-2 text-[13.5px] text-ink-2 hover:bg-white/[0.05] hover:text-ink">
+                <Avatar c={c} /><span className="truncate">{c.title}</span>
+                <span className="ml-auto font-mono text-[9.5px] tracking-[0.14em] text-ink-3">{c.rival ? "RIVAL" : "PAUSED"}</span>
+              </Link>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AccountMenu({ onSearch }: { onSearch: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useDismiss(open, () => setOpen(false));
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen((v) => !v)} aria-label="Settings and account" aria-expanded={open}
+        className="grid h-9 w-9 place-items-center rounded-full border border-line-2 text-ink-3 transition hover:border-accent/60 hover:text-ink"><Settings2 size={16} /></button>
+      {open && (
+        <div className="menu-in absolute right-0 top-11 z-50 w-56 border border-line-2 bg-[#0b0b10]/95 p-2 shadow-[0_24px_60px_-20px_rgba(0,0,0,.9)] backdrop-blur-xl">
+          {ACCOUNT_PAGES.map((p) => (
+            <Link key={p.href} href={p.href} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-white/[0.05] hover:text-ink">
+              <Icon name={p.icon} size={15} />{p.label}
+            </Link>
+          ))}
+          <button onClick={() => { setOpen(false); onSearch(); }} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-white/[0.05] hover:text-ink sm:hidden"><Search size={15} />Search</button>
+          <form action={logout} className="mt-1 border-t border-line pt-1">
+            <button className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-white/[0.05] hover:text-ink"><LogOut size={15} />Sign out</button>
+          </form>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -48,133 +139,86 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const [account, setAccount] = useState(false);
   const hub = hubOf(path);
 
   return (
-    <div className="min-h-dvh lg:pl-[260px]">
-      {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[260px] flex-col border-r border-line bg-[#05070d]/70 px-4 py-5 backdrop-blur-xl lg:flex">
-        <Link href="/" className="px-2"><Logo /></Link>
-        {/* Nav and the Watching list scroll together, so the channel list is never squeezed to nothing on short screens */}
-        <div className="scrollbar-thin -mx-1 mt-6 min-h-0 flex-1 overflow-y-auto px-1">
-        <nav className="space-y-1" aria-label="Hubs">
-          {HUBS.map((h) => {
-            const on = hub?.key === h.key;
-            return (
-              <div key={h.key}>
-                <Link href={h.pages[0].href} title={h.question}
-                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14.5px] font-medium transition ${on ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
-                  {on && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" style={{ background: h.color, boxShadow: `0 0 12px ${h.color}` }} />}
-                  <span className="grid h-7 w-7 place-items-center rounded-lg transition" style={on ? { background: `${h.color}22`, color: h.color, boxShadow: `0 0 14px -4px ${h.color}` } : undefined}>
-                    <Icon name={h.icon} size={16} />
-                  </span>
-                  {h.label}
-                </Link>
-                {on && (
-                  <div className="anim-slide-in ml-[26px] mt-0.5 space-y-0.5 border-l border-line pl-3">
-                    {h.pages.map((p) => (
-                      <Link key={p.href} href={p.href}
-                        className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13px] transition ${pageMatches(p.href, path) ? "text-ink" : "text-ink-3 hover:text-ink-2"}`}>
-                        <Icon name={p.icon} size={14} className={pageMatches(p.href, path) ? "text-accent" : ""} />{p.label}
+    <div className="min-h-dvh">
+      <header className="safe-top sticky top-0 z-40 border-b border-line bg-[#07070a]/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-[1440px] items-center gap-3 px-4 sm:px-8">
+          <Link href="/" aria-label="Overview" className="shrink-0"><span className="sm:hidden"><Wordmark size={16} /></span><span className="hidden sm:inline"><Wordmark /></span></Link>
+
+          {/* Hubs: hover (or keyboard focus) opens the hub's pages. */}
+          <nav aria-label="Hubs" className="ml-6 hidden items-center lg:flex">
+            {HUBS.map((h) => {
+              const on = hub?.key === h.key;
+              return (
+                <div key={h.key} className="group relative">
+                  <Link href={h.pages[0].href} aria-current={on ? "page" : undefined}
+                    className={`relative flex h-16 items-center px-3.5 text-[13.5px] transition ${on ? "text-ink" : "text-ink-3 hover:text-ink"}`}>
+                    {h.label}
+                    <span className={`absolute inset-x-3.5 bottom-0 h-[2px] transition ${on ? "bg-accent shadow-[0_0_12px_#22e1ff]" : "bg-transparent group-hover:bg-white/20"}`} />
+                  </Link>
+                  <div className="pointer-events-none invisible absolute left-0 top-full z-50 w-64 translate-y-1 border border-line-2 bg-[#0b0b10]/95 p-2 opacity-0 shadow-[0_24px_60px_-20px_rgba(0,0,0,.9)] backdrop-blur-xl transition group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:visible group-hover:translate-y-0 group-hover:opacity-100">
+                    <div className="px-2.5 pb-2 pt-1.5 text-[12px] leading-snug text-ink-3">{h.question}</div>
+                    {h.pages.map((p, i) => (
+                      <Link key={p.href} href={p.href} className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] transition hover:bg-white/[0.05] ${pageMatches(p.href, path) ? "text-ink" : "text-ink-2 hover:text-ink"}`}>
+                        <span className="font-mono text-[10px] text-ink-3">{String(i + 1).padStart(2, "0")}</span>
+                        <Icon name={p.icon} size={14} className={pageMatches(p.href, path) ? "text-accent" : "text-ink-3"} />{p.label}
                       </Link>
                     ))}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-        <div className="mt-6 px-3 label">Watching</div>
-        <div className="mt-2 space-y-0.5 pb-2">
-          {channels.length === 0 && <p className="px-3 py-2 text-[13px] text-ink-3">No channels yet.</p>}
-          {channels.map((c) => (
-            <Link key={c.id} href={`/channels/${c.id}`}
-              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13.5px] transition ${path === `/channels/${c.id}` ? "bg-white/[0.06] text-ink" : "text-ink-2 hover:bg-white/[0.04] hover:text-ink"}`}>
-              {c.thumb ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img decoding="async" src={c.thumb} alt="" className="h-6 w-6 rounded-full object-cover ring-1 ring-white/10" />
-              ) : <span className="grid h-6 w-6 place-items-center rounded-full bg-white/10 text-[11px]">{c.title.slice(0, 1)}</span>}
-              <span className="truncate">{c.title}</span>
-              {!c.active ? <span className="ml-auto text-[10px] text-ink-3">paused</span> : c.rival ? <span className="ml-auto font-mono text-[9.5px] tracking-wider text-accent-2">RIVAL</span> : null}
-            </Link>
-          ))}
-        </div>
-        </div>
-        <div className="mt-3 flex gap-1 border-t border-line pt-3">
-          {ACCOUNT_PAGES.map((p) => (
-            <Link key={p.href} href={p.href} className={`flex flex-1 items-center gap-2 rounded-lg px-3 py-2 text-[13px] ${pageMatches(p.href, path) ? "bg-white/[0.06] text-ink" : "text-ink-3 hover:bg-white/[0.04] hover:text-ink-2"}`}>
-              <Icon name={p.icon} size={15} />Settings
-            </Link>
-          ))}
-          <form action={logout}>
-            <button className="flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] text-ink-3 hover:bg-white/[0.04] hover:text-ink-2"><LogOut size={15} />Sign out</button>
-          </form>
-        </div>
-      </aside>
-
-      {/* Top bar */}
-      <header className="safe-top sticky top-0 z-20 flex h-16 box-content items-center gap-3 border-b border-line bg-[#05070d]/60 px-4 backdrop-blur-xl sm:px-8">
-        <Link href="/" className="shrink-0 lg:hidden" aria-label="Overview"><Logo size={28} compact /></Link>
-        <FocusSwitcher channels={channels} focus={focus} />
-        <button onClick={() => setOpen(true)}
-          aria-label="Search" className="ml-auto flex h-10 w-10 shrink-0 items-center justify-center gap-3 rounded-xl border border-line bg-white/[0.03] px-3 text-[13.5px] text-ink-3 transition hover:border-line-2 hover:text-ink-2 sm:w-full sm:max-w-[420px] sm:justify-start lg:ml-0">
-          <Search size={16} className="shrink-0" /><span className="hidden sm:inline">Search channels, videos…</span>
-          <kbd className="ml-auto hidden rounded-md border border-line-2 px-1.5 py-0.5 font-mono text-[11px] sm:inline">⌘K</kbd>
-        </button>
-        <LivePill />
-        <button onClick={() => setAccount(true)} aria-label="Settings and account" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-line text-ink-3 hover:text-ink lg:hidden">
-          <Settings2 size={17} />
-        </button>
-      </header>
-
-      <main className="safe-main mx-auto max-w-[1400px] px-4 pt-4 sm:px-8 sm:pt-6">
-        {hub && (
-          <nav aria-label={`${hub.label} pages`} className="scrollbar-thin -mx-1 mb-5 flex items-center gap-1 overflow-x-auto border-b border-line px-1">
-            <span className="mr-2 hidden shrink-0 items-center gap-2 py-2.5 text-[12px] uppercase tracking-[0.14em] sm:flex" style={{ color: hub.color }}>
-              <Icon name={hub.icon} size={14} />{hub.label}
-            </span>
-            {hub.pages.map((p) => {
-              const on = pageMatches(p.href, path);
-              return (
-                <Link key={p.href} href={p.href} data-on={on ? "1" : "0"}
-                  className={`hub-tab flex shrink-0 items-center gap-1.5 rounded-t-lg px-3 py-2.5 text-[13.5px] transition ${on ? "text-ink" : "text-ink-3 hover:text-ink-2"}`}>
-                  <Icon name={p.icon} size={14} className={on ? "text-accent" : ""} />{p.label}
-                </Link>
+                </div>
               );
             })}
           </nav>
-        )}
-        {children}
-      </main>
 
-      {/* Mobile bottom nav: the five hubs (each hub's pages are tabs at the top of the page) */}
-      <nav aria-label="Hubs" className="safe-bottom fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border border-line-2 bg-[#0a0e1a]/85 p-1.5 backdrop-blur-xl lg:hidden">
+          <div className="ml-auto flex min-w-0 items-center gap-2">
+            <ChannelMenu channels={channels} focus={focus} />
+            <button onClick={() => setOpen(true)} aria-label="Search"
+              className="hidden h-9 items-center gap-2.5 rounded-full border border-line-2 px-3.5 text-[13px] text-ink-3 transition hover:border-accent/60 hover:text-ink sm:flex">
+              <Search size={15} /><span className="hidden xl:inline">Search</span>
+              <kbd className="font-mono text-[10.5px] text-ink-3">⌘K</kbd>
+            </button>
+            <LivePill />
+            <AccountMenu onSearch={() => setOpen(true)} />
+          </div>
+        </div>
+
+        {/* The current hub's pages, as tabs under the bar. */}
+        {hub && (
+          <div className="border-t border-line">
+            <nav aria-label={`${hub.label} pages`} className="scrollbar-thin mx-auto flex max-w-[1440px] items-center gap-1 overflow-x-auto px-4 sm:px-8">
+              <span className="mr-3 hidden shrink-0 py-3 font-mono text-[10.5px] uppercase tracking-[0.16em] text-accent sm:inline">■ {hub.label}</span>
+              {hub.pages.map((p) => {
+                const on = pageMatches(p.href, path);
+                return (
+                  <Link key={p.href} href={p.href} data-on={on ? "1" : "0"} aria-current={on ? "page" : undefined}
+                    className={`relative flex shrink-0 items-center gap-1.5 px-3 py-3 text-[13px] transition ${on ? "text-ink" : "text-ink-3 hover:text-ink-2"}`}>
+                    <Icon name={p.icon} size={14} className={on ? "text-accent" : ""} />{p.label}
+                    {on && <span className="absolute inset-x-3 bottom-0 h-px bg-accent shadow-[0_0_8px_#22e1ff]" />}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        )}
+      </header>
+
+      <main className="safe-main mx-auto max-w-[1440px] px-4 pt-6 sm:px-8 sm:pt-8">{children}</main>
+
+      {/* Phones: the five hubs along the bottom. */}
+      <nav aria-label="Hubs" className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-line bg-[#07070a]/90 px-1 pt-1.5 backdrop-blur-xl lg:hidden"
+        style={{ paddingBottom: "calc(4px + env(safe-area-inset-bottom))" }}>
         {HUBS.map((h) => {
           const on = hub?.key === h.key;
           return (
-            <Link key={h.key} href={h.pages[0].href} className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl py-2 text-[11px] transition ${on ? "bg-white/[0.07] text-ink" : "text-ink-3"}`}>
-              <span style={on ? { color: h.color, filter: `drop-shadow(0 0 6px ${h.color})` } : undefined}><Icon name={h.icon} size={18} /></span>{h.label}
+            <Link key={h.key} href={h.pages[0].href} className={`relative flex flex-1 flex-col items-center gap-1 py-1.5 text-[10.5px] transition ${on ? "text-ink" : "text-ink-3"}`}>
+              {on && <span className="absolute inset-x-5 -top-1.5 h-[2px] bg-accent shadow-[0_0_10px_#22e1ff]" />}
+              <span className={on ? "text-accent" : ""}><Icon name={h.icon} size={18} /></span>{h.label}
             </Link>
           );
         })}
       </nav>
-
-      {/* Phone: settings, search and sign out */}
-      {account && (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Account">
-          <button aria-label="Close" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAccount(false)} />
-          <div className="safe-top drawer-panel absolute right-3 top-3 w-60 space-y-1 rounded-2xl border border-line-2 bg-[#0a0e1a] p-2 shadow-2xl">
-            {ACCOUNT_PAGES.map((p) => (
-              <Link key={p.href} href={p.href} onClick={() => setAccount(false)} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] text-ink-2 hover:bg-white/[0.05]">
-                <Icon name={p.icon} size={16} />{p.label}
-              </Link>
-            ))}
-            <button onClick={() => { setAccount(false); setOpen(true); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] text-ink-2 hover:bg-white/[0.05]"><Search size={16} />Search</button>
-            <form action={logout}><button className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[14px] text-ink-2 hover:bg-white/[0.05]"><LogOut size={16} />Sign out</button></form>
-          </div>
-        </div>
-      )}
 
       {(open || paletteUsed) && <CommandPalette open={open} setOpen={setOpen} />}
     </div>

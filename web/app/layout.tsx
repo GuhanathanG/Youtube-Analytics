@@ -1,12 +1,13 @@
 import { preconnect } from "react-dom";
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { DM_Mono, Inter_Tight, Syne } from "next/font/google";
 import "./globals.css";
 import { RegisterSW } from "@/components/RegisterSW";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
-const grotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-grotesk", display: "swap" });
-const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono-face", display: "swap" });
+// Signal type system: Syne (wide display), Inter Tight (body), DM Mono (labels and small numbers).
+const display = Syne({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--f-display", display: "swap" });
+const body = Inter_Tight({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--f-body", display: "swap" });
+const mono = DM_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--f-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: { default: "Creator Pulse", template: "%s · Creator Pulse" },
@@ -18,19 +19,16 @@ export const metadata: Metadata = {
 
 // viewportFit "cover": on iPhones the app fills the screen behind the notch and home bar; the
 // safe-* classes (globals.css) keep the top bar and bottom menu clear of them.
-export const viewport: Viewport = { themeColor: "#05070d", colorScheme: "dark", viewportFit: "cover" };
+export const viewport: Viewport = { themeColor: "#07070a", colorScheme: "dark", viewportFit: "cover" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // Start connecting to the thumbnail servers while the page is still loading, so images arrive sooner.
   preconnect("https://i.ytimg.com");
   preconnect("https://yt3.ggpht.com");
   return (
-    <html lang="en" className={`${inter.variable} ${grotesk.variable} ${mono.variable}`}>
+    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body>
-        <div className="backdrop" aria-hidden>
-          <div className="blob" style={{ left: "-15%", top: "-25%", background: "#22d3ee" }} />
-          <div className="blob" style={{ right: "-20%", top: "10%", background: "#8b7cf6", animationDelay: "-9s" }} />
-        </div>
+        <div className="backdrop" aria-hidden />
         {children}
         <RegisterSW />
       </body>
