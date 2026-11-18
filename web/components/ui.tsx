@@ -34,8 +34,8 @@ export function Stat({ label, value, format = "compact", hint, accent = false, s
 }
 
 const SENT_STYLES: Record<string, string> = {
-  positive: "bg-pos/15 text-[#9cc5f5] ring-pos/30",
-  negative: "bg-neg/15 text-[#f3a9a9] ring-neg/30",
+  positive: "bg-pos/10 text-pos ring-pos/30",
+  negative: "bg-neg/10 text-neg ring-neg/30",
   neutral: "bg-white/5 text-ink-2 ring-white/10",
 };
 
@@ -43,8 +43,8 @@ export function SentimentChip({ value, ai }: { value: string | null; ai?: boolea
   const v = value ?? "pending";
   const dot = v === "positive" ? "bg-pos" : v === "negative" ? "bg-neg" : "bg-neu";
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11.5px] font-medium ring-1 ${SENT_STYLES[v] ?? "bg-white/5 text-ink-3 ring-white/10"}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+    <span className={`inline-flex items-center gap-1.5 rounded-sm px-2 py-0.5 font-mono text-[10.5px] uppercase tracking-[0.08em] ring-1 ${SENT_STYLES[v] ?? "bg-white/5 text-ink-3 ring-white/10"}`}>
+      <span className={`h-1.5 w-1.5 ${dot}`} />
       {v}
       {ai && <span title="Read by the AI" className="text-accent">✦</span>}
     </span>
@@ -54,11 +54,11 @@ export function SentimentChip({ value, ai }: { value: string | null; ai?: boolea
 export function Tag({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "accent" | "warn" }) {
   const cls = tone === "accent" ? "bg-accent/10 text-accent ring-accent/25"
     : tone === "warn" ? "bg-warn/10 text-warn ring-warn/25" : "bg-white/5 text-ink-2 ring-white/10";
-  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] ring-1 ${cls}`}>{children}</span>;
+  return <span className={`inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-[11.5px] ring-1 ${cls}`}>{children}</span>;
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <div className="rounded-xl border border-dashed border-line-2 px-4 py-8 text-center text-[13px] text-ink-3">{children}</div>;
+  return <div className="border border-dashed border-line-2 px-4 py-8 text-center text-[13.5px] text-ink-3">{children}</div>;
 }
 
 export function PageHeader({ eyebrow, title, children }: { eyebrow?: string; title: ReactNode; children?: ReactNode }) {

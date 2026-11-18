@@ -1,14 +1,21 @@
 import { Suspense } from "react";
 import { CommentCard } from "@/components/CommentCard";
 import { ExplorerFilters } from "@/components/ExplorerFilters";
-import { Empty, PageHeader } from "@/components/ui";
+import { Empty } from "@/components/ui";
 import { parseExplorer, type ExplorerParams } from "@/lib/explorer";
 import { focusChannel } from "@/lib/focus";
 import { EMOTIONS, channels as getChannels, comments, dailySentiment, languageCounts, type DailyRow } from "@/lib/queries";
 import { within } from "@/lib/cache";
-import { HeroStage, MoodGlyph, MoodRiver } from "@/components/viz";
+import { particleSample } from "@/lib/concept";
+import { MoodRiver } from "@/components/viz";
+import { InView, Words } from "@/components/signal/InView";
+import { Decode } from "@/components/signal/Decode";
+import { ParticleField } from "@/components/signal/ParticleField";
+import { SigHead } from "@/components/signal/Head";
 
 export const metadata = { title: "Comments" };
+
+const OF = 4;
 
 export default async function CommentsPage({ searchParams }: { searchParams: Promise<ExplorerParams> }) {
   const raw = await searchParams;
@@ -18,40 +25,70 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
   const p = focus ? { ...raw, channel: focus } : raw;
   const { filters, order, limit } = parseExplorer(p);
   const since = new Date(Date.now() - 90 * 86400_000);
-  const [langs, rows, river] = await Promise.all([languageCounts({ channelId: filters.channelId }), comments(filters, order, limit),
-    within(dailySentiment({ channelId: filters.channelId, since }), 6000, [] as DailyRow[])]);
+  const [langs, rows, river, dots] = await Promise.all([languageCounts({ channelId: filters.channelId }), comments(filters, order, limit),
+    within(dailySentiment({ channelId: filters.channelId, since }), 6000, [] as DailyRow[]),
+    within(particleSample(2500, filters.channelId ?? null), 8000, [])]);
   const mood = river.reduce((a, r) => ({ positive: a.positive + r.positive, neutral: a.neutral + r.neutral, negative: a.negative + r.negative }),
     { positive: 0, neutral: 0, negative: 0 });
+  const total = mood.positive + mood.neutral + mood.negative;
   const channelName = chs.find((c) => c.id === filters.channelId)?.title;
+  const chNames = Object.fromEntries(chs.map((c) => [c.id, c.title]));
+  const pct = (n: number) => (total ? Math.round((n / total) * 100) : 0);
+
   return (
-    <>
-      <PageHeader eyebrow="Explorer" title={<>Every <span className="glow-text">comment</span>, searchable</>}>
-        <p className="max-w-2xl text-[15px] text-ink-2">Filter by channel, mood, language or intent. Translations appear under non-English comments once the AI has read them.</p>
-      </PageHeader>
-      <HeroStage className="mb-5">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-          <div className="flex shrink-0 items-center gap-4 lg:w-56 lg:flex-col lg:items-start">
-            <MoodGlyph {...mood} size={104} />
-            <div>
-              <div className="label">Mood river · 90 days</div>
-              <p className="mt-1 text-[13px] text-ink-2">{channelName ?? "All channels"}: how many comments arrive each day, and how they feel. Wider = busier.</p>
+    <div className="sig">
+      {/* 01 · Explorer */}
+      <InView as="section" className="sec">
+        <div className="mono rise" style={{ color: "var(--cyan)" }}>■ 01 / {String(OF).padStart(2, "0")} · Explorer · {channelName ?? "All channels"}</div>
+        <h1 className="display mt-5 text-[38px] md:text-[56px]"><Words text="Every comment, searchable." /></h1>
+        <p className="rise lede mt-6" style={{ transitionDelay: "300ms" }}>
+          Filter by channel, mood, language or intent. Translations appear under non-English comments once the AI has read them.
+        </p>
+        <div className="mt-12 grid grid-cols-3 border-l border-t border-[var(--hair)]">
+          {([["Positive", mood.positive, "var(--cyan)"], ["Neutral", mood.neutral, "var(--ink)"], ["Negative", mood.negative, "var(--magenta)"]] as const).map(([l, n, col], i) => (
+            <div key={l} className="border-b border-r border-[var(--hair)] p-5 md:p-7" style={{ containerType: "inline-size" }}>
+              <div className="mono flex justify-between gap-2" style={{ fontSize: 10 }}><span>{l}</span><span>{pct(n)}%</span></div>
+              <div className="display mt-4 whitespace-nowrap" style={{ color: col, fontSize: "min(40px, 13cqw)" }}><Decode value={n} format="int" delay={i * 120} /></div>
+              <div className="mono mt-2" style={{ fontSize: 9.5 }}>Last 90 days</div>
             </div>
-          </div>
-          <div className="min-w-0 flex-1"><MoodRiver rows={river} days={90} /></div>
+          ))}
         </div>
-      </HeroStage>
-      <Suspense>
-        <ExplorerFilters
-          channels={chs.map((c) => ({ value: c.id, label: c.title }))}
-          languages={langs.filter((l) => l.code).map((l) => ({ value: l.code, label: `${l.name} (${l.comments.toLocaleString("en")})` }))}
-          emotions={Object.entries(EMOTIONS).map(([k, icon]) => ({ value: k, label: `${icon} ${k}` }))}
-          count={rows.length} defaultChannel={focus ?? undefined}
-        />
-      </Suspense>
-      <div className="mt-5 grid gap-2.5 lg:grid-cols-2">
-        {rows.length === 0 ? <div className="lg:col-span-2"><Empty>No comments match these filters.</Empty></div>
-          : rows.map((c) => <CommentCard key={c.id} c={c} />)}
-      </div>
-    </>
+      </InView>
+
+      {/* 02 · One dot each */}
+      <InView as="section" className="sec">
+        <SigHead n={2} of={OF} label="Every comment" title={`${dots.length.toLocaleString("en")} comments. One dot each.`}>
+          The newest comments{channelName ? ` on ${channelName}` : ""}, coloured by mood. Pick a lens and they fly into place. Hover or tap a dot to read it.
+        </SigHead>
+        <div className="cell p-4 md:p-8">
+          {dots.length ? <ParticleField dots={dots} channels={chNames} height={500} /> : <Empty>No analysed comments yet.</Empty>}
+        </div>
+      </InView>
+
+      {/* 03 · Mood river */}
+      <InView as="section" className="sec">
+        <SigHead n={3} of={OF} label="Mood river · 90 days" title="How they feel, day by day.">
+          How many comments arrive each day and how they feel. Wider means busier.
+        </SigHead>
+        <div className="cell p-5 md:p-8"><MoodRiver rows={river} days={90} /></div>
+      </InView>
+
+      {/* 04 · Search */}
+      <InView as="section" className="sec">
+        <SigHead n={4} of={OF} label="Search" title="Find any comment." />
+        <Suspense>
+          <ExplorerFilters
+            channels={chs.map((c) => ({ value: c.id, label: c.title }))}
+            languages={langs.filter((l) => l.code).map((l) => ({ value: l.code, label: `${l.name} (${l.comments.toLocaleString("en")})` }))}
+            emotions={Object.entries(EMOTIONS).map(([k, icon]) => ({ value: k, label: `${icon} ${k}` }))}
+            count={rows.length} defaultChannel={focus ?? undefined}
+          />
+        </Suspense>
+        <div className="mt-6 grid gap-2.5 lg:grid-cols-2">
+          {rows.length === 0 ? <div className="lg:col-span-2"><Empty>No comments match these filters.</Empty></div>
+            : rows.map((c) => <CommentCard key={c.id} c={c} />)}
+        </div>
+      </InView>
+    </div>
   );
 }
