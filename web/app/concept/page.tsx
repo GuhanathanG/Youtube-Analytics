@@ -81,9 +81,10 @@ export default async function Concept() {
       <main>
         {/* 00 Pulse */}
         <InView as="section" id="pulse" className="wrap grid min-h-[calc(100vh-56px)] items-center gap-6 py-10 lg:grid-cols-[1.05fr_1fr]">
-          <div>
+          <div className="min-w-0" style={{ containerType: "inline-size" }}>
             <div className="mono rise" style={{ color: "var(--cyan)" }}>■ 00 / 04 · Audience pulse</div>
-            <h1 className="display mt-5 text-[54px] sm:text-[78px] xl:text-[104px]">
+            {/* Sized to the column (container units), so a 9-digit count always fits on a phone and beside the orb. */}
+            <h1 className="display mt-5" style={{ fontSize: "min(12.6cqw, 104px)" }}>
               <Decode value={k.comments} className="block" /><Words text="voices." />
             </h1>
             <p className="rise mt-6 max-w-md text-[16px] leading-relaxed" style={{ color: "var(--ink-2)", transitionDelay: "300ms" }}>
@@ -94,7 +95,7 @@ export default async function Concept() {
               <a href="#move" className="pill pill-line">Today&apos;s move</a>
             </div>
           </div>
-          <div className="rise" style={{ transitionDelay: "200ms" }}><PulseOrb perDay={k.comments_24h} satellites={sats} /></div>
+          <div className="rise min-w-0" style={{ transitionDelay: "200ms" }}><PulseOrb perDay={k.comments_24h} satellites={sats} /></div>
         </InView>
 
         {/* Ticker */}
@@ -119,9 +120,9 @@ export default async function Concept() {
           <Head n={1} label="Numbers" title="The audience, in four numbers.">Each number decodes, then counts up to the live value. Lines draw the last 90 days.</Head>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4">
             {kpi.map((x, i) => (
-              <div key={x.label} className="cell cell-hover p-6" style={{ transitionDelay: `${i * 90}ms` }}>
+              <div key={x.label} className="cell cell-hover min-w-0 p-6" style={{ transitionDelay: `${i * 90}ms`, containerType: "inline-size" }}>
                 <div className="mono flex justify-between" style={{ fontSize: 10 }}><span style={{ color: "var(--cyan)" }}>{x.i}</span><span>{x.label}</span></div>
-                <div className="display mt-6 text-[44px]" style={{ color: i === 0 ? "var(--ink)" : x.color }}><Decode value={x.value} format={x.format} delay={i * 120} /></div>
+                <div className="display mt-6 whitespace-nowrap" style={{ color: i === 0 ? "var(--ink)" : x.color, fontSize: "min(44px, 12.5cqw)" }}><Decode value={x.value} format={x.format} delay={i * 120} /></div>
                 <div className="mt-1 text-[12.5px]" style={{ color: "var(--ink-3)" }}>{x.note}</div>
                 <div className="mt-5"><MiniLine values={x.line} color={x.color} delay={500 + i * 120} /></div>
               </div>
