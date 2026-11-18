@@ -176,7 +176,7 @@ export function ParticleField({ dots, channels, height = 540 }: { dots: FieldDot
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-10 flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
         <div className="flex flex-wrap gap-2" role="tablist" aria-label="Arrange comments by">
           {(["mood", "language", "emotion", "channel", "time"] as Layout[]).map((l) => (
             <button key={l} role="tab" aria-selected={layout === l} onClick={() => choose(l)}

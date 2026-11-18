@@ -6,11 +6,18 @@
   font-family: var(--f-body), system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip;
 }
 .sig ::selection { background: var(--cyan); color: var(--bg); }
-.sig .display { font-family: var(--f-display), sans-serif; font-weight: 800; letter-spacing: -0.02em; line-height: 0.95; }
+.sig .display { font-family: var(--f-display), sans-serif; font-weight: 800; letter-spacing: -0.015em; line-height: 1.04; }
 .sig .mono { font-family: var(--f-mono), ui-monospace, monospace; letter-spacing: 0.14em; text-transform: uppercase; font-size: 11px; color: var(--ink-3); }
 .sig .tab { font-variant-numeric: tabular-nums; }
-.sig .wrap { max-width: 1320px; margin: 0 auto; padding: 0 20px; }
-@media (min-width: 768px) { .sig .wrap { padding: 0 40px; } }
+/* Horizontal gutter only: vertical rhythm comes from .section, so the two never fight. */
+.sig .wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; }
+@media (min-width: 768px) { .sig .wrap { padding-inline: 48px; } }
+
+/* Spacing scale (8 px base): sections breathe, with a hairline between them. */
+.sig .section { padding-block: 88px; border-top: 1px solid var(--hair); }
+@media (min-width: 768px) { .sig .section { padding-block: 144px; } }
+.sig .section-head { margin-bottom: 48px; }
+@media (min-width: 768px) { .sig .section-head { margin-bottom: 72px; } }
 
 /* Hairline cells that draw their borders in. */
 .sig .cell { position: relative; border: 1px solid transparent; }
@@ -54,7 +61,7 @@
 .sig .rail a { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 5px 0; }
 .sig .rail a i { width: 6px; height: 6px; background: var(--ink-3); opacity: 0.5; transition: all 0.3s; }
 .sig .rail a span { opacity: 0; transform: translateX(6px); transition: all 0.3s; }
-.sig .rail:hover a span, .sig .rail a.on span { opacity: 1; transform: none; }
+.sig .rail:hover a span { opacity: 1; transform: none; }
 .sig .rail a.on i { background: var(--cyan); opacity: 1; box-shadow: 0 0 10px var(--cyan); }
 
 @media (prefers-reduced-motion: reduce) {
