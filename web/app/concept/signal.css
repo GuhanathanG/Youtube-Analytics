@@ -1,0 +1,70 @@
+/* Signal design system (UI rebuild R0). Scoped to .sig so the rest of the site is untouched. */
+.sig {
+  --bg: #07070a; --ink: #ededea; --ink-2: #b4b4bb; --ink-3: #8a8a93; --hair: rgba(255, 255, 255, 0.08); --hair-2: rgba(255, 255, 255, 0.14);
+  --cyan: #22e1ff; --magenta: #ff3d7f; --neutral: #6b6b75;
+  position: relative; z-index: 1; min-height: 100vh; background: var(--bg); color: var(--ink);
+  font-family: var(--f-body), system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip;
+}
+.sig ::selection { background: var(--cyan); color: var(--bg); }
+.sig .display { font-family: var(--f-display), sans-serif; font-weight: 800; letter-spacing: -0.02em; line-height: 0.95; }
+.sig .mono { font-family: var(--f-mono), ui-monospace, monospace; letter-spacing: 0.14em; text-transform: uppercase; font-size: 11px; color: var(--ink-3); }
+.sig .tab { font-variant-numeric: tabular-nums; }
+.sig .wrap { max-width: 1320px; margin: 0 auto; padding: 0 20px; }
+@media (min-width: 768px) { .sig .wrap { padding: 0 40px; } }
+
+/* Hairline cells that draw their borders in. */
+.sig .cell { position: relative; border: 1px solid transparent; }
+.sig .cell::before, .sig .cell::after { content: ""; position: absolute; pointer-events: none; transition: transform 0.9s cubic-bezier(0.2, 0.7, 0, 1); }
+.sig .cell::before { inset: -1px; border-top: 1px solid var(--hair-2); border-bottom: 1px solid var(--hair-2); transform: scaleX(0); transform-origin: left; }
+.sig .cell::after { inset: -1px; border-left: 1px solid var(--hair-2); border-right: 1px solid var(--hair-2); transform: scaleY(0); transform-origin: top; }
+.sig .in .cell::before, .sig .cell.in::before { transform: scaleX(1); }
+.sig .in .cell::after, .sig .cell.in::after { transform: scaleY(1); transition-delay: 0.15s; }
+.sig .cell-hover { transition: background 0.3s, box-shadow 0.3s; }
+.sig .cell-hover:hover { background: rgba(34, 225, 255, 0.03); box-shadow: inset 0 0 0 1px rgba(34, 225, 255, 0.25); }
+
+/* Fade/rise for text blocks. */
+.sig .rise { opacity: 0; transform: translateY(14px); transition: opacity 0.8s, transform 0.8s cubic-bezier(0.2, 0.7, 0, 1); }
+.sig .in .rise, .sig .rise.in { opacity: 1; transform: none; }
+
+/* Word-by-word headline. */
+.sig .word { display: inline-block; overflow: hidden; vertical-align: bottom; }
+.sig .word > span { display: inline-block; transform: translateY(105%); transition: transform 0.9s cubic-bezier(0.2, 0.7, 0, 1); }
+.sig .in .word > span { transform: none; }
+
+/* Live dot. */
+.sig .live { width: 7px; height: 7px; border-radius: 99px; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); animation: sig-blink 1.6s infinite; }
+@keyframes sig-blink { 50% { opacity: 0.35; } }
+
+/* Pills / buttons. */
+.sig .pill { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 9px 16px; font-size: 13px; font-weight: 500; transition: transform 0.25s, background 0.25s, color 0.25s, box-shadow 0.25s; }
+.sig .pill-solid { background: var(--ink); color: var(--bg); }
+.sig .pill-solid:hover { background: var(--cyan); box-shadow: 0 0 24px rgba(34, 225, 255, 0.45); }
+.sig .pill-line { border: 1px solid var(--hair-2); color: var(--ink); }
+.sig .pill-line:hover { border-color: var(--cyan); color: var(--cyan); }
+.sig .pill-on { background: var(--cyan); color: var(--bg); box-shadow: 0 0 20px rgba(34, 225, 255, 0.4); }
+.sig .sq { width: 6px; height: 6px; background: currentColor; display: inline-block; }
+
+/* Ticker. */
+.sig .ticker { overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
+.sig .ticker-track { display: flex; width: max-content; animation: sig-marquee 80s linear infinite; }
+.sig .ticker:hover .ticker-track { animation-play-state: paused; }
+@keyframes sig-marquee { to { transform: translateX(-50%); } }
+
+/* Right-edge section index. */
+.sig .rail a { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 5px 0; }
+.sig .rail a i { width: 6px; height: 6px; background: var(--ink-3); opacity: 0.5; transition: all 0.3s; }
+.sig .rail a span { opacity: 0; transform: translateX(6px); transition: all 0.3s; }
+.sig .rail:hover a span, .sig .rail a.on span { opacity: 1; transform: none; }
+.sig .rail a.on i { background: var(--cyan); opacity: 1; box-shadow: 0 0 10px var(--cyan); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sig *, .sig *::before, .sig *::after { transition: none !important; animation: none !important; }
+  .sig .rise, .sig .word > span { opacity: 1; transform: none; }
+  .sig .cell::before, .sig .cell::after { transform: none; }
+}
+
+/* Stacked hairline bars that fill on view. */
+.sig .bar { display: flex; height: 6px; background: rgba(255, 255, 255, 0.05); overflow: hidden; }
+.sig .bar > span { height: 100%; transform: scaleX(0); transform-origin: left; transition: transform 1.1s cubic-bezier(0.2, 0.7, 0, 1); }
+.sig .in .bar > span { transform: scaleX(1); }
+.sig .wordmark { font-family: var(--f-display), sans-serif; font-weight: 800; letter-spacing: -0.04em; line-height: 0.8; }
