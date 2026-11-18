@@ -21,12 +21,12 @@ const SECTIONS = [{ id: "pulse", label: "Pulse" }, { id: "numbers", label: "Numb
 
 function Head({ n, label, title, children }: { n: number; label: string; title: string; children?: React.ReactNode }) {
   return (
-    <div className="section-head grid gap-6 md:grid-cols-[1fr_minmax(0,380px)] md:items-end md:gap-16">
+    <div className={`section-head grid gap-6 lg:items-end lg:gap-20 ${children ? "lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]" : ""}`}>
       <div>
         <div className="mono rise" style={{ color: "var(--cyan)" }}>■ {String(n).padStart(2, "0")} / 04 · {label}</div>
-        <h2 className="display mt-5 max-w-[14ch] text-[32px] md:text-[48px]"><Words text={title} /></h2>
+        <h2 className="display mt-5 text-[32px] md:text-[42px] xl:text-[46px]"><Words text={title} /></h2>
       </div>
-      {children && <p className="rise text-[15px] leading-relaxed" style={{ color: "var(--ink-2)", transitionDelay: "250ms" }}>{children}</p>}
+      {children && <p className="rise lede lg:pb-2" style={{ transitionDelay: "250ms" }}>{children}</p>}
     </div>
   );
 }
@@ -80,14 +80,14 @@ export default async function Concept() {
 
       <main>
         {/* 00 Pulse */}
-        <InView as="section" id="pulse" className="wrap grid min-h-[calc(100vh-56px)] items-center gap-16 py-20 lg:grid-cols-[1fr_1fr] lg:gap-20">
+        <InView as="section" id="pulse" className="wrap grid min-h-[calc(100vh-56px)] items-center gap-14 py-16 lg:grid-cols-[1fr_1fr] lg:gap-16">
           <div className="min-w-0" style={{ containerType: "inline-size" }}>
             <div className="mono rise" style={{ color: "var(--cyan)" }}>■ 00 / 04 · Audience pulse</div>
             {/* Sized to the column (container units), so a 9-digit count always fits on a phone and beside the orb. */}
             <h1 className="display mt-5" style={{ fontSize: "min(12.6cqw, 104px)" }}>
               <Decode value={k.comments} className="block" /><Words text="voices." />
             </h1>
-            <p className="rise mt-8 max-w-md text-[16px] leading-relaxed" style={{ color: "var(--ink-2)", transitionDelay: "300ms" }}>
+            <p className="rise lede mt-8" style={{ transitionDelay: "300ms", maxWidth: "46ch" }}>
               Every comment across {active.length} channels, read and scored. {k.comments_24h.toLocaleString("en")} arrived in the last 24 hours. The core beats faster when they do.
             </p>
             <div className="rise mt-10 flex flex-wrap gap-3" style={{ transitionDelay: "450ms" }}>
@@ -120,10 +120,10 @@ export default async function Concept() {
           <Head n={1} label="Numbers" title="The audience, in four numbers.">Each number decodes, then counts up to the live value. Lines draw the last 90 days.</Head>
           <div className="grid sm:grid-cols-2 xl:grid-cols-4">
             {kpi.map((x, i) => (
-              <div key={x.label} className="cell cell-hover min-w-0 p-7 md:p-9" style={{ transitionDelay: `${i * 90}ms`, containerType: "inline-size" }}>
+              <div key={x.label} className="cell cell-hover min-w-0 p-7 md:p-8" style={{ transitionDelay: `${i * 90}ms`, containerType: "inline-size" }}>
                 <div className="mono flex justify-between" style={{ fontSize: 10 }}><span style={{ color: "var(--cyan)" }}>{x.i}</span><span>{x.label}</span></div>
                 <div className="display mt-6 whitespace-nowrap md:mt-10" style={{ color: i === 0 ? "var(--ink)" : x.color, fontSize: "min(44px, 12.5cqw)" }}><Decode value={x.value} format={x.format} delay={i * 120} /></div>
-                <div className="mt-2 text-[12.5px]" style={{ color: "var(--ink-3)" }}>{x.note}</div>
+                <div className="mt-2 text-[13.5px]" style={{ color: "var(--ink-3)" }}>{x.note}</div>
                 <div className="mt-6 md:mt-8"><MiniLine values={x.line} color={x.color} delay={500 + i * 120} /></div>
               </div>
             ))}
@@ -134,13 +134,13 @@ export default async function Concept() {
         <InView as="section" id="conversation" className="wrap section">
           <Head n={2} label="Conversation" title="Ninety days, heard like a track.">Positive and neutral comments rise above the line, negative ones hang below. The white line is total volume. Hover any day.</Head>
           <div className="cell p-6 md:p-10"><Waveform days={daily.slice(-90)} /></div>
-          <div className="mt-16 grid gap-x-16 gap-y-9 md:grid-cols-2">
+          <div className="mt-12 grid gap-x-16 gap-y-8 md:grid-cols-2">
             {active.filter((c) => c.positive + c.neutral + c.negative > 0).map((c) => {
               const n = c.positive + c.neutral + c.negative;
               return (
                 <div key={c.id}>
                   <div className="mb-3 flex items-baseline justify-between gap-3">
-                    <Link href={`/channels/${c.id}`} className="truncate text-[14px] hover:text-[var(--cyan)]">{c.title}{c.role === "competitor" && <span className="mono ml-2" style={{ fontSize: 9 }}>rival</span>}</Link>
+                    <Link href={`/channels/${c.id}`} className="truncate text-[15px] hover:text-[var(--cyan)]">{c.title}{c.role === "competitor" && <span className="mono ml-2" style={{ fontSize: 9 }}>rival</span>}</Link>
                     <span className="mono" style={{ fontSize: 10 }}>{n.toLocaleString("en")} · <span style={{ color: "var(--cyan)" }}>{Math.round((c.positive / n) * 100)}%</span> / <span style={{ color: "var(--magenta)" }}>{Math.round((c.negative / n) * 100)}%</span></span>
                   </div>
                   <div className="bar">
@@ -157,12 +157,12 @@ export default async function Concept() {
         {/* 03 Today's move */}
         <InView as="section" id="move" className="wrap section">
           <Head n={3} label="Next move" title="One thing worth doing today." />
-          <div className="cell grid items-center gap-12 p-8 md:grid-cols-[auto_1fr] md:gap-16 md:p-16">
+          <div className="cell grid items-center gap-12 p-8 md:grid-cols-[auto_1fr] md:gap-16 md:p-12">
             <div className="flex justify-center"><TickRing value={health?.score ?? 0} label="Health" sub={health?.grade ?? "measuring"} size={200} /></div>
             <div>
               <div className="mono rise" style={{ color: "var(--magenta)" }}>✦ {heroCh?.title ?? "Your channel"} · impact {"■".repeat(move?.impact ?? 1)}{"□".repeat(3 - (move?.impact ?? 1))}</div>
               <h3 className="display mt-5 text-[28px] md:text-[40px]"><Words text={move?.title ?? "All clear for now"} /></h3>
-              <p className="rise mt-5 max-w-xl text-[15px] leading-relaxed" style={{ color: "var(--ink-2)", transitionDelay: "300ms" }}>{move?.why ?? "Nothing urgent. New comments and uploads update this live."}</p>
+              <p className="rise lede mt-5" style={{ transitionDelay: "300ms" }}>{move?.why ?? "Nothing urgent. New comments and uploads update this live."}</p>
               <div className="rise mt-9 flex flex-wrap gap-3" style={{ transitionDelay: "450ms" }}>
                 {move && <Link href={move.href} className="pill pill-solid"><span className="sq" /> {move.cta}</Link>}
                 <Link href="/command" className="pill pill-line">All {top?.moves.length ?? 0} moves</Link>
@@ -180,7 +180,7 @@ export default async function Concept() {
         </InView>
       </main>
 
-      <footer className="wrap overflow-hidden border-t pb-10 pt-24" style={{ borderColor: "var(--hair)" }}>
+      <footer className="wrap overflow-hidden border-t pb-10 pt-16" style={{ borderColor: "var(--hair)" }}>
         <div className="wordmark select-none text-[17vw] md:text-[13vw]" aria-hidden>pulse<span style={{ color: "var(--cyan)" }}>.</span></div>
         <div className="mono mt-6 flex flex-wrap justify-between gap-3" style={{ fontSize: 10 }}>
           <span>Creator Pulse · Signal concept R0</span><span>Live data · {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>

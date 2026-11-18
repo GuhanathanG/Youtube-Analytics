@@ -6,18 +6,23 @@
   font-family: var(--f-body), system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip;
 }
 .sig ::selection { background: var(--cyan); color: var(--bg); }
-.sig .display { font-family: var(--f-display), sans-serif; font-weight: 800; letter-spacing: -0.015em; line-height: 1.04; }
-.sig .mono { font-family: var(--f-mono), ui-monospace, monospace; letter-spacing: 0.14em; text-transform: uppercase; font-size: 11px; color: var(--ink-3); }
+.sig .display { font-family: var(--f-display), sans-serif; font-weight: 800; letter-spacing: -0.005em; line-height: 1.08; }
+/* Readable body copy: a comfortable size, line-height and measure (about 60 characters a line). */
+.sig .lede { font-size: 16px; line-height: 1.7; color: var(--ink-2); max-width: 60ch; }
+@media (min-width: 1024px) { .sig .lede { font-size: 17.5px; } }
+.sig .mono { font-family: var(--f-mono), ui-monospace, monospace; letter-spacing: 0.12em; text-transform: uppercase; font-size: 11px; color: var(--ink-3); }
+@media (min-width: 1024px) { .sig .mono { font-size: 11.5px; } }
 .sig .tab { font-variant-numeric: tabular-nums; }
 /* Horizontal gutter only: vertical rhythm comes from .section, so the two never fight. */
-.sig .wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; }
+.sig .wrap { max-width: 1280px; margin: 0 auto; padding-inline: 20px; }
 @media (min-width: 768px) { .sig .wrap { padding-inline: 48px; } }
+@media (min-width: 1680px) { .sig .wrap { max-width: 1440px; } }
 
 /* Spacing scale (8 px base): sections breathe, with a hairline between them. */
 .sig .section { padding-block: 88px; border-top: 1px solid var(--hair); }
-@media (min-width: 768px) { .sig .section { padding-block: 144px; } }
+@media (min-width: 768px) { .sig .section { padding-block: 104px; } }
 .sig .section-head { margin-bottom: 48px; }
-@media (min-width: 768px) { .sig .section-head { margin-bottom: 72px; } }
+@media (min-width: 768px) { .sig .section-head { margin-bottom: 52px; } }
 
 /* Hairline cells that draw their borders in. */
 .sig .cell { position: relative; border: 1px solid transparent; }
