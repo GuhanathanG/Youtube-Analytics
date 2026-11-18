@@ -571,6 +571,13 @@ try {
   check("private analytics become next moves", cmdO.includes("Fix the opening of") && cmdO.includes("Lift click-through") && cmdO.includes("Reach beyond your subscribers"));
   check("Manage lists the connected channel", (await (await get("/manage")).text()).includes("numbers up to date"));
 
+  // UI rebuild R0: the Signal concept page renders on live data and stays private.
+  const cp = await get("/concept");
+  const cpt = await cp.text();
+  check("Signal concept page shows the orb, numbers, waveform and the comment field",
+    cp.status === 200 && cpt.includes("voices.") && cpt.includes("Every comment") && cpt.includes("Live Creator") && cpt.includes("Arrange comments by"));
+  check("Signal concept needs sign-in", (await get("/concept", false)).status === 307);
+
   // Pulse Glance: the widget-style home-screen app
   const gl = await (await get("/glance")).text();
   check("Glance shows every channel with its mood, the dock and its own home-screen manifest",
