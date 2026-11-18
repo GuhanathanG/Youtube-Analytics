@@ -34,7 +34,8 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
           const videosLeft = videosGap > Math.max(5, (p.videos_total ?? 0) * 0.01) ? videosGap : 0;
           // History is done when every video's comments are downloaded. YouTube's count also includes replies and
           // hidden or deleted comments the API never returns, so stored < YouTube's number is normal.
-          const historyDone = (p.history_left ?? 1) === 0;
+          const competitor = p.role === "competitor";
+          const historyDone = competitor || (p.history_left ?? 1) === 0;
           const commentsLeft = historyDone ? 0 : Math.max(0, p.comments_on_youtube - p.comments_stored);
           // Reading jobs work on the main database; older comments moved to the archive are kept as they were.
           const inMain = Math.max(0, p.comments_stored - (p.archived ?? 0));
@@ -48,7 +49,8 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
               doneNote: videosGap ? `${fmt(videosGap)} private or removed` : undefined },
             { key: "comments", label: "Download comment history", done: p.comments_stored, total: historyDone ? p.comments_stored : Math.max(p.comments_on_youtube, p.comments_stored),
               left: commentsLeft, perHour: p.saved_last_hour, unit: "comments", note: `${fmt(p.saved_last_hour)}/hour`, color: "#22d3ee",
-              doneNote: historyDone && p.comments_on_youtube > p.comments_stored ? "every video downloaded (YouTube's total also counts hidden replies)" : undefined },
+              doneNote: competitor ? "competitor: views & uploads are tracked, comments aren't downloaded"
+                : historyDone && p.comments_on_youtube > p.comments_stored ? "every video downloaded (YouTube's total also counts hidden replies)" : undefined },
             { key: "sentiment", label: "Sentiment & language (local model)", done: Math.max(0, inMain - sWait), total: inMain,
               left: sWait + commentsLeft, perHour: p.sentiment_last_hour, unit: "comments",
               note: `${fmt(p.sentiment_last_hour)}/hour · runs every 30 min`, color: "#0ca30c", doneNote: archivedNote ? `all caught up${archivedNote}` : undefined },
@@ -81,7 +83,7 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
                 <span className="rounded-lg border border-line bg-white/[0.03] px-2.5 py-1 text-[12.5px]">
                   <span className="text-ink-3">All jobs done: </span>
                   {allDone ? <span className="text-good">✓ complete</span>
-                    : overall === null ? <span className="text-ink-2">once every job is moving</span>
+                    : overall === null ? <span className="text-ink-2">starts on the next engine run</span>
                     : <Countdown at={overall} className="tabular text-ink" />}
                 </span>
               </div>

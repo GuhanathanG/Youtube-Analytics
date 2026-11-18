@@ -374,6 +374,8 @@ def parse_json(content: str) -> dict:
         if start == -1 or end <= start:
             raise ValueError("no JSON object in output")
         data = json.loads(text[start:end + 1])
+    if isinstance(data, list):  # some models answer a batch with the bare list instead of {"results": [...]}
+        data = {"results": data}
     if not isinstance(data, dict):
         raise ValueError("expected a JSON object")
     return data

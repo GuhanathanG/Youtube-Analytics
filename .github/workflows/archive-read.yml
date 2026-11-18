@@ -63,4 +63,4 @@ jobs:
       - name: Read archived comments (local pass on reader 0, then the AI pass on every reader)
         run: |
           ONLY=""; [ "${{ matrix.shard }}" != "0" ] && ONLY="--only ai"
-          python -m ytanalytics archive-read --until $(( $(date +%s) + 330 * 60 )) $ONLY --shard ${{ matrix.shard }} --shards 3
+          python -m ytanalytics archive-read --until $(( $(date +%s) + 310 * 60 )) $ONLY --shard ${{ matrix.shard }} --shards 3
