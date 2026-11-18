@@ -15,13 +15,13 @@ export function rangeSince(key: string | undefined): { key: string; since: Date 
 
 export function RangeTabs({ current, basePath, params = {} }: { current: string; basePath: string; params?: Record<string, string> }) {
   return (
-    <div className="inline-flex rounded-xl border border-line bg-white/[0.03] p-1" role="tablist" aria-label="Time range">
+    <div className="inline-flex gap-1 rounded-full border border-line-2 p-1" role="tablist" aria-label="Time range">
       {RANGES.map((r) => {
         const q = new URLSearchParams({ ...params, range: r.key }).toString();
         const on = r.key === current;
         return (
           <Link key={r.key} href={`${basePath}?${q}`} scroll={false} role="tab" aria-selected={on}
-            className={`rounded-lg px-3 py-1.5 font-mono text-[12px] transition ${on ? "bg-white/[0.09] text-ink shadow-[0_0_0_1px_rgba(34,211,238,0.35)]" : "text-ink-3 hover:text-ink-2"}`}>
+            className={`rounded-full px-3 py-1 font-mono text-[11.5px] tracking-[0.08em] transition ${on ? "bg-accent text-bg shadow-[0_0_16px_rgba(34,225,255,.45)]" : "text-ink-3 hover:text-ink"}`}>
             {r.label}
           </Link>
         );

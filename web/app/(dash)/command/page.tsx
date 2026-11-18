@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowRight, Sparkles } from "lucide-react";
 import { within } from "@/lib/cache";
 import { focusChannel } from "@/lib/focus";
 import { channels as getChannels } from "@/lib/queries";
 import { dailyBrief, movesFor } from "@/lib/recommendations";
 import type { Move } from "@/lib/moves";
-import { RingGauge } from "@/components/RingGauge";
-import { Reveal } from "@/components/Reveal";
-import { Empty, PageHeader } from "@/components/ui";
+import { Empty } from "@/components/ui";
 import { compact } from "@/lib/format";
+import { InView, Words } from "@/components/signal/InView";
+import { TickRing } from "@/components/signal/TickRing";
+import { Pill, SigHead } from "@/components/signal/Head";
 
 export const metadata = { title: "Command Center" };
 
@@ -23,75 +23,76 @@ export default async function CommandPage() {
   const chs = (await getChannels()).filter((c) => c.active);
   const focus = await focusChannel(chs.map((c) => c.id));
   const ch = chs.find((c) => c.id === focus) ?? chs[0];
-  if (!ch) return (<><PageHeader eyebrow="Command Center" title={<>Your <span className="glow-text">next moves</span></>} /><Empty>Add a channel on the Manage page first.</Empty></>);
+  if (!ch) return (<div className="sig"><h1 className="display text-[36px]">Your next moves</h1><div className="mt-6"><Empty>Add a channel on the Manage page first.</Empty></div></div>);
   return (
-    <>
-      <PageHeader eyebrow={`Command Center · ${ch.title}`} title={<>Your <span className="glow-text">next moves</span></>}>
-        <p className="max-w-2xl text-[15px] text-ink-2">Everything Creator Pulse knows about {ch.title}: comments in every language, questions, outliers,
-          timing and trends, turned into a short list of actions with the evidence behind each.</p>
-      </PageHeader>
+    <div className="sig">
+      <InView as="section" className="sec">
+        <div className="mono rise" style={{ color: "var(--cyan)" }}>■ Command center · {ch.title}</div>
+        <h1 className="display mt-5 text-[38px] md:text-[56px]"><Words text="Your next moves." /></h1>
+        <p className="rise lede mt-6" style={{ transitionDelay: "300ms" }}>Everything Creator Pulse knows about {ch.title}: comments in every language, questions, outliers,
+          timing and trends, turned into a short list of next moves with the evidence behind each.</p>
+      </InView>
       <Suspense fallback={<div className="panel h-64 animate-pulse" aria-busy="true" />}>
         <Moves id={ch.id} title={ch.title} subs={ch.subscriber_count} comments={ch.comments} />
       </Suspense>
-    </>
+    </div>
   );
 }
 
 async function Moves({ id, title, subs, comments }: { id: string; title: string; subs: number | null; comments: number }) {
   const { moves, health } = await within(movesFor(id), 20_000, { moves: [], health: null });
   const brief = await within(dailyBrief(id, title, moves, health).catch(() => null), 6000, null);
+  const meter = (v: number, color: string) => (
+    <span className="flex gap-[3px]" aria-hidden>{[1, 2, 3].map((i) => <i key={i} className="block h-2.5 w-2.5" style={{ background: i <= v ? color : "rgba(255,255,255,.1)", boxShadow: i <= v ? `0 0 8px ${color}` : undefined }} />)}</span>
+  );
   return (
     <>
-      <Reveal>
-        <section className="panel overflow-hidden p-5 sm:p-7">
-          <div className="scanline" aria-hidden />
-          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center">
-            <RingGauge value={health?.score ?? null} label="HEALTH" />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 font-mono text-[10.5px] tracking-[0.3em] text-accent"><Sparkles size={13} />AI BRIEF</div>
-              <h2 className="mt-2 font-[family-name:var(--font-display)] text-[22px] font-semibold leading-snug tracking-tight sm:text-[26px]">
-                {brief?.headline ?? (moves[0] ? moves[0].title : "All clear for now")}
-              </h2>
-              <p className="mt-2 max-w-3xl text-[14.5px] leading-relaxed text-ink-2">
-                {brief?.brief ?? (moves.length ? `${moves.length} moves ranked by impact and effort. Start with the first.` : "Nothing urgent. Check back after new comments arrive.")}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="chip">{health?.grade ?? "—"}</span>
-                <span className="chip">{compact(subs)} subs</span>
-                <span className="chip">{compact(comments)} comments read</span>
-                <span className="chip chip-hi">{moves.length} moves</span>
-              </div>
+      <InView as="section" className="sec">
+        <SigHead n={1} of={2} label="AI brief" title={brief?.headline ?? (moves[0] ? moves[0].title : "All clear for now")} />
+        <div className="cell grid items-center gap-10 p-7 md:grid-cols-[auto_1fr] md:gap-14 md:p-10">
+          <div className="flex justify-center"><TickRing value={health?.score ?? 0} label="Health" sub={health?.grade ?? "measuring"} size={196}
+            color={(health?.score ?? 0) >= 70 ? "#22e1ff" : (health?.score ?? 0) >= 45 ? "#ededea" : "#ff3d7f"} /></div>
+          <div className="min-w-0">
+            <div className="mono rise" style={{ color: "var(--magenta)" }}>✦ AI brief</div>
+            <p className="rise lede mt-4" style={{ transitionDelay: "200ms" }}>
+              {brief?.brief ?? (moves.length ? `${moves.length} moves ranked by impact and effort. Start with the first.` : "Nothing urgent. Check back after new comments arrive.")}
+            </p>
+            <div className="rise mt-7 grid max-w-xl grid-cols-2 gap-x-8 gap-y-5 sm:grid-cols-4" style={{ transitionDelay: "350ms" }}>
+              {([["Grade", health?.grade ?? "—"], ["Subscribers", compact(subs)], ["Comments read", compact(comments)], ["Moves", String(moves.length)]] as const).map(([l, v]) => (
+                <div key={l}><div className="mono" style={{ fontSize: 9.5 }}>{l}</div><div className="display mt-1.5 text-[20px]">{v}</div></div>
+              ))}
             </div>
           </div>
-        </section>
-      </Reveal>
+        </div>
+      </InView>
 
-      {moves.length === 0 ? <div className="mt-6"><Empty>No moves yet: they appear once there are enough videos and comments to learn from.</Empty></div> : (
-        <ol className="mt-6 grid gap-4 lg:grid-cols-2">
-          {moves.map((m, k) => (
-            <Reveal key={m.id} delay={Math.min(k * 0.04, 0.3)}>
-              <li className="panel panel-hover flex h-full flex-col p-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="grid h-8 w-8 place-items-center rounded-xl bg-accent/12 font-mono text-[13px] text-accent ring-1 ring-accent/30">{String(k + 1).padStart(2, "0")}</span>
-                  <span className="chip">{KIND[m.kind].glyph} {KIND[m.kind].label}</span>
-                  <span className={`chip ${m.impact === 3 ? "chip-hi" : m.impact === 2 ? "chip-mid" : ""}`}>impact {LEVEL[m.impact]}</span>
-                  <span className="chip">effort {LEVEL[m.effort]}</span>
+      <InView as="section" className="sec">
+        <SigHead n={2} of={2} label="Moves" title={`${moves.length} next moves, ranked.`}>
+          Highest impact for the least effort first. Each one shows the evidence it comes from and a button to act on it.
+        </SigHead>
+        {moves.length === 0 ? <Empty>No moves yet: they appear once there are enough videos and comments to learn from.</Empty> : (
+          <ol className="grid lg:grid-cols-2">
+            {moves.map((m, k) => (
+              <li key={m.id} className="cell cell-hover flex h-full flex-col p-6 md:p-8" style={{ transitionDelay: `${Math.min(k * 60, 400)}ms` }}>
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                  <span className="display text-[30px] leading-none" style={{ color: k === 0 ? "var(--cyan)" : "var(--ink-3)" }}>{String(k + 1).padStart(2, "0")}</span>
+                  <span className="mono" style={{ fontSize: 10 }}>{KIND[m.kind].glyph} {KIND[m.kind].label}</span>
+                  <span className="mono flex items-center gap-2" style={{ fontSize: 10 }}>impact {LEVEL[m.impact]} {meter(m.impact, "#22e1ff")}</span>
+                  <span className="mono flex items-center gap-2" style={{ fontSize: 10 }}>effort {LEVEL[m.effort]} {meter(m.effort, "#8a8a93")}</span>
                 </div>
-                <h3 className="mt-3 font-[family-name:var(--font-display)] text-[17px] font-semibold leading-snug tracking-tight">{m.title}</h3>
-                <p className="mt-1.5 text-[13.5px] leading-relaxed text-ink-2">{m.why}</p>
-                <ul className="mt-3 space-y-1">
+                <h3 className="display mt-5 text-[21px] md:text-[23px]">{m.title}</h3>
+                <p className="mt-3 text-[15px] leading-relaxed" style={{ color: "var(--ink-2)" }}>{m.why}</p>
+                <ul className="mt-4 space-y-1.5">
                   {m.evidence.map((e) => (
-                    <li key={e} className="flex gap-2 text-[12.5px] text-ink-3"><span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-accent" />{e}</li>
+                    <li key={e} className="flex gap-2.5 text-[13.5px]" style={{ color: "var(--ink-3)" }}><span className="mt-[8px] h-1 w-1 shrink-0 bg-[var(--cyan)]" />{e}</li>
                   ))}
                 </ul>
-                <div className="mt-auto pt-4">
-                  <Link href={m.href} className="btn-neon">{m.cta}<ArrowRight size={14} /></Link>
-                </div>
+                <div className="mt-auto pt-6"><Pill href={m.href} solid={k === 0}>{m.cta} →</Pill></div>
               </li>
-            </Reveal>
-          ))}
-        </ol>
-      )}
+            ))}
+          </ol>
+        )}
+      </InView>
     </>
   );
 }

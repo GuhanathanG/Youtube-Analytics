@@ -28,6 +28,11 @@ export function Wordmark({ size = 19 }: { size?: number }) {
   );
 }
 
+/** YT / IG marker, so a creator's YouTube channel and Instagram account with the same name are easy to tell apart. */
+const Plat = ({ id }: { id: string }) => (
+  <span className={`shrink-0 rounded-sm px-1 font-mono text-[9px] tracking-[0.08em] ${id.startsWith("ig_") ? "bg-[#e1306c]/15 text-[#ff7aa8]" : "bg-[#ff3b4a]/12 text-[#ff8a92]"}`}>{id.startsWith("ig_") ? "IG" : "YT"}</span>
+);
+
 const Avatar = ({ c, size = 22 }: { c: NavChannel | undefined; size?: number }) => c?.thumb ? (
   // eslint-disable-next-line @next/next/no-img-element
   <img decoding="async" src={c.thumb} alt="" width={size} height={size} className="shrink-0 rounded-full object-cover ring-1 ring-white/15" style={{ width: size, height: size }} />
@@ -68,6 +73,7 @@ function ChannelMenu({ channels, focus }: { channels: NavChannel[]; focus: strin
           <span className="flex -space-x-2">{focusable.slice(0, 3).map((c) => <Avatar key={c.id} c={c} size={20} />)}</span>
         )}
         <span className="hidden max-w-[12rem] truncate sm:inline">{current?.title ?? "All channels"}</span>
+        {current && <span className="hidden sm:inline"><Plat id={current.id} /></span>}
         <ChevronDown size={14} className={`shrink-0 text-ink-3 transition ${open ? "rotate-180" : ""}`} />
       </button>
       <div hidden={!open} role="listbox" aria-label="Channels"
@@ -76,7 +82,7 @@ function ChannelMenu({ channels, focus }: { channels: NavChannel[]; focus: strin
         {focusable.map((c) => (
           <div key={c.id} className="group flex items-center rounded-md hover:bg-white/[0.05]">
             <button role="option" aria-selected={c.id === focus} onClick={() => choose(c.id)} className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-2 text-left text-[13.5px]">
-              <Avatar c={c} /><span className="truncate">{c.title}</span>
+              <Avatar c={c} /><span className="truncate">{c.title}</span><Plat id={c.id} />
               {c.id === focus && <Check size={14} className="ml-auto shrink-0 text-accent" />}
             </button>
             <Link href={`/channels/${c.id}`} onClick={() => setOpen(false)} title="Open channel" aria-label={`Open ${c.title}`}
@@ -92,7 +98,7 @@ function ChannelMenu({ channels, focus }: { channels: NavChannel[]; focus: strin
             <div className="label mt-2 border-t border-line px-2 pb-2 pt-3">Rivals & paused</div>
             {others.map((c) => (
               <Link key={c.id} href={`/channels/${c.id}`} onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-2 py-2 text-[13.5px] text-ink-2 hover:bg-white/[0.05] hover:text-ink">
-                <Avatar c={c} /><span className="truncate">{c.title}</span>
+                <Avatar c={c} /><span className="truncate">{c.title}</span><Plat id={c.id} />
                 <span className="ml-auto font-mono text-[9.5px] tracking-[0.14em] text-ink-3">{c.rival ? "RIVAL" : "PAUSED"}</span>
               </Link>
             ))}
