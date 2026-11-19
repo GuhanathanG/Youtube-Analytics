@@ -6,6 +6,7 @@ import { radar, type RadarRow } from "@/lib/radar";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
+import { RadarSweep } from "@/components/signal/Viz";
 
 export const metadata = { title: "Competitor radar" };
 
@@ -26,6 +27,17 @@ export default async function RadarPage() {
         <Empty>No competitors yet. Add a channel on <Link href="/manage" className="text-accent">Manage</Link>, then press “Mark as competitor” in the watchlist.</Empty>
       ) : (
         <>
+          <div className="mb-10 grid items-center gap-10 lg:grid-cols-[minmax(0,440px)_1fr]">
+            <RadarSweep me={{ id: me.id, title: me.title, medianViews: r.me?.medianViews ?? null }} rivals={r.rivals} />
+            <div>
+              <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">■ How to read it</div>
+              <ul className="mt-5 space-y-4 text-[15px] leading-relaxed text-ink-2">
+                <li><span className="text-ink">Distance</span>: how close their typical views are to yours. Near the centre = a channel your size.</li>
+                <li><span className="text-ink">Size</span>: how many videos they uploaded in the last 30 days.</li>
+                <li><span style={{ color: "#ff3d7f" }}>Magenta ping</span>: a recent breakout at 2× their usual or more. Open it below.</li>
+              </ul>
+            </div>
+          </div>
           <Reveal><Panel title="Side by side" subtitle="Last 30 days of uploads; typical views = median of recent videos">
             <div className="scrollbar-thin -mx-2 overflow-x-auto">
               <table className="w-full min-w-[560px] text-[13.5px]">

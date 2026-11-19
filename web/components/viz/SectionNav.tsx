@@ -25,7 +25,7 @@ export function SectionNav({ items }: { items: { id: string; label: string }[] }
     <nav ref={row} aria-label="On this page" className="sticky top-[76px] z-10 -mx-1 mb-4 flex gap-1.5 overflow-x-auto rounded-2xl border border-line bg-[#05070d]/75 p-1.5 backdrop-blur-xl scrollbar-thin">
       {items.map((i) => (
         <a key={i.id} id={`sn-${i.id}`} href={`#${i.id}`}
-          className={`shrink-0 rounded-xl px-3 py-1.5 text-[12.5px] transition ${active === i.id ? "bg-accent/15 text-accent shadow-[0_0_14px_-4px_#22d3ee]" : "text-ink-2 hover:text-ink"}`}>
+          className={`shrink-0 rounded-xl px-3 py-1.5 text-[12.5px] transition ${active === i.id ? "bg-accent/15 text-accent shadow-[0_0_14px_-4px_#22e1ff]" : "text-ink-2 hover:text-ink"}`}>
           {i.label}
         </a>
       ))}

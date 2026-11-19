@@ -102,7 +102,7 @@ function DraftView({ d }: { d: StudioDraft }) {
       <div className="grid gap-4 md:grid-cols-2">
         {x.thumbnail && <Reveal><Panel title="Thumbnail">
           <div className="relative grid aspect-video place-items-center overflow-hidden rounded-xl border border-accent/30 bg-gradient-to-br from-accent/20 via-[#0a0e1a] to-accent-2/25">
-            <span className="px-4 text-center font-[family-name:var(--font-display)] text-[26px] font-bold uppercase leading-tight tracking-tight text-white [text-shadow:0_0_18px_rgba(34,211,238,0.8)]">{x.thumbnail.text}</span>
+            <span className="px-4 text-center font-[family-name:var(--font-display)] text-[26px] font-bold uppercase leading-tight tracking-tight text-white [text-shadow:0_0_18px_rgba(34, 225, 255,0.8)]">{x.thumbnail.text}</span>
           </div>
           <dl className="mt-3 space-y-1 text-[13px]">
             <div><dt className="label inline">Frame </dt><dd className="inline text-ink-2">{x.thumbnail.concept}</dd></div>
@@ -118,7 +118,7 @@ function DraftView({ d }: { d: StudioDraft }) {
       {x.outline?.length ? <Reveal><Panel title="Outline">
         <ol className="relative space-y-3 border-l border-accent/25 pl-5">
           {x.outline.map((o, k) => (
-            <li key={k}><span className="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_8px_#22d3ee]" />
+            <li key={k}><span className="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_8px_#22e1ff]" />
               <div className="text-[14px] font-medium text-ink">{o.part}</div><p className="text-[13px] text-ink-2">{o.notes}</p></li>
           ))}
         </ol>

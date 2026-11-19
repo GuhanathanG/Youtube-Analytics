@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CountUp } from "./CountUp";
+import { Decode } from "./signal/Decode";
 
 export function Panel({ children, className = "", title, subtitle, action }:
   { children: ReactNode; className?: string; title?: ReactNode; subtitle?: ReactNode; action?: ReactNode }) {
@@ -22,13 +22,12 @@ export function Panel({ children, className = "", title, subtitle, action }:
 export function Stat({ label, value, format = "compact", hint, accent = false, suffix = "" }:
   { label: string; value: number; format?: "compact" | "full" | "signed"; hint?: ReactNode; accent?: boolean; suffix?: string }) {
   return (
-    <div className="panel relative overflow-hidden p-5">
+    <div className="relative min-w-0 overflow-hidden border border-line bg-white/[0.015] p-5 md:p-6" style={{ containerType: "inline-size" }}>
       <div className="label">{label}</div>
-      <div className={`mt-2 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight ${accent ? "glow-text" : "text-ink"}`}>
-        <CountUp value={value} format={format} suffix={suffix} />
+      <div className={`mt-4 whitespace-nowrap font-[family-name:var(--font-display)] font-extrabold ${accent ? "text-accent" : "text-ink"}`} style={{ fontSize: "min(34px, 13cqw)" }}>
+        <Decode value={value} format={format === "full" ? "int" : format} />{suffix}
       </div>
-      {hint && <div className="mt-1 text-[12.5px] text-ink-3">{hint}</div>}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-accent/40 to-transparent" />
+      {hint && <div className="mt-1.5 text-[13px] text-ink-3">{hint}</div>}
     </div>
   );
 }
@@ -61,12 +60,13 @@ export function Empty({ children }: { children: ReactNode }) {
   return <div className="border border-dashed border-line-2 px-4 py-8 text-center text-[13.5px] text-ink-3">{children}</div>;
 }
 
+/** Signal page header: "■ EYEBROW" in mono, a large wide-face title, and the page's description. */
 export function PageHeader({ eyebrow, title, children }: { eyebrow?: string; title: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:mb-8">
-      {eyebrow && <div className="label">{eyebrow}</div>}
-      <h1 className="font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight text-ink sm:text-4xl">{title}</h1>
-      {children}
+    <div className="page-head mb-10 flex flex-col gap-5 pt-2 sm:mb-14">
+      {eyebrow && <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">■ {eyebrow}</div>}
+      <h1 className="font-[family-name:var(--font-display)] text-[34px] font-extrabold leading-[1.06] tracking-[-0.005em] text-ink sm:text-[48px]">{title}</h1>
+      {children && <div className="page-lede max-w-[62ch] text-[15.5px] leading-[1.7] text-ink-2 [&_p]:max-w-none [&_p]:text-[15.5px] [&_p]:leading-[1.7]">{children}</div>}
     </div>
   );
 }

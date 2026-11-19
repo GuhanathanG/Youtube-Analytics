@@ -23,15 +23,15 @@ export function Timeline({ weeks, pins }: { weeks: Week[]; pins: Pin[] }) {
   return (
     <div>
       <div className="mb-2 flex flex-wrap items-center gap-4 text-[12px] text-ink-3">
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "linear-gradient(#22d3ee,#8b7cf6)" }} />views of that week&apos;s uploads</span>
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: "#3987e5" }} />comments that week</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "linear-gradient(#22e1ff,#b4b4bb)" }} />views of that week&apos;s uploads</span>
+        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: "#22e1ff" }} />comments that week</span>
         <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#fab219" }} />breakout (3×+)</span>
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#8b7cf6" }} />title change</span>
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rotate-45 rounded-[2px]" style={{ background: "#22d3ee" }} />shift or spike</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#b4b4bb" }} />title change</span>
+        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rotate-45 rounded-[2px]" style={{ background: "#22e1ff" }} />shift or spike</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="block h-[260px] w-full overflow-visible" role="img" aria-label="Views and comments by week, with breakouts, title changes and shifts">
         <defs>
-          <linearGradient id="tl-bar" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#22d3ee" /><stop offset="100%" stopColor="#8b7cf6" stopOpacity=".25" /></linearGradient>
+          <linearGradient id="tl-bar" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#22e1ff" /><stop offset="100%" stopColor="#b4b4bb" stopOpacity=".25" /></linearGradient>
         </defs>
         {[0.25, 0.5, 0.75, 1].map((f) => <line key={f} x1="0" x2={W} y1={base - f * (base - top)} y2={base - f * (base - top)} stroke="rgba(255,255,255,.05)" />)}
         {weeks.map((w, i) => (
@@ -43,9 +43,9 @@ export function Timeline({ weeks, pins }: { weeks: Week[]; pins: Pin[] }) {
             {i % 4 === 0 && <text x={x(i)} y={H - 6} textAnchor="middle" fontSize="11" fill="#7c869b">{label(w.week)}</text>}
           </g>
         ))}
-        <path d={line} fill="none" stroke="#3987e5" strokeWidth="2.5" pathLength={1} className="viz-draw" style={{ filter: "drop-shadow(0 0 4px #3987e5)" }} />
+        <path d={line} fill="none" stroke="#22e1ff" strokeWidth="2.5" pathLength={1} className="viz-draw" style={{ filter: "drop-shadow(0 0 4px #22e1ff)" }} />
         {[...byWeek.entries()].map(([i, ps]) => ps.slice(0, 3).map((p, k) => {
-          const c = p.kind === "breakout" ? "#fab219" : p.kind === "shift" ? "#22d3ee" : "#8b7cf6";
+          const c = p.kind === "breakout" ? "#fab219" : p.kind === "shift" ? "#22e1ff" : "#b4b4bb";
           const cy = top - 22 - k * 16;
           const pin = (
             <g className="pin-drop" style={{ animationDelay: `${600 + i * 30}ms` }}>

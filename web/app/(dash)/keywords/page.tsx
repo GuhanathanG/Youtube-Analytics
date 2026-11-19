@@ -8,7 +8,7 @@ import { compact } from "@/lib/format";
 export const metadata = { title: "Keywords" };
 
 const times = (x: number) => (x >= 10 ? `${Math.round(x)}×` : `${x.toFixed(1)}×`);
-const tone = (d: number) => (d >= 70 ? "#22d3ee" : d >= 45 ? "#8b7cf6" : d >= 20 ? "#fab219" : "#7c869b");
+const tone = (d: number) => (d >= 70 ? "#22e1ff" : d >= 45 ? "#b4b4bb" : d >= 20 ? "#fab219" : "#7c869b");
 
 export default async function KeywordsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const q = ((await searchParams).q ?? "").trim().slice(0, 80);
@@ -27,7 +27,7 @@ export default async function KeywordsPage({ searchParams }: { searchParams: Pro
       <Reveal>
         <form action="/keywords" className="panel holo mb-4 flex flex-wrap items-center gap-3 p-4">
           <input name="q" defaultValue={q} placeholder="e.g. tamil prank call" autoComplete="off" aria-label="Keyword"
-            className="min-w-0 flex-1 rounded-xl border border-line-2 bg-black/40 px-4 py-3 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:border-accent/60 focus:shadow-[0_0_24px_-6px_#22d3ee]" />
+            className="min-w-0 flex-1 rounded-xl border border-line-2 bg-black/40 px-4 py-3 text-[15px] text-ink outline-none placeholder:text-ink-3 focus:border-accent/60 focus:shadow-[0_0_24px_-6px_#22e1ff]" />
           <button className="btn-neon rounded-xl px-5 py-3 text-[14px] font-medium">Score it</button>
           {seeds.length > 0 && (
             <div className="flex w-full flex-wrap items-center gap-1.5 text-[12.5px]">
@@ -82,7 +82,7 @@ export default async function KeywordsPage({ searchParams }: { searchParams: Pro
                         {r.demand !== null && (
                           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/[0.05]">
                             <div className="grow-x h-full rounded-full" style={{ width: `${Math.max(3, r.demand)}%`, animationDelay: `${i * 60}ms`,
-                              background: `linear-gradient(90deg, rgba(139,124,246,.6), ${tone(r.demand)})` }} />
+                              background: `linear-gradient(90deg, rgba(180, 180, 187,.6), ${tone(r.demand)})` }} />
                           </div>
                         )}
                       </Link>

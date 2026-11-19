@@ -7,28 +7,28 @@ export type NavPage = { href: string; label: string; icon: string };
 export type Hub = { key: string; label: string; question: string; icon: string; color: string; pages: NavPage[] };
 
 export const HUBS: Hub[] = [
-  { key: "pulse", label: "Pulse", question: "What's happening and what should I do?", icon: "Activity", color: "#22d3ee", pages: [
+  { key: "pulse", label: "Pulse", question: "What's happening and what should I do?", icon: "Activity", color: "#22e1ff", pages: [
     { href: "/", label: "Overview", icon: "LayoutDashboard" },
     { href: "/command", label: "Next moves", icon: "Rocket" },
     { href: "/glance", label: "Glance", icon: "Gauge" },
   ] },
-  { key: "audience", label: "Audience", question: "Who are they and what do they say?", icon: "Users", color: "#3987e5", pages: [
+  { key: "audience", label: "Audience", question: "Who are they and what do they say?", icon: "Users", color: "#22e1ff", pages: [
     { href: "/comments", label: "Comments", icon: "MessageSquareText" },
     { href: "/ask", label: "Ask AI", icon: "Sparkles" },
   ] },
-  { key: "performance", label: "Performance", question: "How are my videos doing and why?", icon: "TrendingUp", color: "#0ca30c", pages: [
+  { key: "performance", label: "Performance", question: "How are my videos doing and why?", icon: "TrendingUp", color: "#22e1ff", pages: [
     { href: "/analytics", label: "Analytics", icon: "ChartNoAxesCombined" },
     { href: "/predict", label: "Predict", icon: "BrainCircuit" },
     { href: "/growth", label: "Growth & goals", icon: "Target" },
   ] },
-  { key: "market", label: "Market", question: "What's working around me?", icon: "Globe", color: "#8b7cf6", pages: [
+  { key: "market", label: "Market", question: "What's working around me?", icon: "Globe", color: "#b4b4bb", pages: [
     { href: "/outliers", label: "Outliers", icon: "Flame" },
     { href: "/keywords", label: "Keywords", icon: "Search" },
     { href: "/platforms", label: "YT vs IG", icon: "Columns2" },
     { href: "/radar", label: "Radar", icon: "Radar" },
     { href: "/compare", label: "Compare", icon: "GitCompareArrows" },
   ] },
-  { key: "create", label: "Create", question: "What should I make next?", icon: "Clapperboard", color: "#fab219", pages: [
+  { key: "create", label: "Create", question: "What should I make next?", icon: "Clapperboard", color: "#ededea", pages: [
     { href: "/studio", label: "Studio", icon: "Clapperboard" },
     { href: "/ideas", label: "Ideas", icon: "Lightbulb" },
   ] },

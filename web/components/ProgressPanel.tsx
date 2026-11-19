@@ -45,34 +45,34 @@ export function ProgressPanel({ rows }: { rows: Progress[] }) {
           const jobs: Job[] = [
             { key: "videos", label: "Find every video", done: p.videos_known, total: Math.max(p.videos_total ?? 0, p.videos_known), left: videosLeft,
               perHour: videosLeft ? 3000 / Math.max(1, rows.filter((r) => r.videos_total && r.videos_total > r.videos_known).length) : 0, unit: "videos",
-              note: "about 100 videos every 2 minutes (estimate)", color: "#8b7cf6",
+              note: "about 100 videos every 2 minutes (estimate)", color: "#b4b4bb",
               doneNote: videosGap ? `${fmt(videosGap)} private or removed` : undefined },
             { key: "comments", label: "Download comment history", done: p.comments_stored, total: historyDone ? p.comments_stored : Math.max(p.comments_on_youtube, p.comments_stored),
-              left: commentsLeft, perHour: p.saved_last_hour, unit: "comments", note: `${fmt(p.saved_last_hour)}/hour`, color: "#22d3ee",
+              left: commentsLeft, perHour: p.saved_last_hour, unit: "comments", note: `${fmt(p.saved_last_hour)}/hour`, color: "#22e1ff",
               doneNote: competitor ? "competitor: views & uploads are tracked, comments aren't downloaded"
                 : historyDone && p.comments_on_youtube > p.comments_stored ? "every video downloaded (YouTube's total also counts hidden replies)" : undefined },
             { key: "sentiment", label: "Sentiment & language (local model)", done: Math.max(0, inMain - sWait), total: inMain,
               left: sWait + commentsLeft, perHour: p.sentiment_last_hour, unit: "comments",
-              note: `${fmt(p.sentiment_last_hour)}/hour · runs every 30 min`, color: "#0ca30c", doneNote: archivedNote ? `all caught up${archivedNote}` : undefined },
+              note: `${fmt(p.sentiment_last_hour)}/hour · runs every 30 min`, color: "#22e1ff", doneNote: archivedNote ? `all caught up${archivedNote}` : undefined },
             { key: "ai", label: "AI reads every comment", done: Math.max(0, inMain - aWait), total: inMain,
               left: aWait + commentsLeft, perHour: p.ai_last_hour, unit: "comments",
-              note: `${fmt(p.ai_last_hour)}/hour`, color: "#3987e5", doneNote: archivedNote ? `all caught up${archivedNote}` : undefined },
+              note: `${fmt(p.ai_last_hour)}/hour`, color: "#22e1ff", doneNote: archivedNote ? `all caught up${archivedNote}` : undefined },
           ];
           // The "Read archived comments" job (every 6 hours on GitHub): older comments get the same reading.
           if (p.arch_comments) {
             jobs.push({ key: "arch-mood", label: "Older comments: mood & language", done: p.arch_analyzed ?? 0, total: p.arch_comments,
               left: Math.max(0, p.arch_comments - (p.arch_analyzed ?? 0)), perHour: p.arch_analyzed_per_hour ?? 0, unit: "comments",
-              note: p.arch_analyzed_per_hour ? `${fmt(p.arch_analyzed_per_hour)}/hour · in the archive` : "in the archive · runs every 6 hours", color: "#0ca30c" });
+              note: p.arch_analyzed_per_hour ? `${fmt(p.arch_analyzed_per_hour)}/hour · in the archive` : "in the archive · runs every 6 hours", color: "#22e1ff" });
             jobs.push({ key: "arch-ai", label: "Older comments: AI reads them", done: p.arch_ai ?? 0, total: p.arch_comments,
               left: Math.max(0, p.arch_comments - (p.arch_ai ?? 0)), perHour: p.arch_ai_per_hour ?? 0, unit: "comments",
-              note: p.arch_ai_per_hour ? `${fmt(p.arch_ai_per_hour)}/hour · most-liked first` : "most-liked first · runs every 6 hours", color: "#3987e5" });
+              note: p.arch_ai_per_hour ? `${fmt(p.arch_ai_per_hour)}/hour · most-liked first` : "most-liked first · runs every 6 hours", color: "#22e1ff" });
           }
           if (p.videos_to_watch != null) jobs.push({ key: "watch", label: "AI watches new videos (30 days)", done: 0, total: 0, left: p.videos_to_watch,
             perHour: (p.watch_per_hour ?? 0) / share("videos_to_watch"), unit: "videos", note: "about 1 every 2 hours", color: "#fab219" });
           if (p.thumbs_to_check != null) jobs.push({ key: "thumbs", label: "AI checks thumbnails", done: 0, total: 0, left: p.thumbs_to_check,
             perHour: (p.thumbs_per_hour ?? 0) / share("thumbs_to_check"), unit: "thumbnails", note: "up to 75 every 2 hours", color: "#e66767" });
           if (p.months_to_remember != null) jobs.push({ key: "memory", label: "Creator Memory (months)", done: 0, total: 0, left: p.months_to_remember,
-            perHour: (p.memory_per_hour ?? 0) / share("months_to_remember"), unit: "months", note: "about 6 an hour across channels", color: "#8b7cf6" });
+            perHour: (p.memory_per_hour ?? 0) / share("months_to_remember"), unit: "months", note: "about 6 an hour across channels", color: "#b4b4bb" });
           const finishes = jobs.map((j) => finishAt(j.left, j.perHour, now));
           const overall = finishes.some((f) => f === null) ? null : Math.max(0, ...(finishes as number[]));
           const allDone = jobs.every((j) => j.left <= 0);

@@ -133,7 +133,7 @@ export default async function PredictPage({ searchParams }: { searchParams: Prom
               <select name="format" defaultValue={q.format ?? "long"} className="mt-2 h-10 w-full rounded-md border border-line-2 bg-[#0b0b10] px-3 text-[14px]">
                 <option value="long">Long video</option><option value="short">Short</option></select></label>
             <label className="sm:col-span-1"><span className="label">Minutes</span>
-              <input name="minutes" type="number" step="0.5" min="0.2" max="240" defaultValue={q.minutes ?? "12"} aria-label="Minutes"
+              <input name="minutes" type="number" step="any" min="0.2" max="240" defaultValue={q.minutes ?? "12"} aria-label="Minutes"
                 className="mt-2 h-10 w-full rounded-md border border-line-2 bg-[#0b0b10] px-3 text-[14px]" /></label>
             <label className="sm:col-span-2"><span className="label">Day</span>
               <select name="day" defaultValue={q.day ?? "5"} className="mt-2 h-10 w-full rounded-md border border-line-2 bg-[#0b0b10] px-3 text-[14px]">

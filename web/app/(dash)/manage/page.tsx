@@ -31,7 +31,7 @@ const REPO_ACTIONS = "https://github.com/GuhanathanG/Youtube-Analytics/actions/w
 
 function Meter({ label, used, total, unit }: { label: string; used: number; total: number; unit: string }) {
   const p = Math.min(100, (used / total) * 100);
-  const color = p > 90 ? "#e66767" : p > 70 ? "#fab219" : "#22d3ee";
+  const color = p > 90 ? "#e66767" : p > 70 ? "#fab219" : "#22e1ff";
   return (
     <div className="rounded-xl border border-line bg-white/[0.02] p-4">
       <div className="label">{label}</div>

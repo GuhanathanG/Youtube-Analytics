@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, useTransition, type ReactNode } from "reac
 import { logout, setFocus } from "@/app/actions";
 import dynamic from "next/dynamic";
 import { LivePill } from "./LivePill";
+import { clearSavedPages } from "./RegisterSW";
 import { ACCOUNT_PAGES, HUBS, hubOf, pageMatches } from "@/lib/nav";
 
 // The search palette (and its library) loads the first time it's opened, not with every page.
@@ -124,7 +125,7 @@ function AccountMenu({ onSearch }: { onSearch: () => void }) {
             </Link>
           ))}
           <button onClick={() => { setOpen(false); onSearch(); }} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-white/[0.05] hover:text-ink sm:hidden"><Search size={15} />Search</button>
-          <form action={logout} className="mt-1 border-t border-line pt-1">
+          <form action={logout} onSubmit={clearSavedPages} className="mt-1 border-t border-line pt-1">
             <button className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13.5px] text-ink-2 hover:bg-white/[0.05] hover:text-ink"><LogOut size={15} />Sign out</button>
           </form>
         </div>
@@ -210,7 +211,7 @@ export function Shell({ children, channels, focus }: { children: ReactNode; chan
         )}
       </header>
 
-      <main className="safe-main mx-auto max-w-[1440px] px-4 pt-6 sm:px-8 sm:pt-8">{children}</main>
+      <main className="sig safe-main mx-auto max-w-[1440px] px-4 pt-6 sm:px-8 sm:pt-8">{children}</main>
 
       {/* Phones: the five hubs along the bottom. */}
       <nav aria-label="Hubs" className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-line bg-[#07070a]/90 px-1 pt-1.5 backdrop-blur-xl lg:hidden"

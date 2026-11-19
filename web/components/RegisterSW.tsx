@@ -2,6 +2,12 @@
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+/** Deletes every saved page copy (signing out must never leave private pages on the device). */
+export function clearSavedPages() {
+  try { void caches.delete("pulse-pages-v1"); void caches.delete("pulse-pages-v2"); } catch { /* storage blocked */ }
+  try { navigator.serviceWorker?.controller?.postMessage({ type: "clear-pages" }); } catch { /* no worker */ }
+}
+
 /**
  * Registers the service worker (installable app, instant pages, offline page, notifications).
  * Instant pages: the service worker may show the last saved copy of a page at once; here we ask it
@@ -11,13 +17,12 @@ import { usePathname, useRouter } from "next/navigation";
 export function RegisterSW() {
   const router = useRouter();
   const path = usePathname();
+  // Arriving on the sign-in page by any route (signing out is an in-app move, not a full page load) clears the copies.
+  useEffect(() => { if (path.startsWith("/login")) clearSavedPages(); }, [path]);
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/sw.js").catch(() => {});
-    if (path.startsWith("/login")) {
-      try { void caches.delete("pulse-pages-v1"); void caches.delete("pulse-pages-v2"); } catch { /* storage blocked */ }
-      return;
-    }
+    if (path.startsWith("/login")) return;
     const sw = navigator.serviceWorker.controller;
     if (!sw) return;
     const ch = new MessageChannel();

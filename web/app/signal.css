@@ -127,3 +127,28 @@
 .scan-result::after { content: ""; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(34, 225, 255, 0.18), transparent);
   animation: scan-sweep 1.2s cubic-bezier(0.3, 0.6, 0.2, 1) 1 forwards; }
 @media (prefers-reduced-motion: reduce) { .scan-result::after { display: none; } }
+
+/* Loading skeleton: hairline blocks with a soft sweep. */
+@keyframes skel-sweep { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+.skel { background: linear-gradient(90deg, rgba(255,255,255,.03) 25%, rgba(34,225,255,.07) 50%, rgba(255,255,255,.03) 75%); background-size: 200% 100%; animation: skel-sweep 1.6s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+
+/* Radar: a turning sweep; blips brighten as it passes; breakouts ping. */
+.radar-sweep { position: absolute; inset: 6%; border-radius: 999px; pointer-events: none;
+  background: conic-gradient(from 0deg, rgba(34, 225, 255, 0.28), rgba(34, 225, 255, 0) 70deg, transparent 360deg);
+  animation: radar-turn 4s linear infinite; mask-image: radial-gradient(circle, #000 69%, transparent 70%); }
+@keyframes radar-turn { to { transform: rotate(360deg); } }
+@keyframes radar-flash { 0%, 100% { opacity: 0.55; } 6% { opacity: 1; } 30% { opacity: 0.7; } }
+.radar-blip { animation: radar-flash 4s linear infinite; }
+.radar-blip:hover { opacity: 1 !important; }
+@keyframes radar-ping { from { r: 6; opacity: 0.9; } to { r: 26; opacity: 0; } }
+.radar-ping { animation: radar-ping 1.8s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .radar-sweep, .radar-blip, .radar-ping { animation: none; } }
+
+/* Viewfinder: camera corner brackets around a picture, with a blinking REC mark. */
+.viewfinder { position: relative; }
+.viewfinder::before, .viewfinder::after { content: ""; position: absolute; width: 18px; height: 18px; pointer-events: none; border-color: var(--color-accent); }
+.viewfinder::before { left: 0; top: 0; border-left: 2px solid; border-top: 2px solid; box-shadow: -4px -4px 14px -8px var(--color-accent); }
+.viewfinder::after { right: 0; bottom: 0; border-right: 2px solid; border-bottom: 2px solid; box-shadow: 4px 4px 14px -8px var(--color-accent); }
+.vf-rec { position: absolute; right: 12px; top: 12px; z-index: 2; font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.14em; color: #ff3d7f; animation: sig-blink 1.4s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) { .vf-rec { animation: none; } }

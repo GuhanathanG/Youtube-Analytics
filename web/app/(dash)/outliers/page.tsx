@@ -5,6 +5,8 @@ import { BANDS, bandCounts, patterns, type Kind, type Scored } from "@/lib/outli
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
+import { InView } from "@/components/signal/InView";
+import { Starburst } from "@/components/signal/Viz";
 
 export const metadata = { title: "Outliers" };
 
@@ -19,7 +21,7 @@ const WHO = [{ k: "all", label: "Whole niche" }, { k: "mine", label: "My channel
 const KIND_LABEL: Record<Kind, string> = { short: "Short", long: "Video", reel: "Reel", post: "Post" };
 const times = (x: number) => (x >= 10 ? `${Math.round(x)}×` : `${x.toFixed(1)}×`);
 /** Ring colour by strength: cyan → violet → gold for the biggest hits. */
-const ringOf = (s: number) => (s >= 10 ? "#fab219" : s >= 5 ? "#8b7cf6" : "#22d3ee");
+const ringOf = (s: number) => (s >= 5 ? "#ff3d7f" : "#22e1ff");
 
 export default async function OutliersPage({ searchParams }: { searchParams: Promise<Q> }) {
   const q = await searchParams;
@@ -93,6 +95,16 @@ export default async function OutliersPage({ searchParams }: { searchParams: Pro
         </div></Reveal>
       </div>
 
+      {/* Every upload in view as a ray: the breakouts glow. */}
+      <InView className="my-12 grid items-center gap-10 lg:grid-cols-[minmax(0,440px)_1fr]">
+        <Starburst videos={[...inScope].sort((a, b) => a.age - b.age).map((v) => ({ id: v.id, title: v.title, outlier: v.score, views: v.view_count ?? 0 }))} />
+        <div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">■ The whole niche at once</div>
+          <p className="mt-4 max-w-[52ch] text-[15.5px] leading-[1.7] text-ink-2">Every upload in this view is a ray, newest first, clockwise from the top. The longer the ray, the
+            further it beat its own channel&apos;s normal. Magenta rays are 2× or more. Hover any ray for the title, click to open it.</p>
+        </div>
+      </InView>
+
       <div className="mt-4 grid gap-4 lg:grid-cols-5">
         {/* Distribution */}
         <Reveal className="lg:col-span-2"><Panel title="How uploads land" subtitle="Each upload's views as a multiple of its channel's normal">
@@ -104,10 +116,10 @@ export default async function OutliersPage({ searchParams }: { searchParams: Pro
                   <span className="text-[11px] tabular text-ink-3">{n}</span>
                   <div className="relative w-full flex-1">
                     <div className="grow-y absolute inset-x-0 bottom-0 rounded-t-md" style={{ height: `${Math.max(3, (n / maxBand) * 100)}%`, animationDelay: `${i * 70}ms`,
-                      background: hot ? "linear-gradient(to top, rgba(139,124,246,.35), #22d3ee)" : "rgba(255,255,255,.12)",
-                      boxShadow: hot ? "0 0 18px -4px #22d3ee" : undefined }} />
+                      background: hot ? "linear-gradient(to top, rgba(255,61,127,.35), #ff3d7f)" : "rgba(255,255,255,.12)",
+                      boxShadow: hot ? "0 0 18px -4px #ff3d7f" : undefined }} />
                   </div>
-                  <span className={`text-[10.5px] ${hot ? "text-accent" : "text-ink-3"}`}>{BANDS[i].label}</span>
+                  <span className={`font-mono text-[10px] ${hot ? "text-neg" : "text-ink-3"}`}>{BANDS[i].label}</span>
                 </div>
               );
             })}
@@ -125,7 +137,7 @@ export default async function OutliersPage({ searchParams }: { searchParams: Pro
                     <span className="shrink-0 tabular text-accent">{t.ratio.toFixed(1)}× more common</span>
                   </div>
                   <div className="mt-1.5 grid gap-1">
-                    <Bar value={t.inOutliers} color="linear-gradient(90deg,#8b7cf6,#22d3ee)" delay={i * 80} label={`${Math.round(t.inOutliers * 100)}% of breakouts`} />
+                    <Bar value={t.inOutliers} color="linear-gradient(90deg,#b4b4bb,#22e1ff)" delay={i * 80} label={`${Math.round(t.inOutliers * 100)}% of breakouts`} />
                     <Bar value={t.inAll} color="rgba(255,255,255,.18)" delay={i * 80 + 40} label={`${Math.round(t.inAll * 100)}% of all uploads`} />
                   </div>
                 </li>
@@ -154,7 +166,7 @@ function Filter({ label, items }: { label: string; items: { label: string; href:
       <span className="label mr-1">{label}</span>
       {items.map((i) => (
         <Link key={i.label} href={i.href} scroll={false}
-          className={`rounded-full px-3 py-1 ring-1 transition ${i.on ? "bg-accent/15 text-accent ring-accent/40 shadow-[0_0_14px_-4px_#22d3ee]" : "text-ink-2 ring-white/10 hover:ring-accent/30"}`}>
+          className={`rounded-full px-3 py-1 ring-1 transition ${i.on ? "bg-accent/15 text-accent ring-accent/40 shadow-[0_0_14px_-4px_#22e1ff]" : "text-ink-2 ring-white/10 hover:ring-accent/30"}`}>
           {i.label}
         </Link>
       ))}

@@ -51,7 +51,7 @@ export default async function PlatformsPage({ searchParams }: { searchParams: Pr
           <Reveal><div className="relative grid gap-4 md:grid-cols-2">
             <Hero s={yt} color={YT} />
             <Hero s={ig} color={IG} color2={IG2} />
-            <div className="pointer-events-none absolute left-1/2 top-1/2 hidden h-16 w-16 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-line-2 bg-[#05070d] font-[family-name:var(--font-display)] text-lg font-semibold text-ink shadow-[0_0_40px_-6px_#22d3ee] md:grid">VS</div>
+            <div className="pointer-events-none absolute left-1/2 top-1/2 hidden h-16 w-16 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-line-2 bg-[#05070d] font-[family-name:var(--font-display)] text-lg font-semibold text-ink shadow-[0_0_40px_-6px_#22e1ff] md:grid">VS</div>
           </div></Reveal>
 
           {/* Head to head */}
@@ -189,7 +189,7 @@ function Mood({ s }: { s: Side }) {
   const a = (p / total) * 100, b = a + (n / total) * 100;
   return (
     <div className="flex items-center gap-4">
-      <div className="relative h-28 w-28 rounded-full" style={{ background: `conic-gradient(#3987e5 0 ${a}%, #8a8f9c ${a}% ${b}%, #e66767 ${b}% 100%)`, boxShadow: "0 0 28px -8px #3987e5" }}>
+      <div className="relative h-28 w-28 rounded-full" style={{ background: `conic-gradient(#22e1ff 0 ${a}%, #8a8f9c ${a}% ${b}%, #e66767 ${b}% 100%)`, boxShadow: "0 0 28px -8px #22e1ff" }}>
         <div className="absolute inset-3 grid place-items-center rounded-full bg-[#05070d]">
           <span className="font-[family-name:var(--font-display)] text-xl font-semibold tabular text-ink">{Math.round((p / total) * 100)}%</span>
         </div>
