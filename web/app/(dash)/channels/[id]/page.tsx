@@ -8,6 +8,8 @@ import { panel } from "@/lib/panels";
 import { ownerReport } from "@/lib/owner";
 import { OwnerPanel } from "@/components/OwnerPanel";
 import Link from "next/link";
+import { InView } from "@/components/signal/InView";
+import { Waveform } from "@/components/signal/Waveform";
 import { MemoryPanel } from "@/components/MemoryPanel";
 import { creatorMemory } from "@/lib/memory";
 import { notFound } from "next/navigation";
@@ -48,22 +50,23 @@ export default async function ChannelPage({ params, searchParams }:
   return (
     <>
       <Reveal>
-        <div className="panel relative mb-6 overflow-hidden p-6 sm:p-8">
-          <div className="pointer-events-none absolute -left-20 -top-28 h-72 w-72 rounded-full bg-accent/15 blur-3xl" />
-          <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center">
-            {c.thumbnail_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img decoding="async" src={c.thumbnail_url} alt="" className="h-20 w-20 rounded-2xl object-cover ring-2 ring-white/10" />
-            ) : <div className="grid h-20 w-20 place-items-center rounded-2xl bg-gradient-to-br from-accent/30 to-accent-2/30 text-2xl font-semibold">{c.title.slice(0, 1)}</div>}
+        <div className="relative mb-8 border-b border-line pb-8 pt-2">
+          <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center">
+            <div className="viewfinder shrink-0 p-2">
+              {c.thumbnail_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img decoding="async" src={c.thumbnail_url} alt="" className="h-24 w-24 object-cover" />
+              ) : <div className="grid h-24 w-24 place-items-center bg-white/5 text-3xl font-semibold">{c.title.slice(0, 1)}</div>}
+            </div>
             <div className="min-w-0 flex-1">
-              <div className="label">{isInstagram(c.id) ? "Instagram account" : "Channel"}</div>
-              <h1 className="mt-1 font-[family-name:var(--font-display)] text-3xl font-semibold tracking-tight sm:text-4xl">{c.title}</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">■ {isInstagram(c.id) ? "Instagram account" : "YouTube channel"}</div>
+              <h1 className="mt-3 break-words font-[family-name:var(--font-display)] text-[34px] font-extrabold leading-[1.05] sm:text-[52px]">{c.title}</h1>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
                 <a href={channelUrl(c.id, c.handle)} target="_blank" rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[13px] text-ink-2 hover:text-accent">{c.handle ?? c.id}<ExternalLink size={13} /></a>
+                  className="mr-2 inline-flex items-center gap-1.5 font-mono text-[11.5px] text-ink-2 hover:text-accent">{c.handle ?? c.id}<ExternalLink size={13} /></a>
                 {!c.active && <Tag tone="warn">paused</Tag>}
-                <Link href={`/analytics?c=${encodeURIComponent(c.id)}`} className="rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-ink-2 hover:border-accent/50 hover:text-ink">Analytics</Link>
-                <Link href={`/report/${encodeURIComponent(c.id)}`} className="rounded-lg border border-line px-2.5 py-1 text-[12.5px] text-ink-2 hover:border-accent/50 hover:text-ink">Weekly report / PDF</Link>
+                <Link href={`/analytics?c=${encodeURIComponent(c.id)}`} className="pill pill-line" style={{ padding: "6px 14px", fontSize: 12.5 }}>Analytics</Link>
+                <Link href={`/report/${encodeURIComponent(c.id)}`} className="pill pill-line" style={{ padding: "6px 14px", fontSize: 12.5 }}>Weekly report / PDF</Link>
               </div>
             </div>
             <div className="w-full sm:w-72"><MixBar mix={mix} /></div>
@@ -95,17 +98,16 @@ async function ChannelHero({ id }: { id: string }) {
   const breakouts = v.pins.filter((p) => p.kind === "breakout").length;
   return (
     <>
-      <Reveal><section className="panel holo hero-stage relative overflow-hidden p-5 sm:p-7">
-        <div className="viz-aurora pointer-events-none absolute -inset-1/4 opacity-30" aria-hidden />
+      <Reveal><section className="panel relative overflow-hidden p-5 sm:p-7">
         <div className="relative">
           <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
               <div className="label">Last 26 weeks</div>
-              <h2 className="mt-1 font-[family-name:var(--font-display)] text-2xl font-semibold tracking-tight">Timeline</h2>
+              <h2 className="mt-1 font-[family-name:var(--font-display)] text-[28px] font-extrabold">Timeline</h2>
             </div>
             <div className="flex gap-5 text-right">
               <div><div className="font-[family-name:var(--font-display)] text-2xl font-semibold tabular text-ink">{v.weeks.reduce((a, w) => a + w.uploads, 0)}</div><div className="label">uploads</div></div>
-              <div><div className="font-[family-name:var(--font-display)] text-2xl font-semibold tabular" style={{ color: "#fab219" }}>{breakouts}</div><div className="label">breakouts</div></div>
+              <div><div className="font-[family-name:var(--font-display)] text-2xl font-extrabold tabular" style={{ color: "#ff3d7f" }}>{breakouts}</div><div className="label">breakouts</div></div>
             </div>
           </div>
           <Timeline weeks={v.weeks} pins={v.pins} />
@@ -142,14 +144,14 @@ async function Signals({ id, range: key }: { id: string; range: string }) {
       <Reveal delay={0.1} className="mt-6"><MemoryPanel profile={memory.profile} months={memory.months} /></Reveal>
 
       <div className="mt-6 flex items-center justify-between">
-        <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold">Audience signals</h2>
+        <h2 className="font-[family-name:var(--font-display)] text-[28px] font-extrabold">Audience signals</h2>
         <RangeTabs current={key} basePath={`/channels/${id}`} />
       </div>
 
       <div className="mt-3 grid gap-4 xl:grid-cols-3">
         <Reveal className="xl:col-span-2">
           <Panel title="Conversation volume" subtitle="Comments per period, split by sentiment">
-            {daily.length ? <TrendChart data={daily} /> : <Empty>No comments in this range.</Empty>}
+            {daily.length ? <InView><Waveform days={daily} height={240} /></InView> : <Empty>No comments in this range.</Empty>}
           </Panel>
         </Reveal>
         <Reveal delay={0.05}>
@@ -164,7 +166,7 @@ async function Signals({ id, range: key }: { id: string; range: string }) {
         </Reveal>
         <Reveal delay={0.15}>
           <Panel title="Emotions" subtitle="Excluding neutral">
-            <BarList color="#8b7cf6" rows={emos.filter((e) => e.emotion !== "neutral").map((e) => ({ label: `${e.icon} ${e.emotion}`, value: e.comments }))}
+            <BarList color="#b4b4bb" rows={emos.filter((e) => e.emotion !== "neutral").map((e) => ({ label: `${e.icon} ${e.emotion}`, value: e.comments }))}
               empty="Appears after the AI has read comments." />
           </Panel>
         </Reveal>

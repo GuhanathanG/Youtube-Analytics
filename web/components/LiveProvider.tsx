@@ -100,7 +100,7 @@ export function LiveProvider({ children, initial }: { children: ReactNode; initi
       {waiting && (
         <div className="pointer-events-none fixed inset-x-0 top-20 z-50 flex justify-center px-4">
           <button onClick={refreshInPlace}
-            className="anim-toast-in pointer-events-auto flex items-center gap-2 rounded-full border border-accent/50 bg-[#07141a]/90 px-4 py-2 text-[13px] text-ink shadow-[0_0_24px_-6px_#22d3ee] backdrop-blur-xl">
+            className="anim-toast-in pointer-events-auto flex items-center gap-2 rounded-full border border-accent/50 bg-[#07141a]/90 px-4 py-2 text-[13px] text-ink shadow-[0_0_24px_-6px_#22e1ff] backdrop-blur-xl">
             <Radio size={14} className="text-accent" />{waiting} · <span className="text-accent">Update</span>
           </button>
         </div>

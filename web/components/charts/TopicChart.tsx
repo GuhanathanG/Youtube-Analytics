@@ -4,7 +4,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { AXIS, GRID } from "./colors";
 import { GlassTooltip } from "./Tooltip";
 
-const COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"]; // fixed order, dark-mode steps
+const COLORS = ["#22e1ff", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"]; // fixed order, dark-mode steps
 
 /** Monthly mentions per topic (aspect) — what viewers talk about, over the last 12 months. */
 export function TopicChart({ months, series }: { months: string[]; series: { key: string; label: string; counts: number[] }[] }) {

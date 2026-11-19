@@ -10,7 +10,7 @@ export function ThumbWall({ items }: { items: WallItem[] }) {
   return (
     <div className="grid auto-rows-[110px] grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-6 [grid-auto-flow:dense]">
       {items.map((v, i) => {
-        const glow = v.score !== null && v.score >= 2 ? (v.score >= 10 ? "#fab219" : v.score >= 5 ? "#8b7cf6" : "#22d3ee") : null;
+        const glow = v.score !== null && v.score >= 2 ? (v.score >= 10 ? "#fab219" : v.score >= 5 ? "#b4b4bb" : "#22e1ff") : null;
         return (
           <Link key={v.id} href={`/videos/${v.id}`} title={v.title}
             className={`reveal tilt group relative overflow-hidden rounded-2xl border border-line bg-black ${big.has(v.id) ? "col-span-2 row-span-2" : ""}`}

@@ -31,9 +31,9 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
   }, [tries, auto]);
 
   return (
-    <div className="panel mx-auto mt-10 max-w-xl p-8" data-page-error="">
-      <div className="label">{auto ? "One moment" : "Something went wrong"}</div>
-      <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold">
+    <div className="mx-auto mt-10 max-w-xl border border-line p-8" data-page-error="">
+      <div className={`font-mono text-[11px] uppercase tracking-[0.14em] ${auto ? "text-accent" : "text-neg"}`}>■ {auto ? "One moment" : "Something went wrong"}</div>
+      <h1 className="mt-3 font-[family-name:var(--font-display)] text-[28px] font-extrabold leading-tight">
         {db ? "Can't reach the database" : auto ? "Loading is taking longer than usual" : "This page didn't load"}
       </h1>
       <p className="mt-3 text-[14px] text-ink-2">
@@ -42,7 +42,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
           : "The database is busy right now (usually background work finishing). Try again in a minute."}
       </p>
       {error.digest && <p className="mt-3 font-mono text-[11px] text-ink-3">ref {error.digest}</p>}
-      <button onClick={retry} className="mt-5 rounded-xl border border-line px-4 py-2 text-[14px] hover:border-accent/50">Try again now</button>
+      <button onClick={retry} className="pill pill-line mt-6">Try again now</button>
     </div>
   );
 }

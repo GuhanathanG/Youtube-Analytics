@@ -1,4 +1,6 @@
 import { ChevronLeft } from "lucide-react";
+import { InView } from "@/components/signal/InView";
+import { Waveform } from "@/components/signal/Waveform";
 import { isInstagram, postUrl } from "@/lib/platform";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -71,8 +73,9 @@ export default async function VideoPage({ params, searchParams }:
       </Link>
       <Reveal>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          <div className="panel overflow-hidden p-1.5">
-            <div className="aspect-video overflow-hidden rounded-[14px] bg-black">
+          <div className="viewfinder p-2.5">
+            <span className="vf-rec" aria-hidden>● REC</span>
+            <div className="aspect-video overflow-hidden bg-black">
               {isInstagram(id) ? (
                 <a href={postUrl(id)} target="_blank" rel="noreferrer" className="block h-full w-full">
                   {v.thumbnail_url
@@ -87,8 +90,8 @@ export default async function VideoPage({ params, searchParams }:
             </div>
           </div>
           <div className="flex flex-col justify-center">
-            <div className="label">{isInstagram(id) ? "Instagram post" : "Video"} · {date(v.published_at)} {v.duration && `· ${duration(v.duration)}`}</div>
-            <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">{v.title}</h1>
+            <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">■ {isInstagram(id) ? "Instagram post" : "Video"} · {date(v.published_at)} {v.duration && `· ${duration(v.duration)}`}</div>
+            <h1 className="mt-3 break-words font-[family-name:var(--font-display)] text-[26px] font-extrabold leading-[1.1] sm:text-[34px]">{v.title}</h1>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <Stat label="Views" value={v.view_count ?? 0} accent />
               <Stat label="Likes" value={v.like_count ?? 0} />
@@ -98,11 +101,11 @@ export default async function VideoPage({ params, searchParams }:
             <div className="mt-5"><MixBar mix={mix} /></div>
             {prediction && <div className="mt-4"><PredictionBadge p={prediction} /></div>}
             {fc && (
-              <Link href="/predict" className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-line bg-white/[0.02] px-3 py-2 text-[13px] text-ink-2 hover:border-accent/40">
+              <Link href="/predict" className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border border-line px-3 py-2.5 text-[13px] text-ink-2 hover:border-accent/50">
                 <span className="label">Engine forecast</span>
                 <span className="text-ink tabular">~{compact(fc.views_30d)} views in 30 days</span>
                 <span className="text-ink-3 tabular">({compact(fc.low)}–{compact(fc.high)})</span>
-                <span className={`tabular ${fc.vs_normal >= 1.5 ? "text-pos" : fc.vs_normal <= 0.6 ? "text-neg" : ""}`}>{Number(fc.vs_normal).toFixed(1)}× normal</span>
+                <span className={`tabular ${fc.vs_normal >= 1.5 ? "text-accent" : fc.vs_normal <= 0.6 ? "text-ink-3" : ""}`}>{Number(fc.vs_normal).toFixed(1)}× normal</span>
               </Link>
             )}
           </div>
@@ -137,14 +140,14 @@ export default async function VideoPage({ params, searchParams }:
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
         <Panel className="xl:col-span-2" title="When people commented">
-          {daily.length ? <TrendChart data={daily} height={240} /> : <Empty>No comments yet.</Empty>}
+          {daily.length ? <InView><Waveform days={daily} height={220} /></InView> : <Empty>No comments yet.</Empty>}
         </Panel>
         <Panel title="Languages"><BarList rows={langs.map((l) => ({ label: l.name, value: l.comments }))} empty="Appears after analysis." /></Panel>
         <Panel className="xl:col-span-2" title="Praise vs criticism">
           {aspects.length ? <AspectChart data={aspects} /> : <Empty>Appears after the AI has read comments.</Empty>}
         </Panel>
         <Panel title="Emotions">
-          <BarList color="#8b7cf6" rows={emos.filter((e) => e.emotion !== "neutral").map((e) => ({ label: `${e.icon} ${e.emotion}`, value: e.comments }))}
+          <BarList color="#b4b4bb" rows={emos.filter((e) => e.emotion !== "neutral").map((e) => ({ label: `${e.icon} ${e.emotion}`, value: e.comments }))}
             empty="Appears after the AI has read comments." />
         </Panel>
       </div>

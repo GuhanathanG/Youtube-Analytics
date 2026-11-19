@@ -71,7 +71,7 @@ export function InsightPanel({ insight, scope }: { insight: Insight | null; scop
           <div className="label mb-2">What people talk about</div>
           <div className="grid gap-2 sm:grid-cols-2">
             {topics.slice(0, 6).map((t, i) => {
-              const color = t.sentiment === "positive" ? "#3987e5" : t.sentiment === "negative" ? "#e66767" : "#8a8f9c";
+              const color = t.sentiment === "positive" ? "#22e1ff" : t.sentiment === "negative" ? "#e66767" : "#8a8f9c";
               return (
                 <div key={i} className="rounded-xl border border-line bg-white/[0.02] p-3">
                   <div className="flex items-center justify-between gap-3 text-[13.5px]">

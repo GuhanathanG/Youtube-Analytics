@@ -2,7 +2,7 @@ import type { TitleScore } from "@/lib/packaging";
 
 /** One scored title: neon bar, grade, what works and what to fix. */
 export function TitleScoreCard({ t, rank }: { t: TitleScore; rank?: number }) {
-  const color = t.score >= 80 ? "#22d3ee" : t.score >= 65 ? "#8b7cf6" : t.score >= 50 ? "#fab219" : "#e66767";
+  const color = t.score >= 80 ? "#22e1ff" : t.score >= 65 ? "#b4b4bb" : t.score >= 50 ? "#fab219" : "#e66767";
   return (
     <div className="rounded-xl border border-line bg-white/[0.02] p-3.5">
       <div className="flex items-start gap-3">

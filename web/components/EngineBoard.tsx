@@ -2,7 +2,7 @@ import type { EngineCheck } from "@/lib/freshness-math";
 import { overall } from "@/lib/freshness-math";
 
 const TONE = {
-  ok: { dot: "#0ca30c", text: "text-good", label: "fresh" },
+  ok: { dot: "#22e1ff", text: "text-good", label: "fresh" },
   warn: { dot: "#fab219", text: "text-warn", label: "behind" },
   bad: { dot: "#e66767", text: "text-neg", label: "stuck" },
   idle: { dot: "#4a5163", text: "text-ink-3", label: "idle" },
