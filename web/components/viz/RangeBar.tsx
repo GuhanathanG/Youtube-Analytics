@@ -14,10 +14,10 @@ export function RangeBar({ low, high, expected, now, vsNormal, lo, hi }:
   return (
     <div className="relative h-6 min-w-[160px]" role="img" aria-label={`Expected ${compact(expected)} views in 30 days, likely ${compact(low)} to ${compact(high)}`}>
       <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-white/10" />
-      <div className="grow-x absolute top-1/2 h-2 -translate-y-1/2 rounded-full" title={`${compact(low)}–${compact(high)}`}
+      <div className="grow-x absolute top-1/2 h-1.5 -translate-y-1/2" title={`${compact(low)}–${compact(high)}`}
         style={{ left: `${a}%`, width: `${Math.max(1.5, b - a)}%`, background: `linear-gradient(90deg, ${c}33, ${c}aa, ${c}33)`, boxShadow: `0 0 12px -3px ${c}` }} />
-      {n !== null && <div className="absolute top-1/2 h-4 w-0.5 -translate-y-1/2 rounded bg-white/80" style={{ left: `${n}%` }} title={`${compact(now)} views now`} />}
-      <div className="viz-pop absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-[#05070d]"
+      {n !== null && <div className="absolute top-1/2 h-4 w-px -translate-y-1/2 bg-white" style={{ left: `${n}%` }} title={`${compact(now)} views now`} />}
+      <div className="viz-pop absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-[#07070a]"
         style={{ left: `${e}%`, background: c, boxShadow: `0 0 8px ${c}` }} title={`${compact(expected)} expected`} />
     </div>
   );
