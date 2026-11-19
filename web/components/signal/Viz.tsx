@@ -118,3 +118,47 @@ export function RankBars({ rows, ticks, fmt, refValue, refLabel, axisLabel, from
     </figure>
   );
 }
+
+/**
+ * Radar sweep: you in the centre, competitors as blips. Distance = how different their typical views are from
+ * yours (closer = similar size), blip size = uploads in the last 30 days, a ping ring = a recent breakout (2×+).
+ * A cyan sweep turns continuously (CSS), blips light up as it passes.
+ */
+export function RadarSweep({ me, rivals, size = 420 }: {
+  me: { id: string; title: string; medianViews: number | null };
+  rivals: { id: string; title: string; medianViews: number | null; uploads30: number; best: number | null }[]; size?: number;
+}) {
+  const c = size / 2, R = size * 0.44;
+  const base = Math.max(1, me.medianViews ?? 1);
+  return (
+    <figure className="radar relative mx-auto w-full" style={{ maxWidth: size }}>
+      <div className="radar-sweep" aria-hidden />
+      <svg viewBox={`0 0 ${size} ${size}`} className="relative h-auto w-full" role="img"
+        aria-label={`Competitor radar: ${rivals.length} competitors around ${me.title}; closer means similar typical views`}>
+        {[0.25, 0.5, 0.75, 1].map((f) => <circle key={f} cx={c} cy={c} r={R * f} fill="none" stroke="rgba(34,225,255,.14)" />)}
+        {[0, 45, 90, 135].map((d) => { const a = (d * Math.PI) / 180; return <line key={d} x1={c - Math.cos(a) * R} y1={c - Math.sin(a) * R} x2={c + Math.cos(a) * R} y2={c + Math.sin(a) * R} stroke="rgba(34,225,255,.07)" />; })}
+        <text x={c + 4} y={c - R * 0.25 - 4} fontSize={9} fill="#8a8a93" fontFamily="var(--f-mono)">SIMILAR</text>
+        <text x={c + 4} y={c - R - 4} fontSize={9} fill="#8a8a93" fontFamily="var(--f-mono)">100× APART</text>
+        {rivals.map((v, i) => {
+          const d = Math.min(2, Math.abs(Math.log10(Math.max(1, v.medianViews ?? 1) / base)));
+          const r = R * (0.22 + (d / 2) * 0.74);
+          const a = (i / Math.max(1, rivals.length)) * Math.PI * 2 - Math.PI / 3;
+          const x = c + Math.cos(a) * r, y = c + Math.sin(a) * r;
+          const s = 4 + Math.min(20, v.uploads30) / 20 * 7;
+          const hot = (v.best ?? 0) >= 2;
+          const deg = ((a * 180) / Math.PI + 90 + 360) % 360; // when the sweep passes (sweep starts at 12 o'clock)
+          return (
+            <Link key={v.id} href={`/channels/${v.id}`} className="radar-blip" style={{ animationDelay: `${(deg / 360) * 4}s` }}>
+              <title>{`${v.title} · typical ${v.medianViews?.toLocaleString("en") ?? "–"} views · ${v.uploads30} uploads in 30 days${hot ? ` · breakout ${v.best!.toFixed(1)}×` : ""}`}</title>
+              {hot && <circle cx={x} cy={y} r={s} fill="none" stroke="#ff3d7f" className="radar-ping" />}
+              <circle cx={x} cy={y} r={s} fill={hot ? "#ff3d7f" : "#22e1ff"} style={{ filter: `drop-shadow(0 0 6px ${hot ? "#ff3d7f" : "#22e1ff"})` }} />
+              <text x={x} y={y + s + 12} textAnchor="middle" fontSize={10} fill="#ededea" fontFamily="var(--f-body)">{v.title.length > 18 ? v.title.slice(0, 17) + "…" : v.title}</text>
+            </Link>
+          );
+        })}
+        <circle cx={c} cy={c} r={7} fill="#fff" style={{ filter: "drop-shadow(0 0 8px #22e1ff)" }} />
+        <text x={c} y={c + 22} textAnchor="middle" fontSize={10} fill="#22e1ff" fontFamily="var(--f-mono)" letterSpacing="1">YOU</text>
+      </svg>
+    </figure>
+  );
+}
