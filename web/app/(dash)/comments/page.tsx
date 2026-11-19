@@ -68,7 +68,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
       {/* 03 · Mood river */}
       <InView as="section" className="sec">
         <SigHead n={3} of={OF} label="Mood river · 90 days" title="How they feel, day by day.">
-          How many comments arrive each day and how they feel. Wider means busier.
+          Comments per day, stacked by mood: the height is how many arrived, the colours how they feel. Hover a day for the counts and shares; drag the slider to zoom into any stretch.
         </SigHead>
         <div className="cell p-5 md:p-8"><MoodRiver rows={river} days={90} /></div>
       </InView>

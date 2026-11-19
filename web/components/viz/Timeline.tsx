@@ -1,65 +1,39 @@
-import Link from "next/link";
 import type { Pin, Week } from "@/lib/channel-visual";
-import { compact } from "@/lib/format";
+import { SigChart, type Marker } from "../signal/SigChart";
+
+const PIN = { breakout: "#ff3d7f", title: "#b4b4bb", shift: "#22e1ff" } as const;
 
 /**
- * Weekly timeline: bars = views of uploads published that week (grow up in order), line = comments that week
- * (draws itself), pins = events (gold = breakout, violet = title change) dropping in above their week.
- * Server-rendered SVG + CSS; hover a bar or pin for details.
+ * Weekly timeline: columns = views of the uploads published that week (left axis), line = comments that week
+ * (right axis), markers above = breakouts (magenta, with the multiple), title changes (grey) and shifts (cyan).
+ * Hover any week for the numbers and its events; drag the slider to zoom into a stretch of weeks.
  */
 export function Timeline({ weeks, pins }: { weeks: Week[]; pins: Pin[] }) {
-  const W = 1000, H = 260, top = 46, base = H - 26;
-  const n = weeks.length, slot = W / n, bw = slot * 0.62;
-  const maxV = Math.max(1, ...weeks.map((w) => w.views)), maxC = Math.max(1, ...weeks.map((w) => w.comments));
-  const x = (i: number) => i * slot + slot / 2;
-  const yV = (v: number) => base - (v / maxV) * (base - top);
-  const yC = (c: number) => base - (c / maxC) * (base - top);
-  const line = weeks.map((w, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${yC(w.comments).toFixed(1)}`).join(" ");
-  const idx = new Map(weeks.map((w, i) => [w.week, i]));
-  const byWeek = new Map<number, Pin[]>();
-  for (const p of pins) { const i = idx.get(p.week); if (i !== undefined) byWeek.set(i, [...(byWeek.get(i) ?? []), p]); }
-  const label = (d: string) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-
+  const idx = new Map(weeks.map((w, i) => [w.week.slice(0, 10), i]));
+  const markers: Marker[] = pins.flatMap((p) => {
+    const i = idx.get(p.week.slice(0, 10));
+    if (i === undefined) return [];
+    return [{
+      i, color: PIN[p.kind], href: p.id ? `/videos/${p.id}` : undefined, shape: p.kind === "shift" ? "diamond" as const : "dot" as const,
+      tag: p.kind === "breakout" ? `${Math.round(p.score ?? 0)}×` : undefined,
+      label: p.kind === "breakout" ? `Breakout: ${p.label} · ${(p.score ?? 0).toFixed(1)}× normal` : p.kind === "title" ? `Title change: ${p.label}` : p.label,
+    }];
+  });
   return (
     <div>
-      <div className="mb-2 flex flex-wrap items-center gap-4 text-[12px] text-ink-3">
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "linear-gradient(#22e1ff,#b4b4bb)" }} />views of that week&apos;s uploads</span>
-        <span className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded" style={{ background: "#22e1ff" }} />comments that week</span>
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#fab219" }} />breakout (3×+)</span>
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full" style={{ background: "#b4b4bb" }} />title change</span>
-        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rotate-45 rounded-[2px]" style={{ background: "#22e1ff" }} />shift or spike</span>
+      <SigChart ariaLabel="Views and comments by week, with breakouts, title changes and shifts" x={weeks.map((w) => w.week.slice(0, 10))} unit="week"
+        height={300} kind="bar" stacked={false} yLabel="Views" rightLabel="Comments" markers={markers} showTotal={false}
+        series={[
+          { key: "views", label: "Views of that week's uploads", color: "#22e1ff", values: weeks.map((w) => w.views) },
+          { key: "uploads", label: "Uploads", color: "#55555e", values: weeks.map((w) => w.uploads), tipOnly: true },
+          { key: "comments", label: "Comments that week", color: "#ededea", values: weeks.map((w) => w.comments), axis: "right" },
+        ]} />
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[10.5px] text-ink-3">
+        <span><span style={{ color: PIN.breakout }}>●</span> breakout (3×+ normal, number = multiple)</span>
+        <span><span style={{ color: PIN.title }}>●</span> title change</span>
+        <span><span style={{ color: PIN.shift }}>◆</span> shift or spike</span>
+        <span>hover a week for details · click a marker to open the video</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="block h-[260px] w-full overflow-visible" role="img" aria-label="Views and comments by week, with breakouts, title changes and shifts">
-        <defs>
-          <linearGradient id="tl-bar" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#22e1ff" /><stop offset="100%" stopColor="#b4b4bb" stopOpacity=".25" /></linearGradient>
-        </defs>
-        {[0.25, 0.5, 0.75, 1].map((f) => <line key={f} x1="0" x2={W} y1={base - f * (base - top)} y2={base - f * (base - top)} stroke="rgba(255,255,255,.05)" />)}
-        {weeks.map((w, i) => (
-          <g key={w.week}>
-            <rect x={x(i) - bw / 2} y={yV(w.views)} width={bw} height={Math.max(0, base - yV(w.views))} rx="3" fill="url(#tl-bar)" className="grow-y"
-              style={{ transformBox: "fill-box", animationDelay: `${i * 25}ms`, opacity: w.uploads ? 0.9 : 0.25 }}>
-              <title>{`Week of ${label(w.week)}: ${w.uploads} upload${w.uploads === 1 ? "" : "s"}, ${compact(w.views)} views, ${compact(w.comments)} comments`}</title>
-            </rect>
-            {i % 4 === 0 && <text x={x(i)} y={H - 6} textAnchor="middle" fontSize="11" fill="#7c869b">{label(w.week)}</text>}
-          </g>
-        ))}
-        <path d={line} fill="none" stroke="#22e1ff" strokeWidth="2.5" pathLength={1} className="viz-draw" style={{ filter: "drop-shadow(0 0 4px #22e1ff)" }} />
-        {[...byWeek.entries()].map(([i, ps]) => ps.slice(0, 3).map((p, k) => {
-          const c = p.kind === "breakout" ? "#fab219" : p.kind === "shift" ? "#22e1ff" : "#b4b4bb";
-          const cy = top - 22 - k * 16;
-          const pin = (
-            <g className="pin-drop" style={{ animationDelay: `${600 + i * 30}ms` }}>
-              <line x1={x(i)} x2={x(i)} y1={cy} y2={yV(weeks[i].views)} stroke={c} strokeOpacity=".35" strokeDasharray="2 3" />
-              {p.kind === "shift"
-                ? <rect x={x(i) - 6} y={cy - 6} width="12" height="12" rx="2" fill={c} transform={`rotate(45 ${x(i)} ${cy})`} style={{ filter: `drop-shadow(0 0 6px ${c})` }} />
-                : <circle cx={x(i)} cy={cy} r="7" fill={c} style={{ filter: `drop-shadow(0 0 6px ${c})` }} />}
-              {p.kind === "breakout" && <text x={x(i)} y={cy + 3.5} textAnchor="middle" fontSize="8.5" fontWeight="700" fill="#05070d">{Math.round(p.score ?? 0)}×</text>}
-              <title>{p.kind === "breakout" ? `${p.label} · ${(p.score ?? 0).toFixed(1)}× normal` : p.label}</title>
-            </g>
-          );
-          return p.id ? <Link key={`${p.id}-${p.kind}-${k}`} href={`/videos/${p.id}`}>{pin}</Link> : <g key={`ev-${i}-${k}`}>{pin}</g>;
-        }))}
-      </svg>
     </div>
   );
 }

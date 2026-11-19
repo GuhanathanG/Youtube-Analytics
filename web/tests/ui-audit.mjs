@@ -126,12 +126,24 @@ for (const [tag, opts] of [["desktop", { viewport: { width: 1440, height: 900 } 
       await page.locator('button[aria-label="Remove goal"]').last().click(); await page.waitForTimeout(2500);
       const end = await page.locator('button[aria-label="Remove goal"]').count(); if (end !== before) throw new Error(`remove: ${end}`); return `${before} → ${after} → ${end}`;
     });
-    await step("radar sweep draws competitor blips", async () => {
-      await page.goto(B + "/radar"); const n = await page.locator(".radar-blip").count(); return `${n} blips`;
+    await step("radar ranks competitors by typical views", async () => {
+      await page.goto(B + "/radar"); const n = await page.locator(".rank-row").count(); return `${n} rows`;
     });
-    await step("starburst rays link to videos", async () => {
-      await page.goto(B + `/analytics?c=${CH}`); await page.locator(".starburst").first().scrollIntoViewIfNeeded(); await page.waitForTimeout(1500);
-      const n = await page.locator(".starburst a.sb-ray").count(); if (!n) throw new Error("no rays"); return `${n} rays`;
+    await step("outlier scatter dots link to videos", async () => {
+      await page.goto(B + `/analytics?c=${CH}`); await page.locator(".outlier-scatter").first().scrollIntoViewIfNeeded(); await page.waitForTimeout(1200);
+      const n = await page.locator(".outlier-scatter a.sc-dot").count(); if (!n) throw new Error("no dots"); return `${n} dots`;
+    });
+    await step("time slider, hover read-out and chart-type switch", async () => {
+      await page.goto(B + "/comments"); const chart = page.locator(".sigchart").first(); await chart.scrollIntoViewIfNeeded(); await page.waitForTimeout(900);
+      const brush = chart.locator("[data-brush]"); const before = await brush.locator("[aria-live]").innerText();
+      await brush.locator('button:has-text("7")').first().click(); await page.waitForTimeout(300);
+      const after = await brush.locator("[aria-live]").innerText(); if (!/7 days/i.test(after)) throw new Error(`range: ${after}`);
+      const svg = chart.locator("svg[role=img]"); const box = await svg.boundingBox();
+      await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5); await page.waitForTimeout(200);
+      const tip = await chart.locator("text=total").count(); if (!tip) throw new Error("no hover read-out");
+      await chart.locator('button:has-text("Lines")').click(); await page.waitForTimeout(300);
+      const lines = await svg.locator("path.sc-line").count(); if (!lines) throw new Error("no lines after switch");
+      return `${before} → ${after} · ${lines} lines`;
     });
     await step("reduced motion: content is visible straight away", async () => {
       const rm = await b.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: "reduce" }); const p2 = await signIn(rm);

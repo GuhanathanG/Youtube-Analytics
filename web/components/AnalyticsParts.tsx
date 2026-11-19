@@ -44,17 +44,31 @@ export function Heatmap({ days, blocks, cells }: { days: string[]; blocks: strin
   );
 }
 
-/** Tiny line chart of weekly counts. */
-export function Sparkline({ values, color = "#22e1ff", width = 120, height = 28 }: { values: number[]; color?: string; width?: number; height?: number }) {
+/**
+ * Small weekly column chart with its numbers printed: each column is one week (hover for the value), and the
+ * first and latest weeks are labelled underneath so the trend reads without guessing.
+ */
+export function Sparkline({ values, color = "#22e1ff", width = 132, height = 30, unit = "", fmt = (v: number) => compactN(v) }:
+  { values: number[]; color?: string; width?: number; height?: number; unit?: string; fmt?: (v: number) => string }) {
   if (values.length < 2) return <span className="text-[11px] text-ink-3">–</span>;
-  const max = Math.max(...values, 1);
-  const pts = values.map((v, i) => `${(i / (values.length - 1)) * width},${height - 2 - (v / max) * (height - 4)}`).join(" ");
+  const max = Math.max(...values, 1), n = values.length, slot = width / n, bw = Math.max(2, slot * 0.66);
+  const wk = (i: number) => (n - 1 - i === 0 ? "this week" : `${n - 1 - i} wk ago`);
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
+    <span className="inline-flex flex-col">
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Weekly values, oldest to latest: ${values.map(fmt).join(", ")}`}>
+        <line x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} stroke="rgba(255,255,255,.18)" />
+        {values.map((v, i) => {
+          const h = Math.max(1, (v / max) * (height - 3));
+          return <rect key={i} x={i * slot + (slot - bw) / 2} y={height - h} width={bw} height={h} fill={color} opacity={i === n - 1 ? 1 : 0.55}><title>{`${wk(i)}: ${fmt(v)}${unit}`}</title></rect>;
+        })}
+      </svg>
+      <span className="mt-1 flex justify-between font-mono text-[9.5px] text-ink-3" style={{ width }}>
+        <span>{n} wk ago {fmt(values[0])}</span><span className="text-ink">now {fmt(values[n - 1])}</span>
+      </span>
+    </span>
   );
 }
+const compactN = (v: number) => new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(Math.round(v * 10) / 10);
 
 /** Two-part horizontal bar (e.g. new vs returning commenters). */
 export function SplitBar({ a, b, aColor = "#22e1ff", bColor = "#55555e", max }: { a: number; b: number; aColor?: string; bColor?: string; max: number }) {

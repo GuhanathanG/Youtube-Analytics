@@ -1,1 +1,1 @@
-export const SERIES = ["#22e1ff", "#d95926", "#199e70", "#c98500"];
+export const SERIES = ["#22e1ff", "#ff3d7f", "#ededea", "#c98500"];

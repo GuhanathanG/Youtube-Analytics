@@ -32,8 +32,8 @@ export function HealthCard({ h }: { h: Health }) {
             </ul>
           ) : <Empty>Builds up as data is collected.</Empty>}
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[12px] text-ink-3">
-            <span className="flex items-center gap-2">Mood, last 8 weeks <Sparkline values={h.weekly.map((w) => (w.mood === null ? 0 : (w.mood + 1) * 50))} /></span>
-            <span className="flex items-center gap-2">Comments per week <Sparkline values={h.weekly.map((w) => w.comments)} color="#ff3d7f" /></span>
+            <span className="flex items-start gap-2">Mood score (0–100), last 8 weeks <Sparkline values={h.weekly.map((w) => (w.mood === null ? 0 : Math.round((w.mood + 1) * 50)))} unit=" / 100" /></span>
+            <span className="flex items-start gap-2">Comments per week <Sparkline values={h.weekly.map((w) => w.comments)} color="#ff3d7f" /></span>
             <span>Uploads: {h.weekly.map((w) => w.uploads).join(" · ")}</span>
           </div>
         </div>

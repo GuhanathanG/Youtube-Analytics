@@ -152,3 +152,29 @@
 .viewfinder::after { right: 0; bottom: 0; border-right: 2px solid; border-bottom: 2px solid; box-shadow: 4px 4px 14px -8px var(--color-accent); }
 .vf-rec { position: absolute; right: 12px; top: 12px; z-index: 2; font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.14em; color: #ff3d7f; animation: sig-blink 1.4s steps(1) infinite; }
 @media (prefers-reduced-motion: reduce) { .vf-rec { animation: none; } }
+
+/* ------------------------------------------------------------------ Readable charts (SigChart + TimeBrush) */
+.sigchart svg { overflow: visible; touch-action: pan-y; }
+.sigchart .sc-bars rect { transform: scaleY(0); transition: transform .8s cubic-bezier(.2,.7,0,1), opacity .15s; }
+.sigchart svg.sc-in .sc-bars rect { transform: scaleY(1); }
+.sigchart .sc-line { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.4s cubic-bezier(.3,.6,0,1) .2s; }
+.sigchart svg.sc-in .sc-line { stroke-dashoffset: 0; }
+.sigchart .sc-fade { opacity: 0; transition: opacity .9s ease .3s; }
+.sigchart svg.sc-in .sc-fade { opacity: 1; }
+.sigchart .sc-marker { cursor: pointer; }
+.brush { touch-action: none; }
+.brush-range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.brush-range::-webkit-slider-runnable-track { background: none; height: 100%; }
+.brush-range::-moz-range-track { background: none; }
+.brush-range::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 10px; height: 40px; background: #22e1ff; border-radius: 2px; cursor: ew-resize; box-shadow: 0 0 10px rgba(34,225,255,.55); }
+.brush-range::-moz-range-thumb { pointer-events: auto; width: 10px; height: 40px; background: #22e1ff; border: 0; border-radius: 2px; cursor: ew-resize; }
+.brush-range:focus-visible::-webkit-slider-thumb { outline: 2px solid #fff; outline-offset: 1px; }
+.brush-range:focus-visible::-moz-range-thumb { outline: 2px solid #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .sigchart .sc-bars rect, .sigchart .sc-line, .sigchart .sc-fade { transition: none; transform: none; stroke-dashoffset: 0; opacity: 1; }
+}
+.outlier-scatter .sc-pop { transform-box: fill-box; transform-origin: center; animation: sc-pop .5s cubic-bezier(.2,.7,0,1.3) both; }
+@keyframes sc-pop { from { transform: scale(0); } to { transform: scale(1); } }
+.rank-bar { transform-origin: var(--o, left); animation: rank-grow .9s cubic-bezier(.2,.7,0,1) both; }
+@keyframes rank-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .outlier-scatter .sc-pop, .rank-bar { animation: none; } }

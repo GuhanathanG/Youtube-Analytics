@@ -30,6 +30,8 @@ const OF = 6;
 const moodColor = (s: string | null) => (s === "positive" ? "var(--cyan)" : s === "negative" ? "var(--magenta)" : "var(--neutral)");
 
 /** Long ranges become weekly bars, so the waveform stays readable. */
+const fmtDay = (d: string) => new Date(`${d.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
 function weekly(days: DailyRow[]): DailyRow[] {
   if (days.length <= 180) return days;
   const out = new Map<string, DailyRow>();
@@ -180,7 +182,8 @@ export default async function Overview({ searchParams }: { searchParams: Promise
               <div className="mono flex justify-between gap-3" style={{ fontSize: 10 }}><span style={{ color: "var(--cyan)" }}>{x.i}</span><span className="truncate">{x.label}</span></div>
               <div className="display mt-6 whitespace-nowrap md:mt-8" style={{ color: x.color, fontSize: "min(42px, 12.5cqw)" }}><Decode value={x.value} format={x.f} delay={i * 120} /></div>
               <div className="mt-2 text-[13.5px]" style={{ color: "var(--ink-3)" }}>{x.note}</div>
-              <div className="mt-6"><MiniLine values={x.line} color={x.lc} delay={500 + i * 120} /></div>
+              <div className="mt-6"><MiniLine values={x.line} color={x.lc} delay={500 + i * 120} signed={x.f === "signed"}
+                from={x.line.length > 1 && done[0] ? `${fmtDay(done[0].day)}` : undefined} to={x.line.length > 1 && done.length ? `${fmtDay(done[done.length - 1].day)} · per ${daily.length > 180 ? "week" : "day"}` : undefined} /></div>
             </div>
           ))}
         </div>
@@ -192,9 +195,9 @@ export default async function Overview({ searchParams }: { searchParams: Promise
         <>
           {/* 04 · Conversation */}
           <InView as="section" className="sec">
-            <SigHead n={4} of={OF} label="Conversation volume" title="The conversation, heard like a track."
+            <SigHead n={4} of={OF} label="Conversation volume" title="The conversation, day by day."
               action={<RangeTabs current={key} basePath="/" />}>
-              Comments by the day they were posted. Positive and neutral rise above the line, negative hang below; the white line is total volume.
+              Comments by the day they were posted (by week for long ranges), stacked by mood. Hover any column for exact counts; drag the slider under the chart to pick a period, or switch to area or lines.
             </SigHead>
             <div className="cell p-5 md:p-8">{daily.length ? <Waveform days={weekly(daily)} /> : <Empty>No comments in this range.</Empty>}</div>
             <div className="mt-10 grid gap-x-14 gap-y-7 md:grid-cols-2">

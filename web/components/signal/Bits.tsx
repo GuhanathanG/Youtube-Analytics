@@ -3,7 +3,9 @@ import { useEffect, useState } from "react";
 import { useInView } from "./InView";
 
 /** A hairline line chart that draws itself, with a glowing head dot at the latest value. */
-export function MiniLine({ values, color = "#22e1ff", height = 44, delay = 300 }: { values: number[]; color?: string; height?: number; delay?: number }) {
+export function MiniLine({ values, color = "#22e1ff", height = 44, delay = 300, from, to, signed = false }:
+  { values: number[]; color?: string; height?: number; delay?: number; from?: string; to?: string; signed?: boolean }) {
+  const fmt = (v: number) => (signed && v > 0 ? "+" : "") + new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(v);
   const [ref, inView] = useInView<HTMLDivElement>();
   if (values.length < 2) return <div style={{ height }} />;
   const W = 200, H = 50, min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
@@ -19,6 +21,12 @@ export function MiniLine({ values, color = "#22e1ff", height = 44, delay = 300 }
         <circle cx={hx} cy={hy} r={2.6} fill="#fff" opacity={inView ? 1 : 0} style={{ transition: `opacity .3s ${delay + 1300}ms` }} />
         <circle cx={hx} cy={hy} r={7} fill={color} opacity={inView ? 0.3 : 0} style={{ transition: `opacity .3s ${delay + 1300}ms` }} />
       </svg>
+      {(from || to) && (
+        <div className="mt-2 font-mono text-[10px] leading-relaxed text-ink-3">
+          <div className="flex justify-between"><span>{from}</span><span>{to}</span></div>
+          <div className="flex justify-between"><span>low {fmt(min)}</span><span>high {fmt(max)}</span><span>latest <span className="text-ink">{fmt(values[values.length - 1])}</span></span></div>
+        </div>
+      )}
     </div>
   );
 }
