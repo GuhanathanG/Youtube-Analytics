@@ -6,7 +6,7 @@ import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
 import { InView } from "@/components/signal/InView";
-import { Starburst } from "@/components/signal/Viz";
+import { OutlierScatter } from "@/components/signal/OutlierScatter";
 
 export const metadata = { title: "Outliers" };
 
@@ -95,13 +95,13 @@ export default async function OutliersPage({ searchParams }: { searchParams: Pro
         </div></Reveal>
       </div>
 
-      {/* Every upload in view as a ray: the breakouts glow. */}
-      <InView className="my-12 grid items-center gap-10 lg:grid-cols-[minmax(0,440px)_1fr]">
-        <Starburst videos={[...inScope].sort((a, b) => a.age - b.age).map((v) => ({ id: v.id, title: v.title, outlier: v.score, views: v.view_count ?? 0 }))} />
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">■ The whole niche at once</div>
-          <p className="mt-4 max-w-[52ch] text-[15.5px] leading-[1.7] text-ink-2">Every upload in this view is a ray, newest first, clockwise from the top. The longer the ray, the
-            further it beat its own channel&apos;s normal. Magenta rays are 2× or more. Hover any ray for the title, click to open it.</p>
+      {/* Every upload in view as a dot: when it went out vs how far it beat its channel's normal. */}
+      <InView className="my-12">
+        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">■ The whole niche at once</div>
+        <p className="mb-6 mt-3 max-w-[72ch] text-[15px] leading-[1.7] text-ink-2">Every upload in this view is a dot: across = publish date, up = views as a multiple of its own
+          channel&apos;s normal (log scale). Dots above the white line beat their normal; magenta dots are 2× or more. Hover a dot for the title, click to open it, drag the slider to zoom into a period.</p>
+        <div className="cell p-5 md:p-8">
+          <OutlierScatter videos={inScope.map((v) => ({ id: v.id, title: v.title, outlier: v.score, views: v.view_count ?? 0, date: v.published_at, channel: chan.get(v.channel_id)?.title }))} />
         </div>
       </InView>
 

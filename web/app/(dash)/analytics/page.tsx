@@ -7,7 +7,8 @@ import { Empty, Panel } from "@/components/ui";
 import { InView, Words } from "@/components/signal/InView";
 import { Decode } from "@/components/signal/Decode";
 import { SigHead } from "@/components/signal/Head";
-import { LiftBars, Starburst, TypeCloud } from "@/components/signal/Viz";
+import { LiftBars, RankBars } from "@/components/signal/Viz";
+import { OutlierScatter } from "@/components/signal/OutlierScatter";
 import { audienceAnalytics, channelAnalytics, channelTopics, type VideoPerf } from "@/lib/analytics";
 import { BrandsPanel, HealthCard } from "@/components/CreatorPanels";
 import { brandTracker, channelHealth } from "@/lib/creator-insights";
@@ -86,10 +87,12 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       {/* ---------------------------------------------------------------- video performance */}
       <InView as="section" className="sec">
         <SigHead n={2} of={OF} label="Video performance" title="Every upload, against its usual.">
-          Each ray is an upload: longer means more views than this channel usually gets for that format. Magenta rays are breakouts. Hover a ray for the title; click to open it.
+          Each dot is an upload: across = when it went out, up = views as a multiple of this channel&apos;s usual for that format. Above the white line beat the usual; magenta dots are breakouts (2×+). Hover a dot for the title; click to open it. Drag the slider to pick a period.
         </SigHead>
-        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,460px)_1fr]">
-          <Starburst videos={a.videos} />
+        <div className="cell mb-8 p-5 md:p-8">
+          <OutlierScatter videos={a.videos.map((v) => ({ id: v.id, title: v.title, outlier: v.outlier, views: v.views, date: v.published_at }))} />
+        </div>
+        <div className="grid gap-10">
           <Panel title="Shorts vs long videos" subtitle="Typical (median) results of videos at least 3 days old">
             <div className="grid gap-px bg-[var(--hair)] sm:grid-cols-2">
               {duel.map(([name, g], i) => (
@@ -149,8 +152,10 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           <Panel title="Title styles" subtitle="Typical result of titles with vs without each style (needs 3+ videos each way)">
             {a.titleFeatures.length ? <LiftBars rows={lift(a.titleFeatures)} /> : <Empty>Needs more videos.</Empty>}
           </Panel>
-          <Panel title="Words in winning titles" subtitle="Title words used in 3+ videos; bigger = better typical result">
-            {a.titleWords.length ? <TypeCloud words={a.titleWords.slice(0, 16)} /> : <Empty>Needs more videos with repeated title words.</Empty>}
+          <Panel title="Words in winning titles" subtitle="Title words used in 3+ videos, ranked by the typical result of videos that use them">
+            {a.titleWords.length ? <RankBars axisLabel="Typical views vs usual" fromRef refValue={1} refLabel="the channel's usual (1×)" ticks={[0.25, 0.5, 1, 2, 4]} fmt={(x) => times(x, x < 1 ? 2 : 1)}
+              rows={[...a.titleWords].sort((x, y) => y.outlier - x.outlier).slice(0, 14).map((w) => ({ id: w.word, label: w.word, sub: `${w.count} videos`, value: w.outlier,
+                color: w.outlier >= 1.2 ? "#22e1ff" : w.outlier <= 0.8 ? "#ff3d7f" : "#b4b4bb" }))} /> : <Empty>Needs more videos with repeated title words.</Empty>}
           </Panel>
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-2 [&>*]:min-w-0">

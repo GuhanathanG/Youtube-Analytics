@@ -8,7 +8,7 @@ import { Empty, Panel, Tag } from "@/components/ui";
 import { InView, Words } from "@/components/signal/InView";
 import { Decode } from "@/components/signal/Decode";
 import { SigHead } from "@/components/signal/Head";
-import { Bullseye, TugBars } from "@/components/signal/Viz";
+import { RankBars, TugBars } from "@/components/signal/Viz";
 import { ago, compact } from "@/lib/format";
 import { forecastScale } from "@/lib/viz-math";
 import { MultChip, RangeBar } from "@/components/viz";
@@ -91,11 +91,16 @@ export default async function PredictPage({ searchParams }: { searchParams: Prom
 
       <InView as="section" className="sec">
         <SigHead n={2} of={4} label="New uploads" title="Where new uploads will land.">
-          30-day views: the engine&apos;s expectation blended with each video&apos;s real numbers so far. Closer to the centre means further above the channel&apos;s normal.
+          30-day views: the engine&apos;s expectation blended with each video&apos;s real numbers so far. Bars to the right of the white line are expected to beat the channel&apos;s normal; magenta = 3× or more.
         </SigHead>
         {forecasts.length === 0 ? <Empty>No uploads in the last 30 days.</Empty> : (
-          <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,360px)_1fr]">
-            <Bullseye items={forecasts.map((f) => ({ id: f.video_id, title: f.title, vs: f.vs_normal, views: f.views_30d }))} />
+          <div className="grid gap-10">
+            <div className="cell p-5 md:p-8">
+              <RankBars axisLabel="Expected 30-day views vs normal" fromRef refValue={1} refLabel="the channel's normal (1×)" ticks={[0.25, 0.5, 1, 2, 4, 8]}
+                fmt={(x) => `${x >= 10 ? Math.round(x) : +x.toFixed(x < 1 ? 2 : 1)}×`}
+                rows={[...forecasts].sort((x, y) => y.vs_normal - x.vs_normal).map((f) => ({ id: f.video_id, label: f.title, href: `/videos/${f.video_id}`, value: f.vs_normal,
+                  sub: `${compact(f.views_30d)} expected · ${compact(f.views_now)} now`, color: f.vs_normal >= 3 ? "#ff3d7f" : f.vs_normal >= 1 ? "#22e1ff" : "#8a8a93" }))} />
+            </div>
             <Panel title="Forecasts" subtitle="Bar = likely range, dot = expected, white tick = views now">
               <div className="scrollbar-thin -mx-2 overflow-x-auto">
                 <table className="w-full min-w-[720px] text-[13.5px]">

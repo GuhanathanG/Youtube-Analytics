@@ -6,7 +6,7 @@ import { radar, type RadarRow } from "@/lib/radar";
 import { Reveal } from "@/components/Reveal";
 import { Empty, PageHeader, Panel } from "@/components/ui";
 import { ago, compact } from "@/lib/format";
-import { RadarSweep } from "@/components/signal/Viz";
+import { RankBars } from "@/components/signal/Viz";
 
 export const metadata = { title: "Competitor radar" };
 
@@ -27,16 +27,14 @@ export default async function RadarPage() {
         <Empty>No competitors yet. Add a channel on <Link href="/manage" className="text-accent">Manage</Link>, then press “Mark as competitor” in the watchlist.</Empty>
       ) : (
         <>
-          <div className="mb-10 grid items-center gap-10 lg:grid-cols-[minmax(0,440px)_1fr]">
-            <RadarSweep me={{ id: me.id, title: me.title, medianViews: r.me?.medianViews ?? null }} rivals={r.rivals} />
-            <div>
-              <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-accent">■ How to read it</div>
-              <ul className="mt-5 space-y-4 text-[15px] leading-relaxed text-ink-2">
-                <li><span className="text-ink">Distance</span>: how close their typical views are to yours. Near the centre = a channel your size.</li>
-                <li><span className="text-ink">Size</span>: how many videos they uploaded in the last 30 days.</li>
-                <li><span style={{ color: "#ff3d7f" }}>Magenta ping</span>: a recent breakout at 2× their usual or more. Open it below.</li>
-              </ul>
-            </div>
+          <div className="cell mb-10 p-5 md:p-8">
+            <div className="mb-5 font-mono text-[11px] uppercase tracking-[0.14em] text-accent">■ Typical views per video, you vs competitors</div>
+            <RankBars axisLabel="Typical views (median of recent videos, log scale)" refValue={r.me?.medianViews ?? undefined} refLabel={`your typical views (${compact(r.me?.medianViews ?? 0)})`}
+              ticks={radarTicks([r.me?.medianViews ?? 0, ...r.rivals.map((x) => x.medianViews ?? 0)])} fmt={compact}
+              rows={[...(r.me ? [{ ...r.me, you: true }] : []), ...r.rivals.map((x) => ({ ...x, you: false }))].sort((x, y) => (y.medianViews ?? 0) - (x.medianViews ?? 0)).map((x) => ({
+                id: x.id, label: x.title, href: `/channels/${x.id}`, value: x.medianViews, you: x.you, sub: `${x.uploads30} uploads in 30 days`,
+                tag: (x.best ?? 0) >= 2 ? `★${x.best!.toFixed(1)}×` : undefined, color: x.you ? "#ededea" : (x.best ?? 0) >= 2 ? "#ff3d7f" : "#22e1ff" }))} />
+            <p className="mt-3 font-mono text-[10px] text-ink-3">★ = a recent breakout at 2× their usual or more (magenta bar). Click a row to open the channel.</p>
           </div>
           <Reveal><Panel title="Side by side" subtitle="Last 30 days of uploads; typical views = median of recent videos">
             <div className="scrollbar-thin -mx-2 overflow-x-auto">
@@ -98,4 +96,11 @@ export default async function RadarPage() {
       )}
     </>
   );
+}
+
+/** Powers of ten that cover every channel's typical views. */
+function radarTicks(vals: number[]): number[] {
+  const pos = vals.filter((v) => v > 0);
+  const lo = Math.floor(Math.log10(Math.min(...pos, 100))), hi = Math.ceil(Math.log10(Math.max(...pos, 1000)));
+  return Array.from({ length: hi - lo + 1 }, (_, i) => 10 ** (lo + i));
 }

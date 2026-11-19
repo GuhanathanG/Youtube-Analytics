@@ -4,58 +4,13 @@ import Link from "next/link";
 const mult = (x: number) => `${x.toFixed(x >= 10 ? 0 : 1)}×`;
 
 /**
- * Starburst: every upload is a ray from the centre, in upload order around the circle.
- * Length = views as a multiple of the channel's usual (log scale); breakouts (2×+) glow magenta,
- * normal results are cyan, below-usual rays stay short and grey. Rays draw out one after another.
- */
-export function Starburst({ videos, size = 460 }: { videos: { id: string; title: string; outlier: number | null; views: number }[]; size?: number }) {
-  const items = videos.filter((v) => v.outlier !== null && Number.isFinite(v.outlier) && v.outlier! > 0).slice(0, 360);
-  const c = size / 2, inner = size * 0.08, outer = size * 0.47;
-  // log2 scale: ¼× … 16× mapped onto the ray length.
-  const len = (x: number) => inner + ((Math.max(-2, Math.min(4, Math.log2(x))) + 2) / 6) * (outer - inner);
-  const breakouts = items.filter((v) => v.outlier! >= 2).length;
-  return (
-    <figure className="starburst relative mx-auto w-full" style={{ maxWidth: size }}>
-      <svg viewBox={`0 0 ${size} ${size}`} className="h-auto w-full" role="img"
-        aria-label={`${items.length} uploads as rays: longer means more views than usual; ${breakouts} breakouts at 2× or more`}>
-        {[0.25, 1, 2, 4].map((m) => (
-          <g key={m}>
-            <circle cx={c} cy={c} r={len(m)} fill="none" stroke={m === 1 ? "rgba(255,255,255,.22)" : "rgba(255,255,255,.07)"} strokeDasharray={m === 1 ? "none" : "2 4"} />
-            <text x={c + 4} y={c - len(m) - 3} fontSize={9} fill="#8a8a93" fontFamily="var(--f-mono)">{mult(m)}</text>
-          </g>
-        ))}
-        {items.map((v, i) => {
-          const a = (i / items.length) * Math.PI * 2 - Math.PI / 2;
-          const r = len(v.outlier!);
-          const col = v.outlier! >= 2 ? "#ff3d7f" : v.outlier! >= 1 ? "#22e1ff" : "#55555e";
-          return (
-            <Link key={v.id} href={`/videos/${v.id}`} className="sb-ray">
-              <title>{`${v.title} · ${mult(v.outlier!)} usual · ${v.views.toLocaleString("en")} views`}</title>
-              <line x1={c + Math.cos(a) * inner} y1={c + Math.sin(a) * inner} x2={c + Math.cos(a) * r} y2={c + Math.sin(a) * r}
-                stroke={col} strokeWidth={v.outlier! >= 2 ? 1.6 : 1} strokeLinecap="round"
-                style={{ animationDelay: `${Math.round((i / items.length) * 900)}ms`, filter: v.outlier! >= 2 ? "drop-shadow(0 0 4px #ff3d7f)" : undefined }} />
-              {v.outlier! >= 2 && <circle cx={c + Math.cos(a) * r} cy={c + Math.sin(a) * r} r={2.4} fill="#fff" style={{ animationDelay: `${900 + i * 3}ms` }} className="sb-tip" />}
-            </Link>
-          );
-        })}
-        <circle cx={c} cy={c} r={inner - 6} fill="#07070a" stroke="rgba(255,255,255,.12)" />
-        <text x={c} y={c - 2} textAnchor="middle" fontSize={22} fontWeight={800} fill="#ededea" fontFamily="var(--f-display)">{items.length}</text>
-        <text x={c} y={c + 13} textAnchor="middle" fontSize={8} fill="#8a8a93" fontFamily="var(--f-mono)" letterSpacing="1.5">UPLOADS</text>
-      </svg>
-      <figcaption className="mono mt-3 flex flex-wrap justify-center gap-x-5 gap-y-1" style={{ fontSize: 10 }}>
-        <span style={{ color: "#ff3d7f" }}>■ breakout 2×+ ({breakouts})</span><span style={{ color: "#22e1ff" }}>■ at or above usual</span><span>■ below usual</span>
-      </figcaption>
-    </figure>
-  );
-}
-
-/**
  * Lift bars: each style as a bar growing left (hurts) or right (helps) from a centre line,
  * with "with vs without" typical results in mono. Used for title and thumbnail styles.
  */
 export function LiftBars({ rows }: { rows: { label: string; n: number; withX: number | null; withoutX: number | null; lift: number | null }[] }) {
   const max = Math.max(0.25, ...rows.map((r) => Math.abs(Math.log2(r.lift ?? 1))));
   return (
+    <>
     <ul className="space-y-4">
       {rows.map((r, i) => {
         const l = Math.log2(r.lift ?? 1), w = (Math.abs(l) / max) * 50, up = l >= 0;
@@ -77,60 +32,11 @@ export function LiftBars({ rows }: { rows: { label: string; n: number; withX: nu
         );
       })}
     </ul>
-  );
-}
-
-/** Words sized by how their videos performed (bigger = better), cyan above usual, magenta below. */
-export function TypeCloud({ words }: { words: { word: string; count: number; outlier: number }[] }) {
-  const max = Math.max(...words.map((w) => Math.abs(Math.log2(w.outlier))), 0.3);
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-5 gap-y-3">
-      {words.map((w, i) => {
-        const t = Math.log2(w.outlier) / max; // -1..1
-        const size = 15 + Math.max(0, t) * 22;
-        const col = w.outlier >= 1.2 ? "#22e1ff" : w.outlier <= 0.8 ? "#ff3d7f" : "#b4b4bb";
-        return (
-          <span key={w.word} className="cloud-word" title={`${w.count} videos · typical ${mult(w.outlier)}`} style={{ animationDelay: `${i * 50}ms` }}>
-            <span className="display" style={{ fontSize: size, color: col, textShadow: w.outlier >= 1.5 ? `0 0 18px ${col}66` : undefined }}>{w.word}</span>
-            <span className="mono ml-1.5 align-top" style={{ fontSize: 9.5 }}>{mult(w.outlier)}</span>
-          </span>
-        );
-      })}
+    <div className="mt-3 flex justify-between font-mono text-[10px] text-ink-3">
+      <span>← worse · −{Math.round((1 - 2 ** -max) * 100)}%</span><span>no difference</span><span>better · +{Math.round((2 ** max - 1) * 100)}% →</span>
     </div>
-  );
-}
-
-/**
- * Bullseye: each new upload's 30-day forecast lands as a dot. The centre is a breakout (4× normal or more);
- * each ring outward is half as good. Colour = cyan at or above normal, magenta for big multiples, grey below.
- */
-export function Bullseye({ items, size = 340 }: { items: { id: string; title: string; vs: number; views: number }[]; size?: number }) {
-  const c = size / 2, R = size * 0.46;
-  const rad = (x: number) => R * (1 - (Math.max(-2, Math.min(2, Math.log2(x))) + 2) / 4.4);
-  const col = (x: number) => (x >= 3 ? "#ff3d7f" : x >= 1 ? "#22e1ff" : "#8a8a93");
-  return (
-    <figure className="starburst mx-auto w-full" style={{ maxWidth: size }}>
-      <svg viewBox={`0 0 ${size} ${size}`} className="h-auto w-full" role="img" aria-label={`${items.length} new uploads placed by expected views versus normal; centre is 4× or more`}>
-        {[4, 2, 1, 0.5, 0.25].map((m) => (
-          <g key={m}>
-            <circle cx={c} cy={c} r={rad(m)} fill={m === 4 ? "rgba(255,61,127,.06)" : "none"} stroke={m === 1 ? "rgba(255,255,255,.3)" : "rgba(255,255,255,.08)"} />
-            <text x={c + rad(m) + 3} y={c - 3} fontSize={9} fill="#8a8a93" fontFamily="var(--f-mono)">{m >= 1 ? `${m}×` : m === 0.5 ? "½×" : "¼×"}</text>
-          </g>
-        ))}
-        <line x1={c - R} y1={c} x2={c + R} y2={c} stroke="rgba(255,255,255,.05)" /><line x1={c} y1={c - R} x2={c} y2={c + R} stroke="rgba(255,255,255,.05)" />
-        {items.map((it, i) => {
-          const a = (i / Math.max(1, items.length)) * Math.PI * 2 + 0.4;
-          const r = rad(it.vs), x = c + Math.cos(a) * r, y = c + Math.sin(a) * r;
-          return (
-            <Link key={it.id} href={`/videos/${it.id}`} className="sb-ray">
-              <title>{`${it.title} · ${mult(it.vs)} normal · ${it.views.toLocaleString("en")} views expected`}</title>
-              <line x1={c} y1={c} x2={x} y2={y} stroke={col(it.vs)} strokeOpacity={0.25} style={{ animationDelay: `${i * 80}ms` }} />
-              <circle cx={x} cy={y} r={5} fill={col(it.vs)} className="sb-tip" style={{ animationDelay: `${500 + i * 80}ms`, filter: `drop-shadow(0 0 6px ${col(it.vs)})` }} />
-            </Link>
-          );
-        })}
-      </svg>
-    </figure>
+    <p className="mt-1 font-mono text-[10px] text-ink-3">Typical views with the style vs without it (× = multiple of the channel&apos;s usual)</p>
+    </>
   );
 }
 
@@ -138,6 +44,7 @@ export function Bullseye({ items, size = 340 }: { items: { id: string; title: st
 export function TugBars({ rows }: { rows: { key: string; label: string; effect: number; kind: string }[] }) {
   const max = Math.max(0.2, ...rows.map((r) => Math.abs(r.effect)));
   return (
+    <>
     <ul className="space-y-5">
       {rows.map((d, i) => {
         const up = d.effect >= 0, w = (Math.abs(d.effect) / max) * 50, col = up ? "#22e1ff" : "#ff3d7f";
@@ -156,6 +63,59 @@ export function TugBars({ rows }: { rows: { key: string; label: string; effect: 
         );
       })}
     </ul>
+    <div className="mt-3 flex justify-between font-mono text-[10px] text-ink-3">
+      <span>← lowers views · −{Math.round(max * 100)}%</span><span>no effect</span><span>raises views · +{Math.round(max * 100)}% →</span>
+    </div>
+    </>
+  );
+}
+
+
+type Row = { id: string; label: string; value: number | null; href?: string; sub?: string; tag?: string; color?: string; you?: boolean };
+
+/**
+ * Ranked bars: one labelled row per item, biggest first, on a printed scale with tick values.
+ * `fromRef` makes bars grow from a reference line (e.g. 1× = usual): right of it is better, left is worse.
+ */
+export function RankBars({ rows, ticks, fmt, refValue, refLabel, axisLabel, fromRef = false, className = "" }: {
+  rows: Row[]; ticks: number[]; fmt: (v: number) => string; refValue?: number; refLabel?: string; axisLabel: string; fromRef?: boolean; className?: string;
+}) {
+  const lo = Math.log(ticks[0]), hi = Math.log(ticks[ticks.length - 1]);
+  const p = (v: number) => Math.max(0, Math.min(100, ((Math.log(Math.max(v, ticks[0])) - lo) / (hi - lo)) * 100));
+  const ref = refValue !== undefined ? p(refValue) : 0;
+  return (
+    <figure className={`rank-bars w-full ${className}`}>
+      <ul className="space-y-2.5">
+        {rows.map((r, i) => {
+          const v = r.value === null ? null : p(r.value);
+          const from = fromRef ? Math.min(ref, v ?? ref) : 0, width = v === null ? 0 : fromRef ? Math.abs(v - ref) : v;
+          const col = r.color ?? "#22e1ff";
+          const body = (
+            <div className="grid grid-cols-[minmax(0,34%)_1fr_auto] items-center gap-3">
+              <div className="min-w-0">
+                <div className={`truncate text-[13.5px] ${r.you ? "text-accent" : "text-ink"}`}>{r.label}{r.you ? " (you)" : ""}</div>
+                {r.sub && <div className="truncate font-mono text-[10px] text-ink-3">{r.sub}</div>}
+              </div>
+              <div className="relative h-3.5 bg-white/[0.04]">
+                {refValue !== undefined && <span className="absolute inset-y-[-4px] w-px bg-white/45" style={{ left: `${ref}%` }} />}
+                <span className="rank-bar absolute inset-y-0" style={{ left: `${from}%`, width: `${Math.max(width, v === null ? 0 : 0.6)}%`, background: col,
+                  ["--o" as string]: fromRef && (v ?? 0) < ref ? "right" : "left", animationDelay: `${i * 50}ms` }} />
+              </div>
+              <div className="w-[74px] text-right font-mono text-[12px] tabular" style={{ color: col }}>{r.value === null ? "–" : fmt(r.value)}{r.tag ? <span className="ml-1 text-[#ff3d7f]">{r.tag}</span> : null}</div>
+            </div>
+          );
+          return <li key={r.id} className="rank-row">{r.href ? <Link href={r.href} className="block transition hover:bg-white/[0.03]">{body}</Link> : body}</li>;
+        })}
+      </ul>
+      <div className="mt-2 grid grid-cols-[minmax(0,34%)_1fr_auto] gap-3">
+        <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">{axisLabel}</span>
+        <div className="relative h-4">
+          {ticks.map((t) => <span key={t} className="absolute -translate-x-1/2 font-mono text-[10px] text-ink-3" style={{ left: `${p(t)}%` }}>{fmt(t)}</span>)}
+        </div>
+        <span className="w-[74px]" />
+      </div>
+      {refLabel && <figcaption className="mt-1 font-mono text-[10px] text-ink-3">│ white line = {refLabel}</figcaption>}
+    </figure>
   );
 }
 
