@@ -5,8 +5,9 @@ import { ASPECT_LABELS } from "@/lib/queries-shared";
 import { ago, compact, score } from "@/lib/format";
 import { Sparkline } from "./AnalyticsParts";
 import { Empty, Panel, Tag } from "./ui";
+import { TickRing } from "./signal/TickRing";
 
-const ring = (s: number | null) => (s === null ? "#7c869b" : s >= 80 ? "#0ca30c" : s >= 65 ? "#22d3ee" : s >= 45 ? "#fab219" : "#e66767");
+const ring = (s: number | null) => (s === null ? "#8a8a93" : s >= 65 ? "#22e1ff" : s >= 45 ? "#ededea" : "#ff3d7f");
 
 /** 7. Channel health: one 0–100 score from six parts, with the last 8 weeks. */
 export function HealthCard({ h }: { h: Health }) {
@@ -14,32 +15,25 @@ export function HealthCard({ h }: { h: Health }) {
   const pct = h.score ?? 0;
   return (
     <Panel title="Channel health" subtitle="One score from growth, engagement, mood, loyalty, consistency and momentum (0–100)">
-      <div className="grid gap-5 md:grid-cols-[150px_1fr] md:items-center">
-        <div className="relative mx-auto h-[130px] w-[130px]" role="img" aria-label={`Health score ${h.score ?? "not available"}: ${h.grade}`}>
-          <svg viewBox="0 0 36 36" className="h-full w-full -rotate-90">
-            <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="3" />
-            <circle cx="18" cy="18" r="15.9" fill="none" stroke={c} strokeWidth="3" strokeLinecap="round" strokeDasharray={`${pct} 100`} />
-          </svg>
-          <div className="absolute inset-0 grid place-items-center text-center">
-            <div><div className="font-[family-name:var(--font-display)] text-3xl font-semibold tabular text-ink">{h.score ?? "–"}</div>
-              <div className="text-[11.5px]" style={{ color: c }}>{h.grade}</div></div>
-          </div>
+      <div className="grid gap-8 md:grid-cols-[190px_1fr] md:items-center">
+        <div className="mx-auto" role="img" aria-label={`Health score ${h.score ?? "not available"}: ${h.grade}`}>
+          <TickRing value={pct} label="Health" sub={h.grade} size={180} color={c} />
         </div>
         <div>
           {h.parts.length ? (
-            <ul className="grid gap-2.5 sm:grid-cols-2">
+            <ul className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
               {h.parts.map((p) => (
                 <li key={p.key}>
-                  <div className="mb-1 flex items-baseline justify-between text-[13px]"><span className="text-ink-2">{p.label}</span><span className="tabular text-ink">{p.score}</span></div>
-                  <div className="h-1.5 rounded-full bg-white/5"><div className="h-1.5 rounded-full" style={{ width: `${p.score}%`, background: ring(p.score) }} /></div>
-                  <div className="mt-0.5 text-[11.5px] text-ink-3">{p.detail}</div>
+                  <div className="mb-1.5 flex items-baseline justify-between text-[14px]"><span className="text-ink-2">{p.label}</span><span className="tabular font-mono text-[12px]" style={{ color: ring(p.score) }}>{p.score}</span></div>
+                  <div className="h-1.5 bg-white/5"><div className="h-1.5" style={{ width: `${p.score}%`, background: ring(p.score), boxShadow: `0 0 8px ${ring(p.score)}66` }} /></div>
+                  <div className="mt-1 text-[12px] text-ink-3">{p.detail}</div>
                 </li>
               ))}
             </ul>
           ) : <Empty>Builds up as data is collected.</Empty>}
           <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[12px] text-ink-3">
             <span className="flex items-center gap-2">Mood, last 8 weeks <Sparkline values={h.weekly.map((w) => (w.mood === null ? 0 : (w.mood + 1) * 50))} /></span>
-            <span className="flex items-center gap-2">Comments per week <Sparkline values={h.weekly.map((w) => w.comments)} color="#8b7cf6" /></span>
+            <span className="flex items-center gap-2">Comments per week <Sparkline values={h.weekly.map((w) => w.comments)} color="#ff3d7f" /></span>
             <span>Uploads: {h.weekly.map((w) => w.uploads).join(" · ")}</span>
           </div>
         </div>

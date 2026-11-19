@@ -96,3 +96,34 @@
 .constellation .cl-star { transform-box: fill-box; transform-origin: center; animation: cl-pop 0.5s cubic-bezier(0.2, 0.7, 0, 1) both; }
 .constellation .cl-star:hover circle:last-of-type { fill: #fff; }
 @media (prefers-reduced-motion: reduce) { .constellation .cl-line, .constellation .cl-star, .term-cursor { animation: none; } }
+
+/* Starburst rays draw out from the centre; lift bars grow from the centre line; title words rise. */
+@keyframes sb-draw { to { stroke-dashoffset: 0; } }
+@keyframes sig-pop { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: none; } }
+@keyframes lift-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes cloud-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.starburst .sb-ray line { stroke-dasharray: 300; stroke-dashoffset: 300; }
+.in .starburst .sb-ray line { animation: sb-draw 0.9s cubic-bezier(0.2, 0.7, 0, 1) forwards; }
+.starburst .sb-tip { opacity: 0; transform-box: fill-box; transform-origin: center; }
+.in .starburst .sb-tip { animation: sig-pop 0.4s ease-out forwards; }
+.starburst .sb-ray:hover line { stroke: #fff; stroke-width: 2.4; }
+.lift-bar { transform: scaleX(0); }
+.in .lift-bar { animation: lift-grow 0.9s cubic-bezier(0.2, 0.7, 0, 1) forwards; }
+.cloud-word { display: inline-block; opacity: 0; }
+.in .cloud-word { animation: cloud-rise 0.6s cubic-bezier(0.2, 0.7, 0, 1) forwards; }
+/* LED heatmap cells light up row by row. */
+@keyframes led-on { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
+.led { opacity: 0; }
+.in .led { animation: led-on 0.5s cubic-bezier(0.2, 0.7, 0, 1) forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .starburst .sb-ray line { stroke-dasharray: none; stroke-dashoffset: 0; }
+  .starburst .sb-tip, .cloud-word, .led { opacity: 1; animation: none !important; }
+  .lift-bar { transform: none; animation: none !important; }
+}
+
+/* Draft tester: a scanner line sweeps the result once. */
+@keyframes scan-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.scan-result { position: relative; overflow: hidden; }
+.scan-result::after { content: ""; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, rgba(34, 225, 255, 0.18), transparent);
+  animation: scan-sweep 1.2s cubic-bezier(0.3, 0.6, 0.2, 1) 1 forwards; }
+@media (prefers-reduced-motion: reduce) { .scan-result::after { display: none; } }

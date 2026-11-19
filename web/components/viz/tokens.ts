@@ -4,5 +4,5 @@ export const C = {
   pos: "#22e1ff", neu: "#8a8a93", neg: "#ff3d7f", yt: "#ff3b4a", ig: "#e1306c", ig2: "#f77737",
 };
 
-/** "× normal" colour: cyan under 5×, violet 5-10×, gold 10×+, red when below normal. */
-export function multColor(x: number) { return x >= 10 ? C.gold : x >= 5 ? C.ai : x >= 1 ? C.accent : C.bad; }
+/** "× normal" colour (Signal): magenta for breakouts (3×+), cyan at or above normal, grey below. */
+export function multColor(x: number) { return x >= 3 ? "#ff3d7f" : x >= 1 ? C.accent : "#8a8a93"; }
