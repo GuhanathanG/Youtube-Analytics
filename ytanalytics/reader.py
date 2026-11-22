@@ -231,12 +231,23 @@ def _predict(model, tok, texts: list[str], batch: int = 64):
 CURVE = (0.95, 0.9, 0.85, 0.8)
 
 
-def _trust(conf: list[float], ok: list[bool]) -> dict:
+def _trust(conf: list[float], ok: list[bool], floor: float = 0.0) -> dict:
     """Cut-off at the main target, plus the cut-off and coverage at several agreement levels (so a task's bar can be
-    changed later without retraining)."""
-    out = threshold_for(conf, ok, TARGET)
-    out["curve"] = {str(t): threshold_for(conf, ok, t) for t in CURVE}
+    changed later without retraining). `floor` is the agreement of always giving the most common answer (e.g. "not
+    spam" for 98% of comments): a cut-off only counts if it beats that, otherwise the model adds nothing."""
+    out = threshold_for(conf, ok, max(TARGET, floor))
+    out["floor"] = round(floor, 4)
+    out["curve"] = {str(t): (threshold_for(conf, ok, t) if t > floor else {"threshold": None, "coverage": 0.0, "agreement": None})
+                    for t in CURVE}
     return out
+
+
+def _majority(truth: list[bool]) -> float:
+    """Agreement of always answering the most common way."""
+    if not truth:
+        return 0.0
+    share = sum(truth) / len(truth)
+    return max(share, 1 - share)
 
 
 def task_targets(env=os.environ) -> dict:
@@ -270,7 +281,7 @@ def evaluate(preds: list[dict], rows: list[dict]) -> dict:
         rec = tp / max(1, sum(truth))
         ok = [a == b for a, b in zip(truth, pred)]
         res[f] = {"f1": round(2 * prec * rec / (prec + rec), 4) if prec + rec else 0.0, "positives": sum(truth),
-                  **_trust([p["conf"][f] for p in preds], ok)}
+                  **_trust([p["conf"][f] for p in preds], ok, floor=_majority(truth) + 0.01)}
     ok = [(p["aspects"] or "") == ",".join(f"{a}:{s}" for a, s in
           (x.split(":") for x in (r.get("aspects") or "").split(",") if ":" in x) if a in ASPECTS) for p, r in zip(preds, rows)]
     res["aspects"] = {"exact_match": round(sum(ok) / len(rows), 4), **_trust([p["conf"]["aspects"] for p in preds], ok)}
@@ -407,7 +418,9 @@ def should_replace(new: dict, old: dict | None, slack: float = 0.01) -> tuple[bo
 
 
 def pick_threshold(task: dict, target: float):
-    """The cut-off for a task at the wanted agreement: from its curve when recorded, else its main cut-off."""
+    """The cut-off for a task at the wanted agreement: from its curve when recorded, else its main cut-off.
+    Never below the task's floor (always giving the most common answer)."""
+    target = max(target, float(task.get("floor") or 0))
     curve = task.get("curve") or {}
     for t, v in sorted(((float(k), v) for k, v in curve.items()), reverse=True):
         if t <= target + 1e-9:
