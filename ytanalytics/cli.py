@@ -76,6 +76,17 @@ def main(argv: list[str] | None = None) -> int:
     ts_.add_argument("--file", default="data/training/tamil_channels.json")
     tsy = sub.add_parser("training-sync", help="keep the training database's channels and videos fresh")
     tsy.add_argument("--minutes", type=float, default=20)
+    ae = sub.add_parser("analyst-export", help="write Pulse Analyst training pairs (prompt -> cloud AI insight) for Kaggle")
+    ae.add_argument("--out", default="analyst-data")
+    asv = sub.add_parser("analyst-save", help="record a published Pulse Analyst model (download URL + test results)")
+    asv.add_argument("--out", default="analyst-out")
+    asv.add_argument("--url", required=True)
+    ap = sub.add_parser("progress", help="report a training job's stage to the Model Lab's live view")
+    ap.add_argument("job")
+    ap.add_argument("phase")
+    ap.add_argument("--note", default=None)
+    ap.add_argument("--done", action="store_true")
+    ap.add_argument("--failed", action="store_true")
     sub.add_parser("reader-status", help="the Pulse Reader in use: download URL and held-out results")
     rs = sub.add_parser("reader-save", help="record a published Pulse Reader (download URL + metrics) for the analyse step")
     rs.add_argument("--out", default="reader-out")
@@ -267,6 +278,31 @@ def main(argv: list[str] | None = None) -> int:
             from .training import sync as training_sync
 
             print(json.dumps(training_sync(session, settings, args.minutes), default=str))
+        elif args.cmd == "analyst-export":
+            from .analyst import export
+
+            print(json.dumps(export(session, args.out)))
+        elif args.cmd == "analyst-save":
+            from pathlib import Path
+
+            from .analyst import save_record
+            from .reader import sha256
+
+            out = Path(args.out)
+            save_record(session, json.loads((out / "metrics.json").read_text()), args.url, sha256(out / "pulse-analyst.gguf"))
+            print(json.dumps({"saved": args.url}))
+        elif args.cmd == "progress":
+            from .progress import Progress
+
+            p = Progress(session, args.job, every=0) if args.phase == "start" else None
+            if p is None:
+                p = Progress.__new__(Progress)
+                p.s, p.job, p.every, p.last, p.losses, p.run = session, args.job, 0, 0.0, [], ""
+            if args.done or args.failed:
+                p.done(args.note, failed=args.failed)
+            elif args.phase != "start":
+                p.update(args.phase, note=args.note, force=True)
+            print("ok")
         elif args.cmd == "reader-status":
             from .reader import load_record
 

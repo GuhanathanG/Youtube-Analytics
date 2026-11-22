@@ -330,8 +330,10 @@ class AIRunner:
             lines.append(f"- ({tag}) {text}")
         return "\n".join(lines)
 
-    def _video_insight(self, video: Video) -> None:
-        where = (Comment.video_id == video.id,)
+    def video_prompt(self, video: Video, before=None) -> tuple[str, int, int]:
+        """The prompt the cloud AI gets for a video insight: (prompt, comments stored, comments in the sample).
+        `before` limits it to comments posted before a moment (to rebuild an old prompt for training)."""
+        where = (Comment.video_id == video.id,) + ((Comment.published_at <= before,) if before is not None else ())
         total = self.s.scalar(select(func.count()).select_from(Comment).where(*where)) or 0
         sample = self._sample(*where)
         prompt = "\n".join([
@@ -342,6 +344,10 @@ class AIRunner:
             f"\nSample of {len(sample)} comments (most liked, newest, most negative, questions):",
             self._format_comments(sample),
         ])
+        return prompt, total, len(sample)
+
+    def _video_insight(self, video: Video) -> None:
+        prompt, total, _ = self.video_prompt(video)
         data, model = self.router.chat_json(VIDEO_SYSTEM, prompt, max_tokens=4000, deadline=self.deadline)
         self.s.add(Insight(scope="video", target_id=video.id, comment_count=total, model=model,
                            data=json.dumps(data, ensure_ascii=False)))

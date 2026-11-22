@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 type Job = { job: string; run_id: string | null; phase: string; step: number | null; total: number | null; loss: number | null; history: number[];
   note: string | null; started_at: string; updated_at: string; quiet_s: number; elapsed_s: number };
 
-const NAMES: Record<string, string> = { reader: "Pulse Reader", engine: "Creator Model", channels: "Training channels" };
+const NAMES: Record<string, string> = { reader: "Pulse Reader", engine: "Creator Model", channels: "Training channels", analyst: "Pulse Analyst (Kaggle)" };
 const mins = (s: number) => (s < 90 ? `${Math.max(1, Math.round(s))} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 
 function Curve({ points }: { points: number[] }) {
