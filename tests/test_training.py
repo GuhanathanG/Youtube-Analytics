@@ -8,6 +8,7 @@ def test_name_matches_title_or_handle():
     assert name_matches("Madan Gowri", "Madan Gowri", None)
     assert not name_matches("Madras Samayal", "Madras Central", "@madrascentral")
     assert not name_matches("Trading Tamil", "Tamil Songs HD", None)
+    assert not name_matches("Tamil Today Tech", "Tamil Tech - MrTT", "@tamiltechofficial")  # 'today' missing
 
 
 class FakeYT:
