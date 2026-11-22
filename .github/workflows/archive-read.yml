@@ -56,7 +56,7 @@ jobs:
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements-model.txt -r requirements-ai.txt
       - name: Cache the AI models
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/huggingface
           key: hf-models-archive-v1

@@ -130,7 +130,8 @@ for (const [tag, opts] of [["desktop", { viewport: { width: 1440, height: 900 } 
       await page.goto(B + "/radar"); const n = await page.locator(".rank-row").count(); return `${n} rows`;
     });
     await step("outlier scatter dots link to videos", async () => {
-      await page.goto(B + `/analytics?c=${CH}`); await page.locator(".outlier-scatter").first().scrollIntoViewIfNeeded(); await page.waitForTimeout(1200);
+      await page.goto(B + `/analytics?c=${CH}`); await page.waitForLoadState("networkidle").catch(() => {});
+      await page.locator(".outlier-scatter a.sc-dot").first().waitFor({ state: "attached", timeout: 8000 });
       const n = await page.locator(".outlier-scatter a.sc-dot").count(); if (!n) throw new Error("no dots"); return `${n} dots`;
     });
     await step("time slider, hover read-out and chart-type switch", async () => {

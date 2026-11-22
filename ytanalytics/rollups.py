@@ -138,7 +138,8 @@ def ensure_rollups(engine) -> bool:
             conn.execute(text(f"truncate {t}"))
             conn.execute(text(f"alter table {t} enable row level security"))  # same as every table: no public API access
         for fn, body in FUNCTIONS.items():
-            conn.execute(text(f"create or replace function {fn}() returns trigger language plpgsql as $f$ begin {body} return null; end $f$"))
+            conn.execute(text(f"create or replace function {fn}() returns trigger language plpgsql "
+                              f"set search_path = public, pg_temp as $f$ begin {body} return null; end $f$"))
         # Fill from the existing comments (the same arithmetic as the triggers, all counted +1).
         for stmt in _split(_apply_sql(f"select {COLS}, 1 as s from comments")):
             conn.execute(text(stmt))
