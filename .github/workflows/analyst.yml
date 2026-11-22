@@ -81,7 +81,8 @@ jobs:
           printf '{"title": "Pulse Analyst data", "id": "%s/pulse-analyst-data", "licenses": [{"name": "other"}]}' "$U" > analyst-data/dataset-metadata.json
           python -m ytanalytics progress analyst "uploading the training pairs to Kaggle (private)"
           kaggle datasets version -p analyst-data -m "run ${{ github.run_number }}" --dir-mode zip 2>&1 | tee /tmp/ds.txt || true
-          if grep -qiE "not found|404|does not exist" /tmp/ds.txt; then kaggle datasets create -p analyst-data --dir-mode zip 2>&1 | tee /tmp/ds.txt; fi
+          # Kaggle answers "403 Forbidden" (not 404) when the dataset doesn't exist yet: create it then.
+          if grep -qiE "not found|404|403|forbidden|does not exist" /tmp/ds.txt; then kaggle datasets create -p analyst-data --dir-mode zip 2>&1 | tee /tmp/ds.txt; fi
           if grep -qiE "authentication required|unauthorized|forbidden|error" /tmp/ds.txt; then
             python -m ytanalytics progress analyst x --failed --note "Kaggle upload failed"; exit 1
           fi
