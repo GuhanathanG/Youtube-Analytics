@@ -63,7 +63,8 @@ def name_matches(query: str, title: str, handle: str | None) -> bool:
     have = _norm(title) | _norm((handle or "").replace("@", " ").replace("-", " ").replace("_", " "))
     squashed = re.sub(r"[^a-z0-9]", "", (title + (handle or "")).lower())
     hits = sum(1 for w in want if w in have or w in squashed)
-    return bool(want) and hits / len(want) >= 0.6
+    # Every word for short names (2-3 words), most of them for longer ones.
+    return bool(want) and hits / len(want) >= (1.0 if len(want) <= 3 else 0.75)
 
 
 def _looks_like_id_or_handle(q: str) -> bool:
@@ -117,6 +118,11 @@ def seed(main: Session, yt, path: str | Path) -> dict:
                 break
             subs = int((item or {}).get("statistics", {}).get("subscriberCount") or 0)
             status = "added" if item and (how == "exact" or subs >= MIN_SUBSCRIBERS) else ("doubtful" if item else "failed")
+            if item and status == "added":
+                other = c.execute(text("select query from training_catalog where channel_id = :id and query <> :q and status = 'added'"),
+                                  {"id": item["id"], "q": q}).scalar()
+                if other:  # a name search landed on a channel that's already in the set under another entry
+                    status, how = "doubtful", f"same channel as '{other}'"
             if status == "added":
                 ch = ts.get(Channel, item["id"]) or Channel(id=item["id"])
                 ch.active, ch.role = True, "training"
@@ -130,7 +136,7 @@ def seed(main: Session, yt, path: str | Path) -> dict:
                 category = excluded.category, title = excluded.title, subscribers = excluded.subscribers, status = excluded.status,
                 note = excluded.note, updated_at = now()"""),
                 {"id": item["id"] if item else None, "q": q, "c": cat, "t": item["snippet"]["title"] if item else None, "s": subs or None,
-                 "st": status, "n": how if status != "doubtful" else f"{how}: only {subs:,} subscribers, check it"})
+                 "st": status, "n": how if status != "doubtful" or how.startswith("same channel") else f"{how}: only {subs:,} subscribers, check it"})
             out[status if status in out else "failed"] += 1
     return out
 
