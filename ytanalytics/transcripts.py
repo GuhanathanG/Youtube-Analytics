@@ -15,7 +15,7 @@ from datetime import timedelta
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
-from .db import Channel, Video, VideoTranscript, upsert, utcnow
+from .db import Channel, Video, VideoTranscript, not_training, upsert, utcnow
 
 log = logging.getLogger(__name__)
 BLOCK_LIMIT = 2
@@ -39,7 +39,7 @@ def due_videos(session: Session, limit: int) -> list[Video]:
         (VideoTranscript.status == "none") & (VideoTranscript.fetched_at > now - timedelta(days=7))))
     return list(session.scalars(
         select(Video).join(Channel, Channel.id == Video.channel_id)
-        .where(Channel.active.is_(True), Channel.platform.is_(None), Video.published_at >= now - timedelta(days=days),
+        .where(Channel.active.is_(True), Channel.platform.is_(None), not_training(), Video.published_at >= now - timedelta(days=days),
                Video.published_at < now - timedelta(hours=2),  # captions appear a while after upload
                Video.id.not_in(have))
         .order_by(Video.published_at.desc()).limit(limit)).all())

@@ -592,7 +592,7 @@ def _train_platform(session, platform: str, now: datetime) -> dict:
     model = _fit(matrix(train_set), np.array([e.target for e in train_set]))
     linear = fit_linear(train_set)
     stamp = now.replace(microsecond=0)
-    mine = [r[0] for r in session.execute(text("select id from channels where active and coalesce(platform, 'youtube') = :p"), {"p": platform})]
+    mine = [r[0] for r in session.execute(text("select id from channels where active and coalesce(platform, 'youtube') = :p and coalesce(role, '') <> 'training'"), {"p": platform})]
     saved = 0
     for ch in mine:
         ch_examples = [e for e in examples if e.channel_id == ch]

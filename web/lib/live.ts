@@ -200,9 +200,10 @@ async function fetchNewComments(v: { id: string; channel_id: string; latest_comm
 }
 
 /* ------------------------------------------------------------------ add a channel right away */
-export async function addChannelNow(query: string): Promise<{ ok: boolean; message: string; channelId?: string }> {
+export async function addChannelNow(query: string, opts: { training?: boolean } = {}): Promise<{ ok: boolean; message: string; channelId?: string }> {
   const db = sql();
   if (!youtubeConfigured()) {
+    if (opts.training) return { ok: false, message: "Add YOUTUBE_API_KEY in Vercel first." };
     await db`insert into channel_requests (query, status, created_at) values (${query}, 'pending', ${nowSql()})`;
     return { ok: true, message: `Queued ${query}. Add YOUTUBE_API_KEY in Vercel to add channels instantly.` };
   }
@@ -213,8 +214,25 @@ export async function addChannelNow(query: string): Promise<{ ok: boolean; messa
         values (${query}, 'error', 'Channel not found. Try the @handle or channel link.', ${nowSql()})`;
       return { ok: false, message: "Couldn't find that channel. Try its @handle or channel link." };
     }
+    const [already] = await db`select role from channels where id = ${item.id}`;
     await saveChannel(item);
     await db`insert into channel_requests (query, status, channel_id, created_at) values (${query}, 'done', ${item.id}, ${nowSql()})`;
+    if (opts.training) {
+      // Model Lab: videos and stats only (no comments); the background job fills in the full upload history.
+      // A channel you already track on the dashboard keeps its role.
+      if (!already) {
+        await ensureColumns("channels", [["role", "text"]]);
+        await db`update channels set role = 'training' where id = ${item.id}`;
+      }
+      const playlist = item.contentDetails?.relatedPlaylists?.uploads;
+      if (playlist) {
+        const page = await listUploads(playlist).catch(() => ({ items: [] as { contentDetails: { videoId: string } }[] }));
+        await saveVideos(item.id, await getVideos((page.items ?? []).map((i) => i.contentDetails.videoId)));
+      }
+      return { ok: true, channelId: item.id, message: already
+        ? `${item.snippet?.title ?? query} is already tracked on the dashboard, so the models already learn from it.`
+        : `Now learning from ${item.snippet?.title ?? query}: newest uploads saved, the full back-catalogue follows in the background.` };
+    }
     // Bootstrap: newest 50 uploads and the newest comments of the latest 3 videos.
     const playlist = item.contentDetails?.relatedPlaylists?.uploads;
     let commentIds: string[] = [];
@@ -232,6 +250,7 @@ export async function addChannelNow(query: string): Promise<{ ok: boolean; messa
       message: `Now watching ${item.snippet?.title ?? query}: ${commentIds.length} newest comments loaded${labelled ? `, ${labelled} read by AI` : ""}. Full history keeps downloading in the background.` };
   } catch (e) {
     if (e instanceof QuotaExhausted) {
+      if (opts.training) return { ok: false, message: "YouTube's daily quota is used up. Try again tomorrow." };
       await db`insert into channel_requests (query, status, created_at) values (${query}, 'pending', ${nowSql()})`;
       return { ok: true, message: `YouTube's daily quota is used up, so ${query} is queued for tomorrow.` };
     }
@@ -300,13 +319,13 @@ async function backfillSome(maxPages: number, timeLeft: () => boolean): Promise<
   await db`update videos set comments_backfilled = true, comment_count_checked = 0,
       latest_comment_at = coalesce(latest_comment_at, published_at, (now() at time zone 'utc'))
     where not comments_backfilled and not comments_disabled and comment_count = 0
-      and channel_id in (select id from channels where active and platform is null and coalesce(role, '') <> 'competitor')`;
+      and channel_id in (select id from channels where active and platform is null and coalesce(role, '') not in ('competitor', 'training'))`;
   const parallel = Math.max(1, Number(process.env.LIVE_BACKFILL_PARALLEL ?? 4));
   const perVideo = Math.max(1, Math.ceil(maxPages / parallel));
   const videos = await db`
     select v.id, v.channel_id, v.comments_page_token, v.comment_count, v.latest_comment_at, v.published_at
     from videos v join channels c on c.id = v.channel_id
-    where c.active and c.platform is null and coalesce(c.role, '') <> 'competitor' and not v.comments_backfilled and not v.comments_disabled
+    where c.active and c.platform is null and coalesce(c.role, '') not in ('competitor', 'training') and not v.comments_backfilled and not v.comments_disabled
       -- Lean mode: the engine only fills in recent videos; older history is the background job's (or skipped).
       and v.published_at >= (now() at time zone 'utc') - make_interval(days => ${Number(process.env.HISTORY_DAYS ?? 90)})
     order by v.published_at desc nulls last limit ${parallel}`;
@@ -500,7 +519,7 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
         result.warmed = await warmChannel(c.id as string, () => timeLeft() && Date.now() < until).catch(() => 0);
         // The other per-channel sections (Next moves, Radar, timeline, questions) follow the same rotation.
         const extraUntil = Date.now() + Number(process.env.WARM_EXTRA_SECONDS ?? 6) * 1000;
-        result.warmed = (result.warmed ?? 0) + await warmExtras(c.id as string, () => timeLeft() && Date.now() < extraUntil, c.role !== "competitor")
+        result.warmed = (result.warmed ?? 0) + await warmExtras(c.id as string, () => timeLeft() && Date.now() < extraUntil, c.role !== "competitor" && c.role !== "training")
           .catch(() => 0);
       }
     }
@@ -511,7 +530,7 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     // 4. New comments wherever the count went up (newest videos first).
     const changed = await db`
       select v.id, v.channel_id, v.latest_comment_at from videos v join channels c on c.id = v.channel_id
-      where c.active and c.platform is null and coalesce(c.role, '') <> 'competitor' and not v.comments_disabled and v.comment_count > coalesce(v.comment_count_checked, -1)
+      where c.active and c.platform is null and coalesce(c.role, '') not in ('competitor', 'training') and not v.comments_disabled and v.comment_count > coalesce(v.comment_count_checked, -1)
         and (v.latest_comment_at is not null or v.published_at >= (now() at time zone 'utc') - interval '30 days')
       order by v.published_at desc nulls last limit 15`;
     // Three videos at a time: each fetch waits on YouTube, so doing them together is ~3x faster.

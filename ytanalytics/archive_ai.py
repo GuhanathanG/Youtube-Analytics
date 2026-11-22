@@ -348,7 +348,7 @@ def read_archive(session: Session, until: float, classifier=None, router=None, d
             out["local"] += local_pass(e, classifier, deadline, touched=touched)
         # Our own comment-reading model (if one has been trained and published): reads what it is sure about, so the
         # cloud AI's allowance goes to the comments it isn't sure about.
-        if os.environ.get("ARCHIVE_READER", "1") == "1":
+        if os.environ.get("ARCHIVE_READER", "0") == "1":  # switched on in archive-read.yml once its results are approved
             from .reader import PulseReader, load_record
 
             rec = load_record(session)

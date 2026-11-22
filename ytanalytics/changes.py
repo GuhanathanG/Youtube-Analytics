@@ -93,7 +93,7 @@ def detect_changes(session: Session, today: date | None = None, notify=None) -> 
     recent = today - timedelta(days=int(os.environ.get("CHANGE_RECENT_DAYS", "10")))
     min_pct = float(os.environ.get("SHIFT_MIN_PCT", "30"))
     found: list[dict] = []
-    channels = session.execute(text("select id, title from channels where active")).all()
+    channels = session.execute(text("select id, title from channels where active and coalesce(role, '') <> 'training'")).all()
     for ch in channels:
         for metric, series in (("views", _daily_views(session, ch.id, since)), ("mood", _daily_mood(session, ch.id, since))):
             if len(series) < 10:

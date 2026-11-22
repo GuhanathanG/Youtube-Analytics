@@ -78,7 +78,7 @@ export async function warmHeavy(deadline: number): Promise<{ done: string[]; ski
   const done: string[] = [];
   try {
     const db = sql();
-    const chans = await db`select id from channels where active order by id`;
+    const chans = await db`select id from channels where active and coalesce(role, '') <> 'training' order by id`;
     const due: { key: string; age: number; fn: () => Promise<unknown>; at: number }[] = [];
     const saved = new Map((await db`select key, extract(epoch from computed_at) * 1000 as at from panel_cache
       where key not like 'lock:%'`).map((r) => [r.key as string, Number(r.at)]));

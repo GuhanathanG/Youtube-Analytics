@@ -12,7 +12,7 @@ const PW = process.env.PW;
 const CH = "UCzzzzzzzzzzzzzzzzzzlive";
 const PAGES = ["/", "/command", "/glance", "/comments", "/comments?q=semma", "/ask", "/ask?t=qs2_UrRZFCjY", `/people/UCasker`, "/analytics", `/analytics?c=${CH}`,
   "/predict", "/predict?title=Top+5+phone+tips&format=long&minutes=10&day=5&hour=18", "/growth", "/outliers", "/outliers?period=all&min=2", "/keywords",
-  "/keywords?q=phone+review", "/platforms", `/platforms?yt=${CH}&ig=ig_pulsecreator`, "/radar", `/compare?c=${CH}&c=UCyyyyyyyyyyyyyyyyyytwoo`, "/studio", "/ideas",
+  "/keywords?q=phone+review", "/platforms", `/platforms?yt=${CH}&ig=ig_pulsecreator`, "/radar", `/compare?c=${CH}&c=UCyyyyyyyyyyyyyyyyyytwoo`, "/studio", "/ideas", "/lab", "/lab/channels",
   "/manage", `/channels/${CH}`, "/channels/ig_pulsecreator", "/videos/livevid0001", "/videos/livevid0077", `/report/${CH}`, "/concept", "/channels/UCnotarealchannel000000"];
 const results = [];
 const log = (ok, area, what, detail = "") => { results.push({ ok, area, what, detail }); console.log(`${ok ? "PASS" : "FAIL"}  [${area}] ${what}${detail ? " — " + detail : ""}`); };

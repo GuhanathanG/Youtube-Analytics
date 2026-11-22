@@ -35,7 +35,7 @@ export const HUBS: Hub[] = [
 ];
 
 /** Pages reached from the account menu, not a hub. */
-export const ACCOUNT_PAGES: NavPage[] = [{ href: "/manage", label: "Manage & settings", icon: "Settings2" }];
+export const ACCOUNT_PAGES: NavPage[] = [{ href: "/manage", label: "Manage & settings", icon: "Settings2" }, { href: "/lab", label: "Model Lab", icon: "BrainCircuit" }];
 
 export const pageMatches = (href: string, path: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/"));
 
