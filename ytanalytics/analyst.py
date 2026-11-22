@@ -75,3 +75,25 @@ def save_record(session: Session, metrics: dict, url: str, digest: str) -> None:
     session.execute(text("insert into local_models (name, trained_at, metrics, payload) values (:n, now() at time zone 'utc', :m, :p)"),
                     {"n": NAME, "m": json.dumps(metrics), "p": json.dumps({"url": url, "sha256": digest, "format": "gguf"})})
     session.commit()
+
+
+MIN_GROWTH = 0.10  # retrain on a schedule only when at least 10% more examples exist than the model in use saw
+
+
+def due(session: Session, counts: dict) -> tuple[bool, str]:
+    """Whether a scheduled run should train: there is no model yet, or the training examples grew enough."""
+    now = int(counts.get("train", 0))
+    try:
+        row = session.execute(text("select metrics from local_models where name = :n"), {"n": NAME}).first()
+    except Exception:
+        session.rollback()
+        row = None
+    if row is None:
+        return True, f"no Pulse Analyst yet: training on {now} examples"
+    try:
+        before = int(json.loads(row[0]).get("train_pairs", 0))
+    except (TypeError, ValueError):
+        return True, "previous results unreadable: training"
+    if now > before and (now - before) >= before * MIN_GROWTH - 1e-9:
+        return True, f"{now} examples vs {before} last time: training"
+    return False, f"only {now - before} new examples since the last model ({before}): skipped until there are {int(before * MIN_GROWTH) + 1}+ new"
