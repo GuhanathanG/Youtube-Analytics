@@ -14,7 +14,7 @@ export async function focusChannel(channelIds: string[]): Promise<string | null>
   if (v === "all") return null;
   const candidates = [...new Set([...(v && v.length <= 80 ? [v] : []), ...channelIds])];
   if (!candidates.length) return null;
-  const rows = await sql()`select id from channels where id in ${sql()(candidates)} and active and coalesce(role, '') <> 'competitor'`
+  const rows = await sql()`select id from channels where id in ${sql()(candidates)} and active and coalesce(role, '') not in ('competitor', 'training')`
     .catch(() => [] as { id: string }[]);
   const ok = new Set(rows.map((r) => r.id as string));
   if (v && ok.has(v)) return v; // a channel added moments ago may not be in a cached list yet

@@ -122,6 +122,53 @@ def local_pass(engine, classifier, deadline: float, batch: int = 1000, touched: 
     return done
 
 
+READER_REQUIRED = [t.strip() for t in os.environ.get("READER_REQUIRED", "mood,emotion,question,suggestion,spam,toxic").split(",") if t.strip()]
+_TASK_FIELD = {"mood": "sentiment", "emotion": "emotion", "aspects": "aspects", "question": "is_question",
+               "suggestion": "is_suggestion", "spam": "is_spam", "toxic": "is_toxic"}
+
+
+def reader_rows(ids: list[str], preds: list[dict], trusted, now, required: list[str] = READER_REQUIRED) -> tuple[list[dict], int]:
+    """Archive updates from Pulse Reader predictions. A comment whose every required label is trusted counts as
+    read (ai_at set, so the cloud AI skips it); otherwise only its trusted labels are kept and it stays in the
+    cloud AI's queue. Every row is marked analyzer='pulse-reader' so it is never looked at twice."""
+    out, full = [], 0
+    for cid, p in zip(ids, preds):
+        keep = trusted(p)
+        row = {"id": cid, "analyzer": "pulse-reader"}
+        if "sentiment" in keep:
+            row.update({"sentiment": keep["sentiment"], "sentiment_value": round(keep["score"], 4),
+                        "sentiment_score": round(p["conf"]["mood"], 4), "sentiment_source": "reader"})
+        if all(_TASK_FIELD[t] in keep for t in required):
+            row.update({k: v for k, v in keep.items() if k not in ("score",)})
+            row.update({"ai_at": now, "ai_model": "local/pulse-reader"})
+            full += 1
+        out.append(row)
+    return out, full
+
+
+def reader_pass(engine, reader, deadline: float, batch: int = 2000, touched: set | None = None) -> dict:
+    """Pulse Reader over archived comments the cloud AI hasn't read, most-liked first (see reader_rows)."""
+    done = full = 0
+    while time.monotonic() < deadline:
+        with engine.connect() as c:
+            rows = c.execute(text("""select id, channel_id, published_at::date as day, text from comments
+                where ai_at is null and analyzer is distinct from 'pulse-reader'
+                order by like_count desc nulls last limit :n"""), {"n": batch}).all()
+        if not rows:
+            break
+        preds = reader([_clean(r.text) for r in rows])
+        out, n_full = reader_rows([r.id for r in rows], preds, reader.trusted, _now())
+        _apply(engine, out)
+        if touched is not None:
+            touched.update((r.channel_id, r.day) for r in rows)
+        done += len(rows)
+        full += n_full
+        if done % 50_000 < batch:
+            _vacuum(engine)
+        log.info("archive Pulse Reader pass: %d looked at, %d fully read", done, full)
+    return {"looked_at": done, "fully_read": full}
+
+
 def ai_pass(engine, router, titles, deadline: float, batch: int | None = None, touched: set | None = None,
             should_continue=lambda: True, shard: tuple[int, int] | None = None) -> int:
     """The full AI reading for archived comments, most-liked first."""
@@ -299,6 +346,21 @@ def read_archive(session: Session, until: float, classifier=None, router=None, d
                 classifier = HFClassifier(Settings.from_env().sentiment_model)
         for e in engines:
             out["local"] += local_pass(e, classifier, deadline, touched=touched)
+        # Our own comment-reading model (if one has been trained and published): reads what it is sure about, so the
+        # cloud AI's allowance goes to the comments it isn't sure about.
+        if os.environ.get("ARCHIVE_READER", "0") == "1":  # switched on in archive-read.yml once its results are approved
+            from .reader import PulseReader, load_record
+
+            rec = load_record(session)
+            if rec:
+                try:
+                    reader = PulseReader(rec)
+                    out["reader"] = {"looked_at": 0, "fully_read": 0}
+                    for e in engines:
+                        r = reader_pass(e, reader, deadline, touched=touched)
+                        out["reader"] = {k: out["reader"][k] + r[k] for k in r}
+                except Exception as ex:  # never let the model stop the rest of the reading
+                    log.warning("Pulse Reader pass skipped: %s", str(ex).splitlines()[0][:200])
         rebuild_stats(session, engines, touched)
         touched.clear()
 

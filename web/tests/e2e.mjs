@@ -718,6 +718,20 @@ try {
   const [lock] = await db`select 1 from panel_cache where key = 'lock:heavy'`;
   check("heavy-work run releases its lock", !lock);
 
+  // Model Lab: a training-only channel feeds the models but stays off the dashboard
+  await db`insert into channels (id, title, active, videos_backfilled, added_at, role)
+    values ('UCtrainingtrainingtrain0', 'Training Only Creator', true, false, now(), 'training') on conflict (id) do update set role = 'training'`;
+  const labCh = await (await get("/lab/channels")).text();
+  check("Model Lab lists the training channel", labCh.includes("Training Only Creator"));
+  const labHome = await (await get("/lab")).text();
+  check("Model Lab shows the models and what they learn from", labHome.includes("Pulse Reader") && labHome.includes("Creator Model") && labHome.includes("What the models learn from"));
+  for (const path of ["/manage", "/"]) {
+    check(`training channel stays off ${path}`, !(await (await get(path)).text()).includes("Training Only Creator"));
+  }
+  const tsearch = await (await get("/api/search?q=Training%20Only")).json();
+  check("search doesn't surface training channels", !tsearch.channels?.some((c) => c.title === "Training Only Creator"));
+  await db`delete from channels where id = 'UCtrainingtrainingtrain0'`;
+
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma",
     "/ask", "/ideas", `/compare?c=${ch?.id}`, "/analytics"]) {

@@ -99,7 +99,7 @@ export async function analyseDueThumbnails(max = 25, deadline = Date.now() + 120
   const due = await sql()`
     select v.id, v.thumbnail_url from videos v join channels c on c.id = v.channel_id
     left join thumb_analysis t on t.video_id = v.id
-    where c.active and v.thumbnail_url is not null
+    where c.active and coalesce(c.role, '') <> 'training' and v.thumbnail_url is not null
       and (t.video_id is null or (t.status = 'error' and t.created_at < (now() at time zone 'utc') - interval '1 day'))
     order by v.published_at desc nulls last limit ${max}`;
   let done = 0;

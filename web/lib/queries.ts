@@ -76,8 +76,8 @@ async function kpisUncached(): Promise<Kpis> {
   const sums = await summaries();
   const [row] = await db`
     select
-      (select count(*) from channels where active)::int as channels,
-      (select count(*) from videos)::int as videos,
+      (select count(*) from channels where active and coalesce(role, '') <> 'training')::int as channels,
+      (select count(*) from videos where channel_id not in (select id from channels where role = 'training'))::int as videos,
       (select count(*) from videos where not comments_backfilled and not comments_disabled)::int as videos_backfilling,
       coalesce((select units from quota_usage where day = ${quotaDay()}), 0)::int as quota_used_today`;
   let comments = 0, analyzed = 0, ai_read = 0, comments_24h = 0, last_fetch: string | null = null;
@@ -116,6 +116,7 @@ async function channelsUncached(): Promise<ChannelRow[]> {
     left join (select channel_id, count(*) n, sum(case when comments_backfilled then 1 else 0 end) done
                from videos group by channel_id) v on v.channel_id = ch.id
     left join channel_summary c on c.channel_id = ch.id
+    where coalesce(ch.role, '') <> 'training' -- training-only channels live in the Model Lab, not the dashboard
     order by ch.subscriber_count desc nulls last, ch.title`) as unknown as ChannelRow[];
 }
 
@@ -405,10 +406,10 @@ export async function searchEverything(q: string) {
   const like = "%" + q.replace(/[%_]/g, "\\$&") + "%";
   const chans = await db`
     select id, title, handle, thumbnail_url from channels
-    where title ilike ${like} or coalesce(handle, '') ilike ${like} order by title limit 6`;
+    where (title ilike ${like} or coalesce(handle, '') ilike ${like}) and coalesce(role, '') <> 'training' order by title limit 6`;
   const vids = await db`
     select v.id, v.title, v.thumbnail_url, ch.title as channel_title from videos v join channels ch on ch.id = v.channel_id
-    where v.title ilike ${like} order by v.published_at desc nulls last limit 10`;
+    where v.title ilike ${like} and coalesce(ch.role, '') <> 'training' order by v.published_at desc nulls last limit 10`;
   return {
     channels: chans.map((c) => ({ id: c.id as string, title: c.title as string, handle: c.handle as string | null, thumb: c.thumbnail_url as string | null })),
     videos: vids.map((v) => ({ id: v.id as string, title: v.title as string, channel: v.channel_title as string, thumb: v.thumbnail_url as string | null })),
@@ -453,7 +454,7 @@ async function progressUncached(): Promise<Progress[]> {
                       sum(case when comments_disabled then 0 else coalesce(comment_count, 0) end) on_yt
                from videos group by channel_id) v on v.channel_id = ch.id
     left join channel_summary c on c.channel_id = ch.id
-    where ch.active order by ch.title`) as unknown as Progress[];
+    where ch.active and coalesce(ch.role, '') <> 'training' order by ch.title`) as unknown as Progress[];
   // What's actually waiting (partial indexes make these cheap) and how many older comments sit in the archive.
   const [waitS, waitA, arch] = await Promise.all([
     db`select channel_id, count(*)::int as n from comments where analyzed_at is null group by 1`.catch(() => []),

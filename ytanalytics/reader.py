@@ -228,6 +228,27 @@ def _predict(model, tok, texts: list[str], batch: int = 64):
     return outs
 
 
+CURVE = (0.95, 0.9, 0.85, 0.8)
+
+
+def _trust(conf: list[float], ok: list[bool]) -> dict:
+    """Cut-off at the main target, plus the cut-off and coverage at several agreement levels (so a task's bar can be
+    changed later without retraining)."""
+    out = threshold_for(conf, ok, TARGET)
+    out["curve"] = {str(t): threshold_for(conf, ok, t) for t in CURVE}
+    return out
+
+
+def task_targets(env=os.environ) -> dict:
+    """Per-task agreement bars, e.g. READER_TARGETS="emotion=0.8,aspects=0.85" (others use TARGET)."""
+    out = {}
+    for part in env.get("READER_TARGETS", "emotion=0.8,aspects=0.85").split(","):
+        k, _, v = part.partition("=")
+        if k.strip() and v.strip():
+            out[k.strip()] = float(v)
+    return out
+
+
 def evaluate(preds: list[dict], rows: list[dict]) -> dict:
     """Agreement with the cloud AI per task, plus the confidence cut-off and coverage at TARGET agreement."""
     res = {}
@@ -235,12 +256,12 @@ def evaluate(preds: list[dict], rows: list[dict]) -> dict:
     p_mood = [MOODS.index(p["sentiment"]) for p in preds]
     res["mood"] = {"accuracy": round(sum(a == b for a, b in zip(t_mood, p_mood)) / len(rows), 4),
                    "macro_f1": macro_f1(t_mood, p_mood, 3),
-                   **threshold_for([p["conf"]["mood"] for p in preds], [a == b for a, b in zip(t_mood, p_mood)])}
+                   **_trust([p["conf"]["mood"] for p in preds], [a == b for a, b in zip(t_mood, p_mood)])}
     idx = [i for i, r in enumerate(rows) if r.get("emotion") in EMOTIONS]
     if idx:
         ok = [preds[i]["emotion"] == rows[i]["emotion"] for i in idx]
         res["emotion"] = {"accuracy": round(sum(ok) / len(idx), 4),
-                          **threshold_for([preds[i]["conf"]["emotion"] for i in idx], ok)}
+                          **_trust([preds[i]["conf"]["emotion"] for i in idx], ok)}
     for f in FLAGS:
         truth = [bool(r.get(f"is_{f}")) for r in rows]
         pred = [p[f"is_{f}"] for p in preds]
@@ -249,10 +270,10 @@ def evaluate(preds: list[dict], rows: list[dict]) -> dict:
         rec = tp / max(1, sum(truth))
         ok = [a == b for a, b in zip(truth, pred)]
         res[f] = {"f1": round(2 * prec * rec / (prec + rec), 4) if prec + rec else 0.0, "positives": sum(truth),
-                  **threshold_for([p["conf"][f] for p in preds], ok)}
+                  **_trust([p["conf"][f] for p in preds], ok)}
     ok = [(p["aspects"] or "") == ",".join(f"{a}:{s}" for a, s in
           (x.split(":") for x in (r.get("aspects") or "").split(",") if ":" in x) if a in ASPECTS) for p, r in zip(preds, rows)]
-    res["aspects"] = {"exact_match": round(sum(ok) / len(rows), 4), **threshold_for([p["conf"]["aspects"] for p in preds], ok)}
+    res["aspects"] = {"exact_match": round(sum(ok) / len(rows), 4), **_trust([p["conf"]["aspects"] for p in preds], ok)}
     return res
 
 
@@ -385,15 +406,25 @@ def should_replace(new: dict, old: dict | None, slack: float = 0.01) -> tuple[bo
     return True, f"mood macro-F1 {new_f1} (current {old_f1})"
 
 
+def pick_threshold(task: dict, target: float):
+    """The cut-off for a task at the wanted agreement: from its curve when recorded, else its main cut-off."""
+    curve = task.get("curve") or {}
+    for t, v in sorted(((float(k), v) for k, v in curve.items()), reverse=True):
+        if t <= target + 1e-9:
+            return v.get("threshold")
+    return task.get("threshold")
+
+
 def save_record(session: Session, metrics: dict, url: str, digest: str) -> None:
     """Remember where the model is and how far to trust each task (the analyse step reads this)."""
     from .tanglish import ensure_table
 
     ensure_table(session)
     tasks = metrics.get("tasks", {})
+    targets = task_targets()
     payload = {"url": url, "sha256": digest, "max_len": MAX_LEN, "moods": MOODS, "emotions": EMOTIONS, "flags": FLAGS,
                "aspects": ASPECTS, "aspect_states": ASPECT_STATES,
-               "thresholds": {k: v.get("threshold") for k, v in tasks.items()}}
+               "thresholds": {k: pick_threshold(v, targets.get(k, TARGET)) for k, v in tasks.items()}}
     session.execute(text("delete from local_models where name = :n"), {"n": NAME})
     session.execute(text("insert into local_models (name, trained_at, metrics, payload) values (:n, now() at time zone 'utc', :m, :p)"),
                     {"n": NAME, "m": json.dumps(metrics), "p": json.dumps(payload)})

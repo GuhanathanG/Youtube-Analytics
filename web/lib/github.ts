@@ -66,3 +66,28 @@ export async function recentRuns(limit = 5): Promise<RunInfo[] | null> {
     status: r.status, conclusion: r.conclusion, created_at: r.created_at, html_url: r.html_url, event: r.event,
   }));
 }
+
+/* ------------------------------------------------------------------ Model Lab: any workflow */
+export type LabRun = RunInfo & { id: number; name: string; run_number: number; updated_at: string };
+
+/** Start a workflow on main (e.g. "reader.yml" to train the Pulse Reader). */
+export async function dispatchWorkflow(file: string, inputs?: Record<string, string>): Promise<{ ok: boolean; message: string }> {
+  if (!githubConfigured()) return { ok: false, message: "Add GITHUB_TOKEN in Vercel to start runs from here." };
+  if (!/^[a-z0-9-]+\.yml$/.test(file)) return { ok: false, message: "Unknown workflow." };
+  const res = await gh(`/actions/workflows/${file}/dispatches`, { method: "POST", body: JSON.stringify({ ref: "main", ...(inputs ? { inputs } : {}) }) });
+  if (res.status === 204) return { ok: true, message: "Started on GitHub. It shows below within a minute." };
+  if (res.status === 401 || res.status === 403) return { ok: false, message: "GitHub refused the token. It needs Actions: Read and write on this repository." };
+  return { ok: false, message: `GitHub said ${res.status}: ${(await res.text()).slice(0, 160)}` };
+}
+
+/** Latest runs of one workflow, newest first (null when GitHub can't be reached). */
+export async function workflowRuns(file: string, limit = 5): Promise<LabRun[] | null> {
+  if (!githubConfigured()) return null;
+  const res = await gh(`/actions/workflows/${file}/runs?per_page=${limit}`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return (data.workflow_runs ?? []).map((r: LabRun) => ({
+    id: r.id, name: r.name, run_number: r.run_number, status: r.status, conclusion: r.conclusion, created_at: r.created_at,
+    updated_at: r.updated_at, html_url: r.html_url, event: r.event,
+  }));
+}

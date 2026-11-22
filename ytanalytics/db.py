@@ -72,6 +72,7 @@ class Channel(Base):
     # None = YouTube; "instagram" = an Instagram account (collected by the website engine via Apify).
     platform: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # None = one of your channels; "competitor" = watched for videos and stats only (no comments: saves quota and AI).
+    # "training" = watched only to teach the models (videos and stats, no comments); hidden from the dashboard.
     role: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Paging through the full upload history happens once, possibly across several runs.
     videos_backfilled: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -507,3 +508,10 @@ def upsert(
     else:
         stmt = stmt.on_conflict_do_nothing(index_elements=keys)
     session.execute(stmt)
+
+
+def not_training():
+    """SQL condition: a channel that isn't training-only (those just feed the models: no comments, AI or alerts)."""
+    from sqlalchemy import or_
+
+    return or_(Channel.role.is_(None), Channel.role != "training")

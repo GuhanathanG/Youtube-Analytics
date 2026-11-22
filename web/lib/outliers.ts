@@ -17,7 +17,7 @@ export function outlierData(): Promise<OutlierData> {
 
 async function compute(): Promise<OutlierData> {
   const db = sql();
-  const chans = (await db`select id, title, thumbnail_url as thumb, role from channels where active`) as unknown as ChannelInfo[];
+  const chans = (await db`select id, title, thumbnail_url as thumb, role from channels where active and coalesce(role, '') <> 'training'`) as unknown as ChannelInfo[];
   if (!chans.length) return { scored: [], channels: [] };
   const vids = (await db`select id, channel_id, title, thumbnail_url, duration, view_count::float8 as view_count,
       like_count::float8 as like_count, comment_count::float8 as comment_count, published_at::text as published_at,

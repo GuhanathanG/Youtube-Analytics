@@ -19,7 +19,7 @@ from datetime import timedelta
 from sqlalchemy import case, func, literal_column, or_, select, update
 from sqlalchemy.orm import Session
 
-from .db import Channel, Comment, Insight, RunLog, Video, utcnow
+from .db import Channel, Comment, Insight, RunLog, Video, not_training, utcnow
 from .llm import LLMRouter, NoModelAvailable
 from .quick_labels import quick_label
 
@@ -223,7 +223,7 @@ class AIRunner:
             except NoModelAvailable:
                 return written
             written += 1
-        for channel in self.s.scalars(select(Channel).where(Channel.active.is_(True))).all():
+        for channel in self.s.scalars(select(Channel).where(Channel.active.is_(True), not_training())).all():
             if not self._time_left():
                 break
             last = self._last_insight("channel", channel.id)
@@ -268,7 +268,7 @@ class AIRunner:
             return []
         videos = self.s.scalars(
             select(Video).join(Channel, Channel.id == Video.channel_id)
-            .where(Video.id.in_(due), Channel.active.is_(True))
+            .where(Video.id.in_(due), Channel.active.is_(True), not_training())
             .order_by(Video.published_at.desc())
         ).all()
         return list(videos)

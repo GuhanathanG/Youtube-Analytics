@@ -131,7 +131,7 @@ export async function sendWeeklyReports(now = new Date()): Promise<number> {
   const { channelHealth, unansweredQuestions } = await import("./creator-insights");
   const { channelAnalytics, channelTopics } = await import("./analytics");
   const week = now.toISOString().slice(0, 10);
-  const chans = await sql()`select id, title from channels where active`;
+  const chans = await sql()`select id, title from channels where active and coalesce(role, '') <> 'training'`;
   let sent = 0;
   for (const c of chans) {
     const [done] = await sql()`select 1 from alerts where key = ${`weekly:${c.id}:${week}`}`;

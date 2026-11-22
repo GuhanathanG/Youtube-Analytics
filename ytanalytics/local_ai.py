@@ -25,7 +25,7 @@ from datetime import timedelta
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from .db import Channel, Comment, Topic, utcnow
+from .db import Channel, Comment, Topic, not_training, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -234,7 +234,7 @@ def build_topics(session: Session, embed=None, router=None, *, min_comments: int
     """Group each active channel's recent comments into themes. Returns how many channels were updated."""
     now = now or utcnow()
     updated = 0
-    for ch in session.scalars(select(Channel).where(Channel.active)):
+    for ch in session.scalars(select(Channel).where(Channel.active, not_training())):
         if deadline is not None and time.monotonic() > deadline:
             break
         last = session.scalar(select(func.max(Topic.created_at)).where(Topic.channel_id == ch.id))
@@ -324,7 +324,7 @@ def _name_groups(router, groups, kw, rows) -> dict[int, str]:
 
 def topics_due(session: Session, every_hours: float = 20) -> bool:
     now = utcnow()
-    for ch_id in session.scalars(select(Channel.id).where(Channel.active)):
+    for ch_id in session.scalars(select(Channel.id).where(Channel.active, not_training())):
         last = session.scalar(select(func.max(Topic.created_at)).where(Topic.channel_id == ch_id))
         if not last or now - last >= timedelta(hours=every_hours):
             return True

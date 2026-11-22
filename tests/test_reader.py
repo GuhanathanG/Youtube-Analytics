@@ -62,3 +62,45 @@ def test_new_model_only_replaces_when_not_worse():
     assert should_replace(new, {"tasks": {"mood": {"macro_f1": 0.805}}})[0]
     assert not should_replace(new, {"tasks": {"mood": {"macro_f1": 0.85}}})[0]
     assert not should_replace({"trained": False, "reason": "x"}, None)[0]
+
+
+def test_archive_reader_rows_split_full_and_partial():
+    from datetime import datetime
+
+    from ytanalytics.archive_ai import reader_rows
+
+    def pred(mood_conf):
+        return {"sentiment": "positive", "score": 0.8, "emotion": "joy", "is_question": False, "is_suggestion": False,
+                "is_spam": False, "is_toxic": False, "aspects": "host:pos",
+                "conf": {"mood": mood_conf, "emotion": 0.9, "question": 0.99, "suggestion": 0.99, "spam": 0.99,
+                         "toxic": 0.99, "aspects": 0.5}}
+
+    th = {"mood": 0.8, "emotion": 0.6, "question": 0.9, "suggestion": 0.9, "spam": 0.9, "toxic": 0.9, "aspects": 0.9}
+
+    def trusted(p):
+        out = {}
+        for task, field in [("mood", "sentiment"), ("emotion", "emotion"), ("aspects", "aspects"), ("question", "is_question"),
+                            ("suggestion", "is_suggestion"), ("spam", "is_spam"), ("toxic", "is_toxic")]:
+            if p["conf"][task] >= th[task]:
+                out[field] = p[field]
+                if task == "mood":
+                    out["score"] = p["score"]
+        return out
+
+    now = datetime(2026, 11, 22)
+    rows, full = reader_rows(["a", "b"], [pred(0.95), pred(0.5)], trusted, now)
+    assert full == 1
+    a, b = rows
+    assert a["ai_model"] == "local/pulse-reader" and a["ai_at"] == now and a["sentiment"] == "positive"
+    assert "aspects" not in a and "score" not in a and a["sentiment_source"] == "reader"
+    assert b == {"id": "b", "analyzer": "pulse-reader"}  # untrusted mood: only marked as seen
+
+
+def test_per_task_bar_picked_from_curve():
+    from ytanalytics.reader import pick_threshold, task_targets
+
+    task = {"threshold": None, "curve": {"0.95": {"threshold": None}, "0.9": {"threshold": None},
+                                         "0.85": {"threshold": 0.7}, "0.8": {"threshold": 0.5}}}
+    assert pick_threshold(task, 0.8) == 0.5 and pick_threshold(task, 0.85) == 0.7 and pick_threshold(task, 0.9) is None
+    assert pick_threshold({"threshold": 0.6}, 0.8) == 0.6  # older metrics without a curve
+    assert task_targets({"READER_TARGETS": "emotion=0.75"}) == {"emotion": 0.75}
