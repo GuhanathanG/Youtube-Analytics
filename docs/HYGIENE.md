@@ -33,12 +33,14 @@
 - **4 "unused" indexes (INFO):** the two trigram indexes serve comment search, which is rare, so the counters show zero. They are left in place.
 - **`share_links` foreign key without an index (INFO):** the table has a handful of rows.
 - **Usage counters under parallel load:** when the 3 archive readers bump the same model's request counter at the same moment, one bump can overwrite another. Daily counts can then read slightly low; this is not a crash. It could be made exact with an atomic `requests = requests + 1` update.
-- **Old pull request [GuhanathanG/Youtube-Analytics#21](https://github.com/GuhanathanG/Youtube-Analytics/pull/21)** ("Install and configure Vercel Web Analytics", opened by Vercel on 6 Nov): still open and unmerged. Merge or close it.
 - **Packages with newer major versions** (`typescript` 7, `postgres` 4, `web-push` 4, `@types/node`): no security reason to move. Upgrade deliberately, with testing.
 
-## Needs your decision
-- **`cron.job_run_details` keeps growing.**
-  - The `reap-stuck-pooler-connections` job runs every 15 seconds and logs every run: 72,391 rows (13 MB) in 13 days, all successful.
-  - That is about 1 MB a day on a 500 MB free plan, forever.
-  - **Suggested fix:** a daily clean-up that keeps the last 3 days. It deletes only old log rows, but it does delete, so it waits for your OK.
+## Done after review (22 Nov)
+- **Cron log clean-up:** a new `pg_cron` job, `purge-cron-history`, runs daily at 03:17 UTC and deletes `cron.job_run_details` rows older than 3 days.
+  - It was run once by hand: 55,235 old rows deleted, 17,240 left (the last 3 days).
+  - The table file stays 13 MB, because Postgres reuses the freed space instead of returning it. It no longer grows.
+  - This job lives in the database (like `reap-stuck-pooler-connections`), not in the repo.
+- **Old pull request #21** (Vercel Web Analytics) was closed without merging.
+
+## Still open
 - **Change the Mumbai database password and `CRON_SECRET`** (reminder).
