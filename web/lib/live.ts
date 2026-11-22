@@ -200,10 +200,9 @@ async function fetchNewComments(v: { id: string; channel_id: string; latest_comm
 }
 
 /* ------------------------------------------------------------------ add a channel right away */
-export async function addChannelNow(query: string, opts: { training?: boolean } = {}): Promise<{ ok: boolean; message: string; channelId?: string }> {
+export async function addChannelNow(query: string): Promise<{ ok: boolean; message: string; channelId?: string }> {
   const db = sql();
   if (!youtubeConfigured()) {
-    if (opts.training) return { ok: false, message: "Add YOUTUBE_API_KEY in Vercel first." };
     await db`insert into channel_requests (query, status, created_at) values (${query}, 'pending', ${nowSql()})`;
     return { ok: true, message: `Queued ${query}. Add YOUTUBE_API_KEY in Vercel to add channels instantly.` };
   }
@@ -214,25 +213,8 @@ export async function addChannelNow(query: string, opts: { training?: boolean } 
         values (${query}, 'error', 'Channel not found. Try the @handle or channel link.', ${nowSql()})`;
       return { ok: false, message: "Couldn't find that channel. Try its @handle or channel link." };
     }
-    const [already] = await db`select role from channels where id = ${item.id}`;
     await saveChannel(item);
     await db`insert into channel_requests (query, status, channel_id, created_at) values (${query}, 'done', ${item.id}, ${nowSql()})`;
-    if (opts.training) {
-      // Model Lab: videos and stats only (no comments); the background job fills in the full upload history.
-      // A channel you already track on the dashboard keeps its role.
-      if (!already) {
-        await ensureColumns("channels", [["role", "text"]]);
-        await db`update channels set role = 'training' where id = ${item.id}`;
-      }
-      const playlist = item.contentDetails?.relatedPlaylists?.uploads;
-      if (playlist) {
-        const page = await listUploads(playlist).catch(() => ({ items: [] as { contentDetails: { videoId: string } }[] }));
-        await saveVideos(item.id, await getVideos((page.items ?? []).map((i) => i.contentDetails.videoId)));
-      }
-      return { ok: true, channelId: item.id, message: already
-        ? `${item.snippet?.title ?? query} is already tracked on the dashboard, so the models already learn from it.`
-        : `Now learning from ${item.snippet?.title ?? query}: newest uploads saved, the full back-catalogue follows in the background.` };
-    }
     // Bootstrap: newest 50 uploads and the newest comments of the latest 3 videos.
     const playlist = item.contentDetails?.relatedPlaylists?.uploads;
     let commentIds: string[] = [];
@@ -250,7 +232,6 @@ export async function addChannelNow(query: string, opts: { training?: boolean } 
       message: `Now watching ${item.snippet?.title ?? query}: ${commentIds.length} newest comments loaded${labelled ? `, ${labelled} read by AI` : ""}. Full history keeps downloading in the background.` };
   } catch (e) {
     if (e instanceof QuotaExhausted) {
-      if (opts.training) return { ok: false, message: "YouTube's daily quota is used up. Try again tomorrow." };
       await db`insert into channel_requests (query, status, created_at) values (${query}, 'pending', ${nowSql()})`;
       return { ok: true, message: `YouTube's daily quota is used up, so ${query} is queued for tomorrow.` };
     }
@@ -451,8 +432,9 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
 
     // 2b. Older videos: walk each channel's upload history, 2 pages (100 videos) per run,
     //     resuming where the last run (or the background job) stopped.
-    const walking = await db`select id, uploads_playlist_id, videos_page_token from channels
+    const walking = await db`select id, uploads_playlist_id, videos_page_token, role from channels
       where active and not videos_backfilled and uploads_playlist_id is not null limit 2`;
+    const trainingCap = Number(process.env.TRAINING_MAX_VIDEOS ?? 500);
     for (const c of walking) {
       let token = (c.videos_page_token as string | null) ?? undefined;
       for (let page = 0; page < 2 && timeLeft(); page++) {
@@ -472,6 +454,11 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
           if (newIds.length) await saveVideos(c.id as string, await getVideos(newIds));
         }
         token = data.nextPageToken;
+        if (c.role === "training" && token) {
+          // Training channels keep only their newest uploads (enough to learn from, light on the free database).
+          const [n] = await db`select count(*)::int as n from videos where channel_id = ${c.id}`;
+          if (Number(n?.n ?? 0) >= trainingCap) token = undefined;
+        }
         await db`update channels set videos_page_token = ${token ?? null}, videos_backfilled = ${!token} where id = ${c.id}`;
         if (!token) break;
       }
@@ -482,7 +469,9 @@ export async function liveTick(source: "browser" | "cron" = "browser"): Promise<
     //    every 2 hours, anything older once a day — so late comments on old videos are caught too.
     const recent = await db`
       select v.id, v.channel_id from videos v join channels c on c.id = v.channel_id
-      where c.active and c.platform is null and not v.comments_disabled and (
+      where c.active and c.platform is null and not v.comments_disabled
+        -- training-only channels: just their last 30 days here (older ones are refreshed weekly by the background job)
+        and (coalesce(c.role, '') <> 'training' or v.published_at >= (now() at time zone 'utc') - interval '30 days') and (
         v.stats_updated_at is null or v.published_at is null
         or (v.published_at >= (now() at time zone 'utc') - interval '2 days')
         or (v.published_at >= (now() at time zone 'utc') - interval '14 days' and v.stats_updated_at < (now() at time zone 'utc') - interval '15 minutes')

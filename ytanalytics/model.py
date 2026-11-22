@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -540,8 +541,17 @@ def train(session, now: datetime | None = None) -> dict:
 
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     _ensure_tables(session)
+    from .progress import Progress
+
+    prog = Progress(session, "engine")
     # One model per platform: YouTube videos and Instagram posts live on different scales and patterns.
-    results = {p: _train_platform(session, p, now) for p in ("youtube", "instagram")}
+    results = {}
+    for i, p in enumerate(("youtube", "instagram")):
+        prog.update(f"training on {p} videos (tests both signal sets on the newest 20%)", i, 2, force=True)
+        results[p] = _train_platform(session, p, now)
+    yt = results.get("youtube") or {}
+    prog.done(f"YouTube: {yt.get('videos', 0):,} videos from {yt.get('channels', 0)} channels, "
+              f"within 2x {((yt.get('metrics') or {}).get('within_2x') or 0):.0%}" if yt.get("trained") else "not enough videos yet")
     out = dict(results["youtube"])
     out["platforms"] = results
     # New forecasts and drivers: sections built on them (Next moves, timeline, predictions, Studio) refresh.
@@ -560,10 +570,16 @@ def _train_platform(session, platform: str, now: datetime) -> dict:
                v.view_count, v.like_count, v.comment_count, coalesce(c.platform, 'youtube') as platform
         from videos v join channels c on c.id = v.channel_id
         where v.published_at is not null and coalesce(c.platform, 'youtube') = :p"""), {"p": platform})]
-    examples = build_examples(rows, now)
-    snaps = [dict(r._mapping) for r in session.execute(text("""
+    snap_sql = text("""
         select s.video_id, v.channel_id, extract(epoch from (s.taken_at - v.published_at)) / 3600 as age_h, s.view_count as views
-        from video_snapshots s join videos v on v.id = s.video_id"""))]
+        from video_snapshots s join videos v on v.id = s.video_id""")
+    snaps = [dict(r._mapping) for r in session.execute(snap_sql)]
+    # Training channels (other creators in the niche) live in their own database: learn from them too.
+    extra = training_rows(session, platform, snap_sql)
+    known = {r["id"] for r in rows}
+    rows += [r for r in extra["rows"] if r["id"] not in known]
+    snaps += extra["snaps"]
+    examples = build_examples(rows, now)
     add_creator_features(session, examples, snaps)
     train_set = [e for e in examples if e.age_days >= MATURE_DAYS and e.views is not None]
     channels = sorted({e.channel_id for e in train_set})
@@ -626,6 +642,32 @@ def _train_platform(session, platform: str, now: datetime) -> dict:
     log.info("Prediction engine (%s) trained on %d videos from %d channels; backtest %s; %d forecasts",
              platform, len(train_set), len(channels), metrics, saved)
     return {"trained": True, "videos": len(train_set), "channels": len(channels), "metrics": metrics, "forecasts": saved}
+
+
+def training_rows(session, platform: str, snap_sql) -> dict:
+    """Videos and snapshots from the training database (empty when there is none or it can't be reached)."""
+    from sqlalchemy import text
+
+    if platform != "youtube" or os.environ.get("ENGINE_USE_TRAINING", "1") != "1":
+        return {"rows": [], "snaps": []}
+    try:
+        from .training import training_engine
+
+        engine = training_engine(session)
+        if engine is None:
+            return {"rows": [], "snaps": []}
+        with engine.connect() as c:
+            rows = [dict(r._mapping) for r in c.execute(text("""
+                select v.id, v.channel_id, v.title, v.description, v.duration, null as tags, null as has_captions, null as live_status,
+                       v.published_at, v.view_count, v.like_count, v.comment_count, 'youtube' as platform
+                from videos v join channels c on c.id = v.channel_id where v.published_at is not null and c.active"""))]
+            snaps = [dict(r._mapping) for r in c.execute(snap_sql)]
+        engine.dispose()
+        log.info("Prediction engine: +%d videos from the training database", len(rows))
+        return {"rows": rows, "snaps": snaps}
+    except Exception as e:  # never let the training database stop the nightly engine
+        log.warning("Training database skipped: %s", str(e).splitlines()[0][:200])
+        return {"rows": [], "snaps": []}
 
 
 def add_creator_features(session, examples: list[Example], snaps: list[dict]) -> None:

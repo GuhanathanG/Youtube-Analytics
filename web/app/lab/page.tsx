@@ -3,6 +3,7 @@ import { ago, compact } from "@/lib/format";
 import { workflowRuns, githubConfigured, type LabRun } from "@/lib/github";
 import { TRAINERS, engineModels, readerModel, tanglishModel, trainingData, type EngineScore, type ReaderTask } from "@/lib/lab";
 import { TrainButton } from "./LabControls";
+import { LiveTraining } from "./LiveTraining";
 
 export const metadata = { title: "Models" };
 
@@ -46,6 +47,7 @@ export default async function LabPage() {
     within(readerModel(), 6000, null), within(engineModels(), 6000, []), within(tanglishModel(), 6000, null),
     within(trainingData(), 8000, null), within(workflowRuns(TRAINERS.reader.file, 4), 6000, null), within(workflowRuns(TRAINERS.engine.file, 4), 6000, null),
   ]);
+  const channelRuns = await within(workflowRuns(TRAINERS.channels.file, 3), 6000, null);
   const canStart = githubConfigured();
   return (
     <>
@@ -55,6 +57,8 @@ export default async function LabPage() {
         <p className="lede mt-5">Each model trains on GitHub&apos;s free machines, is tested on data it never saw, and only replaces the one in use when it does at
           least as well. Start a run here, then add channels to learn from on <a className="text-[var(--cyan)]" href="/lab/channels">Training channels</a>.</p>
       </section>
+
+      <LiveTraining />
 
       {/* Pulse Reader */}
       <section className="mt-14 grid gap-px bg-[var(--hair)] lg:grid-cols-[1.4fr_1fr]">
@@ -128,6 +132,9 @@ export default async function LabPage() {
           <p className="mt-3 text-[13.5px] text-ink-2">{TRAINERS.engine.what} Runs by itself every night.</p>
           <div className="mt-4">{canStart ? <TrainButton which="engine" label="Train Creator Model now" /> : <p className="text-[13px] text-ink-3">Add GITHUB_TOKEN in Vercel to start runs from here.</p>}</div>
           <RunList runs={engineRuns} />
+          <p className="mt-6 text-[13.5px] text-ink-2">{TRAINERS.channels.what}</p>
+          <div className="mt-3">{canStart ? <TrainButton which="channels" label="Refresh training channels now" /> : null}</div>
+          <RunList runs={channelRuns} />
         </div>
       </section>
 
@@ -155,8 +162,9 @@ export default async function LabPage() {
           <div className="mt-5 grid gap-px bg-[var(--hair)] sm:grid-cols-2 lg:grid-cols-4">
             {[
               ["Comments read by the cloud AI", compact(data.aiLabelledMain + data.aiLabelledArchive), `${compact(data.aiLabelledMain)} recent + ${compact(data.aiLabelledArchive)} archived`],
-              ["Videos", compact(Object.values(data.videos).reduce((a, b) => a + b, 0)),
-                Object.entries(data.videos).map(([k, v]) => `${compact(v)} ${k === "yours" ? "yours" : k === "competitor" ? "competitors'" : "training"}`).join(" · ")],
+              ["Videos", compact(Object.values(data.videos).reduce((a, b) => a + b, 0) + data.trainingVideos),
+                [...Object.entries(data.videos).map(([k, v]) => `${compact(v)} ${k === "yours" ? "yours" : k === "competitor" ? "competitors'" : "other"}`),
+                  `${compact(data.trainingVideos)} from ${data.trainingChannels} training channels`].join(" · ")],
               ["Views snapshots", compact(data.snapshots), `${data.earlySnapshotVideos} videos with a first-day reading`],
               ["Thumbnails analysed", compact(data.thumbnails), `${compact(data.archiveComments)} comments in the archive`],
             ].map(([label, value, note]) => (

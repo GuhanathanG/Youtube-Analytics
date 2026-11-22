@@ -72,6 +72,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("tanglish-train", help="train our own Tanglish-aware mood model on AI-labelled comments (E5)")
     rt = sub.add_parser("reader-train", help="fine-tune the Pulse Reader (our own comment-reading model) and export it")
     rt.add_argument("--out", default="reader-out")
+    ts_ = sub.add_parser("training-seed", help="add researched niche channels (and Model Lab requests) to the training database")
+    ts_.add_argument("--file", default="data/training/tamil_channels.json")
+    tsy = sub.add_parser("training-sync", help="keep the training database's channels and videos fresh")
+    tsy.add_argument("--minutes", type=float, default=20)
     sub.add_parser("reader-status", help="the Pulse Reader in use: download URL and held-out results")
     rs = sub.add_parser("reader-save", help="record a published Pulse Reader (download URL + metrics) for the analyse step")
     rs.add_argument("--out", default="reader-out")
@@ -253,6 +257,16 @@ def main(argv: list[str] | None = None) -> int:
 
             res = reader_train(session, args.out)
             print(json.dumps(res.metrics, default=str))
+        elif args.cmd == "training-seed":
+            from .training import seed
+            from .youtube import QuotaTracker, YouTubeClient
+
+            yt = YouTubeClient(settings.youtube_api_key, QuotaTracker(session, settings.daily_quota))
+            print(json.dumps(seed(session, yt, args.file or None)))
+        elif args.cmd == "training-sync":
+            from .training import sync as training_sync
+
+            print(json.dumps(training_sync(session, settings, args.minutes), default=str))
         elif args.cmd == "reader-status":
             from .reader import load_record
 

@@ -39,6 +39,7 @@ from .db import (
 )
 from .youtube import QuotaExhausted, QuotaTracker, YouTubeClient, YouTubeError
 
+TRAINING_MAX_VIDEOS = int(os.environ.get("TRAINING_MAX_VIDEOS", "500"))  # newest uploads kept per training-only channel
 log = logging.getLogger(__name__)
 
 COMMENT_UPDATE_COLS = [
@@ -181,6 +182,13 @@ class Syncer:
                     break
         if channel.videos_backfilled:
             return
+        if channel.role == "training":
+            # Training-only channels keep their newest uploads only (enough to learn from, light on the database).
+            n = self.s.scalar(select(func.count()).select_from(Video).where(Video.channel_id == channel.id)) or 0
+            if n >= TRAINING_MAX_VIDEOS:
+                channel.videos_backfilled, channel.videos_page_token = True, None
+                self.s.commit()
+                return
         # A slice of the upload history (resumable across runs).
         token = channel.videos_page_token
         for _ in range(max(1, self.settings.upload_pages_per_run)):
@@ -201,6 +209,9 @@ class Syncer:
             known = set(self.s.scalars(select(Video.id).where(Video.id.in_(ids))).all()) if ids else set()
             self._save_videos(channel, [v for v in ids if v not in known])
             token = data.get("nextPageToken")
+            if token and channel.role == "training" and (self.s.scalar(
+                    select(func.count()).select_from(Video).where(Video.channel_id == channel.id)) or 0) >= TRAINING_MAX_VIDEOS:
+                token = None  # newest uploads only for training channels
             channel.videos_page_token = token
             if not token:
                 channel.videos_backfilled = True
@@ -217,10 +228,10 @@ class Syncer:
         if not ids:
             return
         items = self.yt.get_videos(ids)
-        self._write_videos(channel.id, items)
+        self._write_videos(channel.id, items, young_snapshots_only=channel.role == "training")
         self.stats.videos_discovered += len(items)
 
-    def _write_videos(self, channel_id: str, items: list[dict]) -> None:
+    def _write_videos(self, channel_id: str, items: list[dict], young_snapshots_only: bool = False) -> None:
         if not items:
             return
         now = utcnow()
@@ -237,13 +248,16 @@ class Syncer:
                 "comments_disabled": "commentCount" not in st, "comments_backfilled": False,
             }
             rows.append(row)
+            if young_snapshots_only and (row["published_at"] is None or row["published_at"] < now - timedelta(days=30)):
+                continue  # training channels: views over time only while a video is young (the early-hours signal)
             snaps.append({"video_id": row["id"], "taken_at": now, "view_count": row["view_count"],
                           "like_count": row["like_count"], "comment_count": row["comment_count"]})
         upsert(self.s, Video, rows, ["id"], [
             "title", "description", "published_at", "thumbnail_url", "duration", "view_count", "like_count",
             "comment_count", "stats_updated_at", "comments_disabled",
         ])
-        self.s.execute(insert(VideoSnapshot), snaps)
+        if snaps:
+            self.s.execute(insert(VideoSnapshot), snaps)
         self.s.commit()
         self.s.expire_all()  # ORM objects loaded earlier must see the new numbers
 
@@ -261,13 +275,14 @@ class Syncer:
                 continue
             age = now - updated
             is_recent = published is not None and published >= recent_cutoff
-            if (is_recent and age > timedelta(minutes=25)) or age > timedelta(hours=23):
+            old_every = timedelta(days=7) if channel.role == "training" else timedelta(hours=23)
+            if (is_recent and age > timedelta(minutes=25)) or age > old_every:
                 due.append(vid)
         for i in range(0, len(due), 50):
             self._check_time()
             chunk = due[i:i + 50]
             items = self.yt.get_videos(chunk)
-            self._write_videos(channel.id, items)
+            self._write_videos(channel.id, items, young_snapshots_only=channel.role == "training")
             self.stats.videos_stats_refreshed += len(items)
             gone = set(chunk) - {it["id"] for it in items}
             if gone:  # deleted or made private: don't ask again until tomorrow

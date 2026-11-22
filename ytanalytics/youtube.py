@@ -127,6 +127,14 @@ class YouTubeClient:
             raise ValueError("ids, handle or username required")
         return self._get("channels", params).get("items", [])
 
+    def search_channel(self, name: str, region: str = "IN", language: str = "ta") -> list[dict]:
+        """Channels matching a name (YouTube search: 100 quota units), with full details, most subscribed first."""
+        data = self._get("search", {"part": "snippet", "type": "channel", "q": name, "maxResults": 5,
+                                    "regionCode": region, "relevanceLanguage": language}, cost=100)
+        ids = [it["id"]["channelId"] for it in data.get("items", []) if it.get("id", {}).get("channelId")]
+        items = self.get_channels(ids=ids) if ids else []
+        return sorted(items, key=lambda c: -int(c.get("statistics", {}).get("subscriberCount") or 0))
+
     def resolve_channel(self, query: str) -> dict | None:
         """Turn a URL, @handle, channel ID or video URL into a channel resource."""
         kind, value = parse_channel_query(query)

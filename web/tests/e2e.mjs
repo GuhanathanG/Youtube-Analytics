@@ -718,19 +718,26 @@ try {
   const [lock] = await db`select 1 from panel_cache where key = 'lock:heavy'`;
   check("heavy-work run releases its lock", !lock);
 
-  // Model Lab: a training-only channel feeds the models but stays off the dashboard
-  await db`insert into channels (id, title, active, videos_backfilled, added_at, role)
-    values ('UCtrainingtrainingtrain0', 'Training Only Creator', true, false, now(), 'training') on conflict (id) do update set role = 'training'`;
-  const labCh = await (await get("/lab/channels")).text();
-  check("Model Lab lists the training channel", labCh.includes("Training Only Creator"));
+  // Model Lab: pages load; a training-only channel never shows on the dashboard; the live training feed works
+  check("Model Lab training channels page loads", (await get("/lab/channels")).status === 200);
   const labHome = await (await get("/lab")).text();
   check("Model Lab shows the models and what they learn from", labHome.includes("Pulse Reader") && labHome.includes("Creator Model") && labHome.includes("What the models learn from"));
+  await db`insert into channels (id, title, active, videos_backfilled, added_at, role)
+    values ('UCtrainingtrainingtrain0', 'Training Only Creator', true, false, now(), 'training') on conflict (id) do update set role = 'training'`;
   for (const path of ["/manage", "/"]) {
     check(`training channel stays off ${path}`, !(await (await get(path)).text()).includes("Training Only Creator"));
   }
   const tsearch = await (await get("/api/search?q=Training%20Only")).json();
   check("search doesn't surface training channels", !tsearch.channels?.some((c) => c.title === "Training Only Creator"));
   await db`delete from channels where id = 'UCtrainingtrainingtrain0'`;
+  await db`create table if not exists training_progress (job text primary key, run_id text, phase text, step integer, total integer,
+    loss double precision, history text, note text, started_at timestamp, updated_at timestamp)`;
+  await db`insert into training_progress values ('reader', 'e2e', 'training', 120, 400, 0.82, '[1.4,1.1,0.9,0.82]', 'e2e', now() - interval '5 minutes', now())
+    on conflict (job) do update set phase = 'training', step = 120, total = 400, updated_at = now()`;
+  const live = await (await get("/api/lab/progress")).json();
+  check("live training feed reports a running job", live.jobs?.some((j) => j.job === "reader" && j.step === 120 && j.total === 400 && j.history?.length === 4));
+  check("live training feed needs sign-in", (await fetch(`${BASE}/api/lab/progress`)).status === 401);
+  await db`delete from training_progress where run_id = 'e2e'`;
 
   // Use case: every page renders with real data
   for (const path of ["/", "/comments?q=semma", "/manage", `/channels/${ch?.id}`, "/videos/livevid0001", "/api/export?q=semma",
