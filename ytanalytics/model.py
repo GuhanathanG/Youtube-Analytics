@@ -178,6 +178,64 @@ FEATURES = sorted(set(LINEAR_FEATURES) | {"title_words", "has_year", "has_hashta
                                           "momentum", "log_baseline"})
 
 
+BASE_FEATURES = list(FEATURES)
+# Creator Model v1 additions: what the thumbnail looks like (AI thumbnail analysis) and how the video did in its first
+# hours (snapshots). Missing values stay NaN: the trees learn from them where they exist.
+THUMB_FEATURES = ["thumb_face", "thumb_faces", "thumb_happy_face", "thumb_text", "thumb_text_words", "thumb_bright",
+                  "thumb_dark", "thumb_high_contrast", "thumb_clickbait", "thumb_emoji", "thumb_arrow", "thumb_english_text"]
+EARLY_FEATURES = ["early_6h", "early_24h", "early_48h"]
+PLUS_FEATURES = sorted(set(BASE_FEATURES) | set(THUMB_FEATURES) | set(EARLY_FEATURES))
+NAN = float("nan")
+
+
+def use_features(names: list[str]) -> None:
+    """Pick the feature set the rest of the engine (matrix, drivers, forecasts) works with."""
+    global FEATURES
+    FEATURES = list(names)
+
+
+def thumb_features(data: str | dict | None) -> dict[str, float]:
+    """Numbers from the AI thumbnail analysis (faces, text, light, contrast, clickbait 0-5, design elements)."""
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except ValueError:
+            data = None
+    if not isinstance(data, dict):
+        return {k: NAN for k in THUMB_FEATURES}
+    faces = data.get("faces")
+    faces = float(faces) if isinstance(faces, (int, float)) else NAN
+    words = data.get("text_words")
+    words = float(words) if isinstance(words, (int, float)) else NAN
+    emo = str(data.get("face_emotion") or "").lower()
+    elements = " ".join(str(x).lower() for x in (data.get("elements") or []))
+    bright = str(data.get("brightness") or "").lower()
+    clickbait = data.get("clickbait")
+    return {
+        "thumb_face": NAN if faces != faces else float(faces > 0),
+        "thumb_faces": NAN if faces != faces else min(5.0, faces),
+        "thumb_happy_face": float(any(w in emo for w in ("happy", "joy", "excit", "surpris", "smil", "laugh"))),
+        "thumb_text": NAN if words != words else float(words > 0),
+        "thumb_text_words": NAN if words != words else min(15.0, words),
+        "thumb_bright": float(bright == "bright"),
+        "thumb_dark": float(bright == "dark"),
+        "thumb_high_contrast": float(str(data.get("contrast") or "").lower() == "high"),
+        "thumb_clickbait": float(clickbait) if isinstance(clickbait, (int, float)) else NAN,
+        "thumb_emoji": float("emoji" in elements),
+        "thumb_arrow": float("arrow" in elements or "circle" in elements),
+        "thumb_english_text": float(str(data.get("text_language") or "").lower().startswith("english")),
+    }
+
+
+def early_features(points: list[tuple[float, float]], baseline: float) -> dict[str, float]:
+    """Views at ~6 h / 24 h / 48 h after publishing (nearest snapshot within ±30%), relative to the channel normal."""
+    out = {}
+    for name, h in (("early_6h", 6), ("early_24h", 24), ("early_48h", 48)):
+        near = [(abs(a - h), v) for a, v in points if abs(a - h) <= h * 0.3 and v is not None]
+        out[name] = math.log1p(min(near)[1]) - math.log1p(baseline) if near else NAN
+    return out
+
+
 def matrix(examples: list[Example], age_days: float | None = None):
     import numpy as np
 
@@ -185,12 +243,20 @@ def matrix(examples: list[Example], age_days: float | None = None):
     for e in examples:
         f = dict(e.features)
         f["log_age"] = math.log1p(age_days if age_days is not None else e.age_days)
-        rows.append([f[k] for k in FEATURES])
+        rows.append([f.get(k, NAN) for k in FEATURES])
     return np.array(rows, dtype=float)
 
 
 def _fit(X, y):
+    import numpy as np
     from sklearn.ensemble import HistGradientBoostingRegressor
+
+    # A signal missing for every training video (e.g. early-hours views before snapshots existed) can't be binned:
+    # treat it as a constant for fitting; at prediction time NaN simply follows the trees' default branch.
+    X = np.array(X, dtype=float, copy=True)
+    empty = np.all(np.isnan(X), axis=0)
+    if empty.any():
+        X[:, empty] = 0.0
 
     # Absolute error: one viral video shouldn't drag every prediction up. Small trees: little data per channel.
     m = HistGradientBoostingRegressor(max_iter=200, learning_rate=0.05, max_leaf_nodes=8, min_samples_leaf=12,
@@ -281,8 +347,15 @@ def drivers(model, train: list[Example], channel_examples: list[Example], keep_a
         "has_pipe": ("A | or – split in the title", "title"), "has_year": ("The year in the title", "title"),
         "has_hashtag": ("A #hashtag in the title", "title"), "has_captions": ("Captions/subtitles", "packaging"),
         "is_short": ("Shorts (vs long videos)", "format"), "is_weekend": ("Weekend uploads", "timing"),
+        "thumb_face": ("A face on the thumbnail", "thumbnail"), "thumb_happy_face": ("A smiling / excited face on the thumbnail", "thumbnail"),
+        "thumb_text": ("Text on the thumbnail", "thumbnail"), "thumb_bright": ("A bright thumbnail", "thumbnail"),
+        "thumb_dark": ("A dark thumbnail", "thumbnail"), "thumb_high_contrast": ("A high-contrast thumbnail", "thumbnail"),
+        "thumb_emoji": ("Emoji on the thumbnail", "thumbnail"), "thumb_arrow": ("Arrows / circles on the thumbnail", "thumbnail"),
+        "thumb_english_text": ("English text on the thumbnail", "thumbnail"),
     }
     for k, (label, kind) in labels.items():
+        if k not in idx:
+            continue
         col = idx[k]
         support_on = int(np.sum(allX[:, col] == 1))
         support_off = int(np.sum(allX[:, col] == 0))
@@ -488,13 +561,27 @@ def _train_platform(session, platform: str, now: datetime) -> dict:
         from videos v join channels c on c.id = v.channel_id
         where v.published_at is not null and coalesce(c.platform, 'youtube') = :p"""), {"p": platform})]
     examples = build_examples(rows, now)
+    snaps = [dict(r._mapping) for r in session.execute(text("""
+        select s.video_id, v.channel_id, extract(epoch from (s.taken_at - v.published_at)) / 3600 as age_h, s.view_count as views
+        from video_snapshots s join videos v on v.id = s.video_id"""))]
+    add_creator_features(session, examples, snaps)
     train_set = [e for e in examples if e.age_days >= MATURE_DAYS and e.views is not None]
     channels = sorted({e.channel_id for e in train_set})
     need = min_train(platform)
     if len(train_set) < need:
         log.info("Prediction engine (%s): %d usable videos, need %d", platform, len(train_set), need)
         return {"trained": False, "videos": len(train_set), "need": need}
-    metrics = backtest(train_set, need)
+    # Creator Model v1: the same engine with thumbnail + early-hours signals. Both are tested on the newest 20% and the
+    # better one is used (the current one wins ties), so adding signals can never make forecasts worse.
+    candidates = {}
+    for name, feats in (("base", BASE_FEATURES), ("creator_v1", PLUS_FEATURES)):
+        use_features(feats)
+        candidates[name] = backtest(train_set, need)
+    winner = pick_feature_set(candidates)
+    use_features(BASE_FEATURES if winner == "base" else PLUS_FEATURES)
+    metrics = dict(candidates[winner])
+    metrics["feature_set"] = winner
+    metrics["candidates"] = candidates
     graded = session.execute(text("""select f.first_views_30d f, f.actual_30d a from video_forecast f
         join channels c on c.id = f.channel_id
         where f.first_views_30d > 0 and f.actual_30d > 0 and coalesce(c.platform, 'youtube') = :p"""), {"p": platform}).all()
@@ -504,9 +591,6 @@ def _train_platform(session, platform: str, now: datetime) -> dict:
         metrics["live_within_2x"] = sum(x <= math.log(2) for x in errs) / len(errs)
     model = _fit(matrix(train_set), np.array([e.target for e in train_set]))
     linear = fit_linear(train_set)
-    snaps = [dict(r._mapping) for r in session.execute(text("""
-        select s.video_id, v.channel_id, extract(epoch from (s.taken_at - v.published_at)) / 3600 as age_h, s.view_count as views
-        from video_snapshots s join videos v on v.id = s.video_id"""))]
     stamp = now.replace(microsecond=0)
     mine = [r[0] for r in session.execute(text("select id from channels where active and coalesce(platform, 'youtube') = :p"), {"p": platform})]
     saved = 0
@@ -542,6 +626,34 @@ def _train_platform(session, platform: str, now: datetime) -> dict:
     log.info("Prediction engine (%s) trained on %d videos from %d channels; backtest %s; %d forecasts",
              platform, len(train_set), len(channels), metrics, saved)
     return {"trained": True, "videos": len(train_set), "channels": len(channels), "metrics": metrics, "forecasts": saved}
+
+
+def add_creator_features(session, examples: list[Example], snaps: list[dict]) -> None:
+    """Attach thumbnail-analysis and early-hours features to each example (NaN where unknown)."""
+    from sqlalchemy import text
+
+    thumbs: dict[str, str] = {}
+    try:
+        thumbs = {r.video_id: r.data for r in session.execute(text("select video_id, data from thumb_analysis where status = 'done'"))}
+    except Exception:  # table appears with the first thumbnail analysis
+        session.rollback()
+    points: dict[str, list[tuple[float, float]]] = {}
+    for sn in snaps:
+        if sn["age_h"] is not None and sn["views"] is not None:
+            points.setdefault(sn["video_id"], []).append((float(sn["age_h"]), float(sn["views"])))
+    for e in examples:
+        e.features.update(thumb_features(thumbs.get(e.video_id)))
+        e.features.update(early_features(points.get(e.video_id, []), e.baseline))
+
+
+def pick_feature_set(candidates: dict[str, dict]) -> str:
+    """The richer feature set wins only if it ranks videos better and isn't worse within 2x."""
+    base, plus = candidates.get("base") or {}, candidates.get("creator_v1") or {}
+    if not plus.get("tested") or not base.get("tested"):
+        return "base"
+    better_rank = (plus.get("rank_corr") or -1) > (base.get("rank_corr") or -1) + 0.01
+    not_worse = plus.get("within_2x", 0) >= base.get("within_2x", 0) - 0.005
+    return "creator_v1" if better_rank and not_worse else "base"
 
 
 def _latest_baseline(examples: list[Example]) -> float | None:
