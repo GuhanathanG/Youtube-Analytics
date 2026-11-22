@@ -45,6 +45,19 @@ export async function readerModel(): Promise<ReaderModel | null> {
   };
 }
 
+export type AnalystModel = { trainedAt: string; release: string | null; trainPairs: number; testPairs: number; validJson: number | null;
+  fields: number | null; overlap: number | null; base: string | null };
+
+export async function analystModel(): Promise<AnalystModel | null> {
+  const r = await localModel("pulse-analyst");
+  if (!r) return null;
+  const m = json<Record<string, unknown>>(r.metrics, {});
+  const url = (json<Record<string, unknown>>(r.payload, {}).url as string) ?? null;
+  return { trainedAt: String(r.trained_at), release: url?.split("/download/")[1]?.split("/")[0] ?? null, trainPairs: Number(m.train_pairs ?? 0),
+    testPairs: Number(m.test_pairs ?? 0), validJson: (m.valid_json as number) ?? null, fields: (m.fields_present as number) ?? null,
+    overlap: (m.summary_word_overlap as number) ?? null, base: (m.base_model as string) ?? null };
+}
+
 export async function tanglishModel(): Promise<TanglishModel | null> {
   const r = await localModel("tanglish");
   if (!r) return null;
@@ -134,6 +147,7 @@ export async function trainingChannels(): Promise<{ configured: boolean; channel
 export const TRAINERS = {
   reader: { file: "reader.yml", name: "Pulse Reader", what: "Our own comment-reading model. Fine-tunes on comments the cloud AI already read (~1–3 h on GitHub's free CPU)." },
   channels: { file: "training.yml", name: "Training channels", what: "Adds the researched niche channels and your Lab requests to the training database, then refreshes their uploads and stats (every 6 hours)." },
+  analyst: { file: "analyst.yml", name: "Pulse Analyst", what: "Our own writing model: fine-tuned on Kaggle's free GPU (private) from the cloud AI's video insights, tested on held-out videos, exported to run on CPU (~1–2 h)." },
   engine: { file: "model.yml", name: "Creator Model", what: "Prediction engine: learns from every tracked channel's videos, thumbnails and early hours; keeps the better feature set (~5–15 min)." },
 } as const;
 export type TrainerKey = keyof typeof TRAINERS;

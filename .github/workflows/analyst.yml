@@ -1,0 +1,106 @@
+name: Pulse Analyst (writing model on Kaggle)
+
+# Trains our own small writing model on Kaggle's free GPU, privately: rebuilds (prompt -> cloud AI insight) pairs from
+# the database, uploads them as a PRIVATE Kaggle dataset, runs kaggle/analyst_train.py in a PRIVATE GPU notebook, then
+# downloads the result (a GGUF file that runs on CPU), publishes it as a release and records its test results.
+# Needs GitHub secrets KAGGLE_USERNAME + KAGGLE_KEY (or KAGGLE_API_TOKEN). The Kaggle account must be phone-verified
+# to use GPUs. Progress shows in the Model Lab's live view.
+on:
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: "Training passes over the data"
+        default: "2"
+  schedule:
+    - cron: "11 22 1 * *"   # monthly
+
+concurrency:
+  group: analyst
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements.txt kaggle
+      - name: Check the Kaggle key
+        id: who
+        run: |
+          if [ -z "$KAGGLE_KEY" ] && [ -z "$KAGGLE_API_TOKEN" ]; then
+            echo "::error::Add the GitHub secrets KAGGLE_USERNAME and KAGGLE_KEY (Kaggle → Settings → API → Create New Token)."; exit 1
+          fi
+          python -m ytanalytics progress analyst start
+          USER_NAME="${KAGGLE_USERNAME:-$(python -c 'from kaggle.api.kaggle_api_extended import KaggleApi as K; a=K(); a.authenticate(); print(a.get_config_value("username"))')}"
+          [ -n "$USER_NAME" ] || { echo "::error::Couldn't tell the Kaggle username: add the KAGGLE_USERNAME secret."; python -m ytanalytics progress analyst x --failed --note "Kaggle username missing"; exit 1; }
+          echo "user=$USER_NAME" >> "$GITHUB_OUTPUT"
+      - name: Build the training pairs
+        run: |
+          python -m ytanalytics progress analyst "building training pairs from the cloud AI's video insights"
+          python -m ytanalytics analyst-export --out analyst-data
+          cat analyst-data/counts.json
+      - name: Upload them as a private Kaggle dataset
+        run: |
+          U="${{ steps.who.outputs.user }}"
+          printf '{"title": "Pulse Analyst data", "id": "%s/pulse-analyst-data", "licenses": [{"name": "other"}]}' "$U" > analyst-data/dataset-metadata.json
+          python -m ytanalytics progress analyst "uploading the training pairs to Kaggle (private)"
+          kaggle datasets version -p analyst-data -m "run ${{ github.run_number }}" --dir-mode zip 2>&1 | tee /tmp/ds.txt || true
+          if grep -qiE "not found|404|does not exist" /tmp/ds.txt; then kaggle datasets create -p analyst-data --dir-mode zip; fi
+          sleep 60   # Kaggle processes new dataset versions before notebooks can read them
+      - name: Train on Kaggle's GPU (private notebook)
+        run: |
+          U="${{ steps.who.outputs.user }}"
+          mkdir -p kernel && cp kaggle/analyst_train.py kernel/
+          sed -i "s/os.environ.get(\"ANALYST_EPOCHS\", \"2\")/\"${{ inputs.epochs || '2' }}\"/" kernel/analyst_train.py
+          printf '{"id": "%s/pulse-analyst", "title": "Pulse Analyst", "code_file": "analyst_train.py", "language": "python", "kernel_type": "script", "is_private": true, "enable_gpu": true, "enable_internet": true, "dataset_sources": ["%s/pulse-analyst-data"], "competition_sources": [], "kernel_sources": []}' "$U" "$U" > kernel/kernel-metadata.json
+          kaggle kernels push -p kernel
+          python -m ytanalytics progress analyst "training on Kaggle's T4 GPU (fine-tuning, testing, exporting)"
+          start=$(date +%s)
+          while true; do
+            sleep 90
+            S=$(kaggle kernels status "$U/pulse-analyst" 2>&1 | tail -1)
+            echo "$S"
+            MIN=$(( ($(date +%s) - start) / 60 ))
+            python -m ytanalytics progress analyst "Kaggle: $(echo "$S" | sed -E 's/.*has status "?([A-Za-z_.]+)"?.*/\1/') · ${MIN} min" >/dev/null
+            echo "$S" | grep -qiE 'complete' && break
+            if echo "$S" | grep -qiE 'error|cancel'; then
+              kaggle kernels output "$U/pulse-analyst" -p kaggle-out || true
+              tail -c 3000 kaggle-out/*.log 2>/dev/null || true
+              python -m ytanalytics progress analyst x --failed --note "Kaggle notebook stopped: $S"
+              exit 1
+            fi
+            [ "$MIN" -gt 320 ] && { python -m ytanalytics progress analyst x --failed --note "Kaggle run took too long"; exit 1; }
+          done
+      - name: Download the model and publish it
+        run: |
+          U="${{ steps.who.outputs.user }}"
+          kaggle kernels output "$U/pulse-analyst" -p analyst-out
+          ls -la analyst-out
+          cat analyst-out/metrics.json
+          TAG="pulse-analyst-${{ github.run_number }}"
+          gh release create "$TAG" analyst-out/pulse-analyst.gguf analyst-out/metrics.json analyst-out/samples.json \
+            --title "Pulse Analyst #${{ github.run_number }}" --latest=false --notes "Our own writing model (GGUF, CPU). Test results in metrics.json."
+          python -m ytanalytics analyst-save --out analyst-out --url "https://github.com/${{ github.repository }}/releases/download/$TAG/pulse-analyst.gguf"
+          python -m ytanalytics progress analyst x --done --note "$(python -c "import json; m=json.load(open('analyst-out/metrics.json')); print(f\"valid JSON {m['valid_json']:.0%}, summary overlap with the cloud AI {m['summary_word_overlap']:.0%} on {m['test_pairs']} held-out videos\")")"
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Pulse Analyst' >> "$GITHUB_STEP_SUMMARY"
+          cat analyst-data/counts.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          cat analyst-out/metrics.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true

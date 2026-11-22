@@ -1,7 +1,7 @@
 import { within } from "@/lib/cache";
 import { ago, compact } from "@/lib/format";
 import { workflowRuns, githubConfigured, type LabRun } from "@/lib/github";
-import { TRAINERS, engineModels, readerModel, tanglishModel, trainingData, type EngineScore, type ReaderTask } from "@/lib/lab";
+import { TRAINERS, analystModel, engineModels, readerModel, tanglishModel, trainingData, type EngineScore, type ReaderTask } from "@/lib/lab";
 import { TrainButton } from "./LabControls";
 import { LiveTraining } from "./LiveTraining";
 
@@ -47,7 +47,8 @@ export default async function LabPage() {
     within(readerModel(), 6000, null), within(engineModels(), 6000, []), within(tanglishModel(), 6000, null),
     within(trainingData(), 8000, null), within(workflowRuns(TRAINERS.reader.file, 4), 6000, null), within(workflowRuns(TRAINERS.engine.file, 4), 6000, null),
   ]);
-  const channelRuns = await within(workflowRuns(TRAINERS.channels.file, 3), 6000, null);
+  const [channelRuns, analystRuns, analyst] = await Promise.all([within(workflowRuns(TRAINERS.channels.file, 3), 6000, null),
+    within(workflowRuns(TRAINERS.analyst.file, 3), 6000, null), within(analystModel(), 6000, null)]);
   const canStart = githubConfigured();
   return (
     <>
@@ -150,8 +151,13 @@ export default async function LabPage() {
         <div className="bg-[var(--bg)] p-6 md:p-8">
           <div className="mono" style={{ fontSize: 10.5 }}>04 · Writing</div>
           <h2 className="display mt-3 text-[22px]">Pulse Analyst</h2>
-          <p className="mt-3 text-[14px] text-ink-2">A small writing model for briefs and summaries, trained on Kaggle&apos;s free GPU from {compact(data?.insights ?? 0)} insights the cloud AI wrote.
-            Waiting for the GitHub secrets <span className="mono">KAGGLE_USERNAME</span> and <span className="mono">KAGGLE_KEY</span>.</p>
+          <p className="mt-3 text-[14px] text-ink-2">{TRAINERS.analyst.what}</p>
+          {analyst ? (
+            <p className="mt-3 text-[14px] text-ink-2">Trained {ago(analyst.trainedAt)} on {compact(analyst.trainPairs)} insights · on {analyst.testPairs} held-out videos it wrote valid
+              answers {pct(analyst.validJson)} of the time, with {pct(analyst.fields)} of the sections, sharing {pct(analyst.overlap)} of the summary&apos;s words with the cloud AI.</p>
+          ) : <p className="mt-3 text-[14px] text-ink-3">Not trained yet · {compact(data?.insights ?? 0)} insights to learn from.</p>}
+          <div className="mt-4">{canStart ? <TrainButton which="analyst" label="Train Pulse Analyst on Kaggle" /> : null}</div>
+          <RunList runs={analystRuns} />
         </div>
       </section>
 
