@@ -104,3 +104,18 @@ def test_per_task_bar_picked_from_curve():
     assert pick_threshold(task, 0.8) == 0.5 and pick_threshold(task, 0.85) == 0.7 and pick_threshold(task, 0.9) is None
     assert pick_threshold({"threshold": 0.6}, 0.8) == 0.6  # older metrics without a curve
     assert task_targets({"READER_TARGETS": "emotion=0.75"}) == {"emotion": 0.75}
+
+
+def test_rare_flags_must_beat_always_no():
+    from ytanalytics.reader import FLAGS, decode, evaluate
+
+    # 2% spam; the model calls 5% of comments spam: 95% agreement, worse than always "no" (98%).
+    rows = [{"sentiment": "neutral", "emotion": "joy", "is_spam": i < 4, "aspects": None} for i in range(200)]
+    preds = []
+    for i in range(200):
+        spam_logit = 3.0 if i < 10 else -0.2  # flags 10 (4 right, 6 wrong); the rest barely "no"
+        preds.append(decode([0, 2, 0], [1 if e == "joy" else 0 for e in EMOTIONS], [-3, -3, spam_logit, -3], [[3, 0, 0, 0] for _ in ASPECTS]))
+    res = evaluate(preds, rows)
+    assert res["spam"]["floor"] >= 0.98
+    assert res["spam"]["threshold"] is None or res["spam"]["agreement"] >= res["spam"]["floor"]
+    assert set(FLAGS) <= set(res)
