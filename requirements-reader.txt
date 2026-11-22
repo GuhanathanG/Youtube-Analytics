@@ -1,0 +1,5 @@
+# Pulse Reader (our own comment-reading model): training needs torch (CPU wheel, installed first) + ONNX export;
+# reading only needs onnxruntime + the tokenizer from transformers.
+-r requirements-ai.txt
+onnx>=1.16
+onnxruntime>=1.18

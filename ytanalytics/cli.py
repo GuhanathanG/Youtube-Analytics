@@ -70,6 +70,12 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("ai-waiting", help="number of comments the AI hasn't read yet")
     sub.add_parser("spam-sweep", help="mark copy-paste spam (same text from 3+ accounts) (E7)")
     sub.add_parser("tanglish-train", help="train our own Tanglish-aware mood model on AI-labelled comments (E5)")
+    rt = sub.add_parser("reader-train", help="fine-tune the Pulse Reader (our own comment-reading model) and export it")
+    rt.add_argument("--out", default="reader-out")
+    sub.add_parser("reader-status", help="the Pulse Reader in use: download URL and held-out results")
+    rs = sub.add_parser("reader-save", help="record a published Pulse Reader (download URL + metrics) for the analyse step")
+    rs.add_argument("--out", default="reader-out")
+    rs.add_argument("--url", required=True)
     sub.add_parser("forecast-refresh", help="update young videos' 30-day forecasts with their latest views (E4, no scikit-learn)")
     sub.add_parser("train", help="train the prediction engine (needs scikit-learn) and save forecasts + drivers")
     sub.add_parser("pending", help="number of comments waiting for analysis")
@@ -242,6 +248,28 @@ def main(argv: list[str] | None = None) -> int:
             from .tanglish import train_tanglish
 
             print(json.dumps(train_tanglish(session), default=str))
+        elif args.cmd == "reader-train":
+            from .reader import train as reader_train
+
+            res = reader_train(session, args.out)
+            print(json.dumps(res.metrics, default=str))
+        elif args.cmd == "reader-status":
+            from .reader import load_record
+
+            rec = load_record(session) or {}
+            print(json.dumps({"url": rec.get("url"), "thresholds": rec.get("thresholds"), "metrics": rec.get("metrics")}, default=str))
+        elif args.cmd == "reader-save":
+            from pathlib import Path
+
+            from .reader import load_record, save_record, sha256, should_replace
+
+            out = Path(args.out)
+            metrics = json.loads((out / "metrics.json").read_text())
+            current = load_record(session)
+            ok, why = should_replace(metrics, (current or {}).get("metrics"))
+            if ok:
+                save_record(session, metrics, args.url, sha256(out / "pulse-reader.tar.gz"))
+            print(json.dumps({"saved": ok, "why": why, "url": args.url if ok else None}))
         elif args.cmd == "forecast-refresh":
             from .model import refresh_forecasts
 
