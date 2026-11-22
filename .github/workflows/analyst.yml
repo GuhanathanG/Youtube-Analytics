@@ -47,6 +47,19 @@ jobs:
             echo "::error::Add the GitHub secrets KAGGLE_USERNAME and KAGGLE_KEY (Kaggle → Settings → API → Create New Token)."; exit 1
           fi
           python -m ytanalytics progress analyst start
+          # Kaggle has two kinds of key: new API tokens (KAGGLE_API_TOKEN) and legacy keys (username + KAGGLE_KEY).
+          # Try the saved key both ways and keep whichever Kaggle accepts.
+          probe() { kaggle datasets list --mine >/tmp/probe.txt 2>&1 && ! grep -qi "authentication required" /tmp/probe.txt; }
+          if [ -n "$KAGGLE_API_TOKEN" ] && probe; then echo "Kaggle: API token works"
+          elif [ -n "$KAGGLE_KEY" ] && KAGGLE_API_TOKEN="$KAGGLE_KEY" probe; then
+            mkdir -p ~/.kaggle && printf '%s' "$KAGGLE_KEY" > ~/.kaggle/access_token && chmod 600 ~/.kaggle/access_token
+            echo "Kaggle: the saved key is a new-style API token"
+          elif [ -n "$KAGGLE_KEY" ] && KAGGLE_API_TOKEN= probe; then echo "Kaggle: legacy key works"
+          else
+            tail -5 /tmp/probe.txt
+            echo "::error::Kaggle refused the key. Create a new token at kaggle.com → Settings → API and save it as the KAGGLE_KEY secret."
+            python -m ytanalytics progress analyst x --failed --note "Kaggle refused the key"; exit 1
+          fi
           USER_NAME="${KAGGLE_USERNAME:-$(python -c 'from kaggle.api.kaggle_api_extended import KaggleApi as K; a=K(); a.authenticate(); print(a.get_config_value("username"))')}"
           [ -n "$USER_NAME" ] || { echo "::error::Couldn't tell the Kaggle username: add the KAGGLE_USERNAME secret."; python -m ytanalytics progress analyst x --failed --note "Kaggle username missing"; exit 1; }
           echo "user=$USER_NAME" >> "$GITHUB_OUTPUT"
@@ -68,7 +81,10 @@ jobs:
           printf '{"title": "Pulse Analyst data", "id": "%s/pulse-analyst-data", "licenses": [{"name": "other"}]}' "$U" > analyst-data/dataset-metadata.json
           python -m ytanalytics progress analyst "uploading the training pairs to Kaggle (private)"
           kaggle datasets version -p analyst-data -m "run ${{ github.run_number }}" --dir-mode zip 2>&1 | tee /tmp/ds.txt || true
-          if grep -qiE "not found|404|does not exist" /tmp/ds.txt; then kaggle datasets create -p analyst-data --dir-mode zip; fi
+          if grep -qiE "not found|404|does not exist" /tmp/ds.txt; then kaggle datasets create -p analyst-data --dir-mode zip 2>&1 | tee /tmp/ds.txt; fi
+          if grep -qiE "authentication required|unauthorized|forbidden|error" /tmp/ds.txt; then
+            python -m ytanalytics progress analyst x --failed --note "Kaggle upload failed"; exit 1
+          fi
           sleep 60   # Kaggle processes new dataset versions before notebooks can read them
       - name: Train on Kaggle's GPU (private notebook)
         if: steps.due.outputs.due == '1'
