@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 40
     permissions:
       contents: read
+      actions: write   # the watchdog starts skipped/failed scheduled jobs and keeps schedules switched on
       models: read     # free GitHub Models AI with the job's own token (no key needed)
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -130,6 +131,13 @@ jobs:
         if: steps.alive.outputs.alive != '1'
         continue-on-error: true
         run: python -m ytanalytics archive --until $(( $(date +%s) + 600 ))
+
+      - name: Watchdog - start any skipped or failed training/scheduled job, keep schedules on
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m ytanalytics watchdog
 
       - name: Record minutes used
         if: always()

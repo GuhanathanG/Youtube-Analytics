@@ -12,7 +12,7 @@ on:
         description: "Training passes over the data"
         default: "2"
   schedule:
-    - cron: "11 22 1 * *"   # monthly
+    - cron: "11 22 1,15 * *"   # twice a month; skips itself unless there are 10%+ more examples than last time
 
 concurrency:
   group: analyst
@@ -55,7 +55,14 @@ jobs:
           python -m ytanalytics progress analyst "building training pairs from the cloud AI's video insights"
           python -m ytanalytics analyst-export --out analyst-data
           cat analyst-data/counts.json
+      - name: Enough new examples to retrain?
+        id: due
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.triggering_actor }}" != "github-actions[bot]" ]; then D=1; else D=$(python -m ytanalytics analyst-due --out analyst-data); fi
+          echo "due=$D" >> "$GITHUB_OUTPUT"
+          if [ "$D" = "0" ]; then python -m ytanalytics progress analyst x --done --note "Skipped: not enough new examples since the last model"; fi
       - name: Upload them as a private Kaggle dataset
+        if: steps.due.outputs.due == '1'
         run: |
           U="${{ steps.who.outputs.user }}"
           printf '{"title": "Pulse Analyst data", "id": "%s/pulse-analyst-data", "licenses": [{"name": "other"}]}' "$U" > analyst-data/dataset-metadata.json
@@ -64,6 +71,7 @@ jobs:
           if grep -qiE "not found|404|does not exist" /tmp/ds.txt; then kaggle datasets create -p analyst-data --dir-mode zip; fi
           sleep 60   # Kaggle processes new dataset versions before notebooks can read them
       - name: Train on Kaggle's GPU (private notebook)
+        if: steps.due.outputs.due == '1'
         run: |
           U="${{ steps.who.outputs.user }}"
           mkdir -p kernel && cp kaggle/analyst_train.py kernel/
@@ -88,6 +96,7 @@ jobs:
             [ "$MIN" -gt 320 ] && { python -m ytanalytics progress analyst x --failed --note "Kaggle run took too long"; exit 1; }
           done
       - name: Download the model and publish it
+        if: steps.due.outputs.due == '1'
         run: |
           U="${{ steps.who.outputs.user }}"
           kaggle kernels output "$U/pulse-analyst" -p analyst-out
