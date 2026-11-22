@@ -296,7 +296,11 @@ def train(session: Session, out_dir: str | Path = "reader-out") -> TrainResult:
 
     from .sentiment import _clean
 
+    from .progress import Progress
+
     t0 = time.time()
+    prog = Progress(session, "reader")
+    prog.update("loading comments the cloud AI read (main + archive databases)", force=True)
     per_db = int(os.environ.get("READER_ROWS_PER_DB", "150000"))
     rows = load_rows(session, per_db)
     for r in rows:
@@ -304,6 +308,7 @@ def train(session: Session, out_dir: str | Path = "reader-out") -> TrainResult:
     test = [r for r in rows if in_holdout(r["id"])][: int(os.environ.get("READER_TEST_ROWS", "6000"))]
     train_rows = [r for r in rows if not in_holdout(r["id"])]
     if len(train_rows) < 2000 or len(test) < int(os.environ.get("READER_MIN_TEST", "300")):
+        prog.done("not enough labelled comments", failed=True)
         return TrainResult({"trained": False, "reason": f"not enough AI-labelled comments ({len(train_rows)} train, {len(test)} test)"}, None)
     random.Random(7).shuffle(train_rows)
     max_train = int(os.environ.get("READER_MAX_TRAIN", "120000"))
@@ -355,14 +360,20 @@ def train(session: Session, out_dir: str | Path = "reader-out") -> TrainResult:
             step += 1
             if step % 200 == 0:
                 log.info("step %d/%d loss %.3f (%.0f min)", step, steps, loss.item(), (time.time() - t0) / 60)
+            if step % 10 == 0:
+                prog.update("training", step, steps, loss.item(), note=f"{len(train_rows):,} comments, {len(test):,} held out")
 
+    prog.update("testing on held-out comments", step, steps, force=True)
     preds = _predict(model, tok, [r["text"] for r in test])
     metrics = {"trained": True, "base_model": BASE_MODEL, "train_rows": len(train_rows), "test_rows": len(test),
                "steps": step, "planned_steps": steps, "minutes": round((time.time() - t0) / 60, 1),
                "target_agreement": TARGET, "tasks": evaluate(preds, test)}
     out = Path(out_dir)
+    prog.update("exporting and shrinking the model", step, steps, force=True)
     export(model, tok, out)
     (out / "metrics.json").write_text(json.dumps(metrics, indent=2))
+    m = metrics["tasks"]["mood"]
+    prog.done(f"mood agreement {m['accuracy']:.0%}, trusted on {m['coverage']:.0%} of comments; publishing")
     return TrainResult(metrics, out)
 
 

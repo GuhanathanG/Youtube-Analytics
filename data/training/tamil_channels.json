@@ -1,0 +1,25 @@
+{
+  "about": "Tamil YouTube niches and two leading creator channels each, used only to train the models (Model Lab → Training channels). Researched 22 Nov 2026 from public rankings (InditubeDB, Filmibeat, vidIQ, Qoruz, SocialCounts). TV networks and music labels are left out on purpose: they top the subscriber charts but aren't creator channels. 'query' is a channel ID or @handle where a source showed one, otherwise a name that is looked up (YouTube search, then checked: 100k+ subscribers). Check the matches in the Lab and pause any wrong one.",
+  "channels": [
+    {"category": "Comedy & sketches", "query": "Parithabangal"},
+    {"category": "Comedy & sketches", "query": "Mic Set"},
+    {"category": "Family & lifestyle vlogs", "query": "NRFM-VLOGS"},
+    {"category": "Family & lifestyle vlogs", "query": "With Love Nagaraj Sangeetha"},
+    {"category": "Travel", "query": "UCWKAAgM5L7bExQJkPZIbiaw", "note": "Tamil Trekker"},
+    {"category": "Travel", "query": "UC9e6MIZSG1ExlC06_jaxePw", "note": "Twin Vloggers Tamil"},
+    {"category": "Cooking", "query": "Village Cooking Channel"},
+    {"category": "Cooking", "query": "Madras Samayal"},
+    {"category": "Food reviews", "query": "@foodietamizha", "note": "Foodie Tamizha"},
+    {"category": "Tech & gadgets", "query": "UC20sXo8ReewkzNKBFgzVCPA", "note": "Tamil Tech"},
+    {"category": "Tech & gadgets", "query": "Tamil Today Tech"},
+    {"category": "Gaming", "query": "UCCPWi_OwWMR5JTiujn7v-7g", "note": "Tamil Gaming"},
+    {"category": "Gaming", "query": "UCjvNWB4Zw5AeOxDKP7WM9Ng", "note": "Sharp Tamil Gaming"},
+    {"category": "Explainers & current affairs", "query": "Madan Gowri"},
+    {"category": "Explainers & current affairs", "query": "Trending Theeviravadhi"},
+    {"category": "Movies & cinema", "query": "@tamilmovieclub4249", "note": "Tamil Movie Club"},
+    {"category": "Movies & cinema", "query": "UCe6rihes8pZgJqGKpKUsNJQ", "note": "Cinemapettai"},
+    {"category": "Finance & stock market", "query": "Trading Tamil"},
+    {"category": "Finance & stock market", "query": "Tamil Stock Market"},
+    {"category": "Short-form entertainment", "query": "Mabu Crush"}
+  ]
+}

@@ -1,6 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import { archiveConfigured } from "./archive";
+import { trainingDb } from "./trainingdb";
 
 /**
  * Model Lab: everything about our own models in one place.
@@ -70,7 +71,8 @@ export async function engineModels(): Promise<EngineModel[]> {
 }
 
 export type TrainingData = { aiLabelledMain: number; aiLabelledArchive: number; archiveComments: number; videos: Record<string, number>;
-  channels: Record<string, number>; snapshots: number; earlySnapshotVideos: number; thumbnails: number; insights: number; archive: boolean };
+  channels: Record<string, number>; snapshots: number; earlySnapshotVideos: number; thumbnails: number; insights: number; archive: boolean;
+  trainingVideos: number; trainingChannels: number };
 
 export async function trainingData(): Promise<TrainingData> {
   const db = sql();
@@ -92,28 +94,46 @@ export async function trainingData(): Promise<TrainingData> {
     channels: Object.fromEntries((chans as { role: string; n: number }[]).map((r) => [r.role, r.n])),
     snapshots: Number(snaps.n), earlySnapshotVideos: Number(snaps.early), thumbnails: Number(extra.thumbs), insights: Number(extra.insights),
     archive: await archiveConfigured().catch(() => false),
+    ...(await (async () => {
+      const tdb = await trainingDb().catch(() => null);
+      if (!tdb) return { trainingVideos: 0, trainingChannels: 0 };
+      const [r] = await tdb`select (select count(*)::int from videos) as v, (select count(*)::int from channels where active) as c`.catch(() => [{ v: 0, c: 0 }]);
+      return { trainingVideos: Number(r?.v ?? 0), trainingChannels: Number(r?.c ?? 0) };
+    })()),
   };
 }
 
-export type TrainingChannel = { id: string; title: string; handle: string | null; thumb: string | null; subs: number | null;
-  videos: number; videoCount: number | null; backfilled: boolean; active: boolean; lastSynced: string | null; added: string | null };
+export type TrainingChannel = { query: string; category: string; status: string; note: string | null; id: string | null; title: string | null;
+  handle: string | null; thumb: string | null; subs: number | null; videos: number; videoCount: number | null; backfilled: boolean;
+  active: boolean; lastSynced: string | null };
 
-export async function trainingChannels(): Promise<TrainingChannel[]> {
+/** Every channel in the training database's catalog (researched list + Lab requests), with its sync progress. */
+export async function trainingChannels(): Promise<{ configured: boolean; channels: TrainingChannel[]; videos: number }> {
+  const db = await trainingDb();
+  if (!db) return { configured: false, channels: [], videos: 0 };
   try {
-    const rows = await sql()`
-      select ch.id, ch.title, ch.handle, ch.thumbnail_url as thumb, ch.subscriber_count::float8 as subs, ch.video_count::int as video_count,
-             ch.videos_backfilled as backfilled, ch.active, ch.last_synced_at, ch.added_at, coalesce(v.n, 0)::int as videos
-      from channels ch left join (select channel_id, count(*) as n from videos group by 1) v on v.channel_id = ch.id
-      where ch.role = 'training' order by ch.added_at desc`;
-    return rows.map((r) => ({ id: String(r.id), title: String(r.title), handle: (r.handle as string) ?? null, thumb: (r.thumb as string) ?? null,
+    const rows = await db`
+      select k.query, k.category, k.status, k.note, k.channel_id as id, coalesce(ch.title, k.title) as title, ch.handle, ch.thumbnail_url as thumb,
+             coalesce(ch.subscriber_count, k.subscribers)::float8 as subs, ch.video_count::int as video_count, coalesce(ch.videos_backfilled, false) as backfilled,
+             coalesce(ch.active, false) as active, ch.last_synced_at, coalesce(v.n, 0)::int as videos
+      from training_catalog k
+      left join channels ch on ch.id = k.channel_id
+      left join (select channel_id, count(*) as n from videos group by 1) v on v.channel_id = k.channel_id
+      order by k.category, coalesce(ch.subscriber_count, k.subscribers) desc nulls last`;
+    const channels = rows.map((r) => ({ query: String(r.query), category: String(r.category), status: String(r.status), note: (r.note as string) ?? null,
+      id: (r.id as string) ?? null, title: (r.title as string) ?? null, handle: (r.handle as string) ?? null, thumb: (r.thumb as string) ?? null,
       subs: (r.subs as number) ?? null, videos: Number(r.videos), videoCount: (r.video_count as number) ?? null, backfilled: !!r.backfilled,
-      active: !!r.active, lastSynced: (r.last_synced_at as string) ?? null, added: (r.added_at as string) ?? null }));
-  } catch { return []; }
+      active: !!r.active, lastSynced: (r.last_synced_at as string) ?? null }));
+    return { configured: true, channels, videos: channels.reduce((a, c) => a + c.videos, 0) };
+  } catch {
+    return { configured: true, channels: [], videos: 0 }; // tables appear with the first training run
+  }
 }
 
 /** The workflows the Lab can start. */
 export const TRAINERS = {
   reader: { file: "reader.yml", name: "Pulse Reader", what: "Our own comment-reading model. Fine-tunes on comments the cloud AI already read (~1–3 h on GitHub's free CPU)." },
+  channels: { file: "training.yml", name: "Training channels", what: "Adds the researched niche channels and your Lab requests to the training database, then refreshes their uploads and stats (every 6 hours)." },
   engine: { file: "model.yml", name: "Creator Model", what: "Prediction engine: learns from every tracked channel's videos, thumbnails and early hours; keeps the better feature set (~5–15 min)." },
 } as const;
 export type TrainerKey = keyof typeof TRAINERS;
