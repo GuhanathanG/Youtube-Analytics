@@ -63,18 +63,3 @@ export function TimeBrush({ values, labels, value, onChange, unit = "days", pres
     </div>
   );
 }
-
-/** Nice axis ticks for 0..max (about `count` of them). */
-export function ticks(max: number, count = 4): number[] {
-  if (max <= 0) return [0];
-  const raw = max / count, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw;
-  const out: number[] = [];
-  for (let v = 0; v <= max + 1e-9; v += step) out.push(Math.round(v * 100) / 100);
-  return out;
-}
-
-export const short = (v: number) => (Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : `${Math.round(v)}`);
-
-/** Date label for "YYYY-MM-DD" (UTC), e.g. "12 Sep" or "12 Sep 26". */
-export const dayLabel = (d: string, year = false) =>
-  new Date(`${d.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", ...(year ? { year: "2-digit" } : {}), timeZone: "UTC" });

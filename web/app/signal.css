@@ -97,27 +97,16 @@
 .constellation .cl-star:hover circle:last-of-type { fill: #fff; }
 @media (prefers-reduced-motion: reduce) { .constellation .cl-line, .constellation .cl-star, .term-cursor { animation: none; } }
 
-/* Starburst rays draw out from the centre; lift bars grow from the centre line; title words rise. */
-@keyframes sb-draw { to { stroke-dashoffset: 0; } }
-@keyframes sig-pop { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: none; } }
+/* Lift bars grow from the centre line. */
 @keyframes lift-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@keyframes cloud-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.starburst .sb-ray line { stroke-dasharray: 300; stroke-dashoffset: 300; }
-.in .starburst .sb-ray line { animation: sb-draw 0.9s cubic-bezier(0.2, 0.7, 0, 1) forwards; }
-.starburst .sb-tip { opacity: 0; transform-box: fill-box; transform-origin: center; }
-.in .starburst .sb-tip { animation: sig-pop 0.4s ease-out forwards; }
-.starburst .sb-ray:hover line { stroke: #fff; stroke-width: 2.4; }
 .lift-bar { transform: scaleX(0); }
 .in .lift-bar { animation: lift-grow 0.9s cubic-bezier(0.2, 0.7, 0, 1) forwards; }
-.cloud-word { display: inline-block; opacity: 0; }
-.in .cloud-word { animation: cloud-rise 0.6s cubic-bezier(0.2, 0.7, 0, 1) forwards; }
 /* LED heatmap cells light up row by row. */
 @keyframes led-on { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
 .led { opacity: 0; }
 .in .led { animation: led-on 0.5s cubic-bezier(0.2, 0.7, 0, 1) forwards; }
 @media (prefers-reduced-motion: reduce) {
-  .starburst .sb-ray line { stroke-dasharray: none; stroke-dashoffset: 0; }
-  .starburst .sb-tip, .cloud-word, .led { opacity: 1; animation: none !important; }
+  .led { opacity: 1; animation: none !important; }
   .lift-bar { transform: none; animation: none !important; }
 }
 
@@ -132,18 +121,6 @@
 @keyframes skel-sweep { from { background-position: -200% 0; } to { background-position: 200% 0; } }
 .skel { background: linear-gradient(90deg, rgba(255,255,255,.03) 25%, rgba(34,225,255,.07) 50%, rgba(255,255,255,.03) 75%); background-size: 200% 100%; animation: skel-sweep 1.6s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
-
-/* Radar: a turning sweep; blips brighten as it passes; breakouts ping. */
-.radar-sweep { position: absolute; inset: 6%; border-radius: 999px; pointer-events: none;
-  background: conic-gradient(from 0deg, rgba(34, 225, 255, 0.28), rgba(34, 225, 255, 0) 70deg, transparent 360deg);
-  animation: radar-turn 4s linear infinite; mask-image: radial-gradient(circle, #000 69%, transparent 70%); }
-@keyframes radar-turn { to { transform: rotate(360deg); } }
-@keyframes radar-flash { 0%, 100% { opacity: 0.55; } 6% { opacity: 1; } 30% { opacity: 0.7; } }
-.radar-blip { animation: radar-flash 4s linear infinite; }
-.radar-blip:hover { opacity: 1 !important; }
-@keyframes radar-ping { from { r: 6; opacity: 0.9; } to { r: 26; opacity: 0; } }
-.radar-ping { animation: radar-ping 1.8s ease-out infinite; }
-@media (prefers-reduced-motion: reduce) { .radar-sweep, .radar-blip, .radar-ping { animation: none; } }
 
 /* Viewfinder: camera corner brackets around a picture, with a blinking REC mark. */
 .viewfinder { position: relative; }

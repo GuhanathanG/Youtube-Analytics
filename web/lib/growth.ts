@@ -20,7 +20,7 @@ async function ensureTables() {
   await ensureRls("video_changes");
   const [t] = await db`select 1 from pg_trigger where tgname = 'trg_video_title_change'`;
   if (!t) {
-    await db.unsafe(`create or replace function record_video_title_change() returns trigger language plpgsql as $f$
+    await db.unsafe(`create or replace function record_video_title_change() returns trigger language plpgsql set search_path = public, pg_temp as $f$
       begin
         if new.id not like 'ig\\_%' and old.title is not null and new.title is distinct from old.title then
           insert into video_changes (video_id, field, old_value, new_value, changed_at, views_at)

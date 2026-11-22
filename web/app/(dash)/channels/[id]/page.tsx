@@ -17,7 +17,6 @@ import { AspectChart } from "@/components/charts/lazy";
 import { BarList } from "@/components/charts/BarList";
 import { GrowthChart } from "@/components/charts/lazy";
 import { MixBar } from "@/components/charts/MixBar";
-import { TrendChart } from "@/components/charts/lazy";
 import { InsightPanel } from "@/components/InsightPanel";
 import { NewVideosPanel, SuperfansPanel, TopicTrendsPanel } from "@/components/FeaturePanels";
 import { RangeTabs, rangeSince } from "@/components/RangeTabs";

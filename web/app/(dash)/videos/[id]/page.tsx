@@ -8,7 +8,6 @@ import { AspectChart } from "@/components/charts/lazy";
 import { BarList } from "@/components/charts/BarList";
 import { GrowthChart } from "@/components/charts/lazy";
 import { MixBar } from "@/components/charts/MixBar";
-import { TrendChart } from "@/components/charts/lazy";
 import { CommentCard } from "@/components/CommentCard";
 import { InsightPanel } from "@/components/InsightPanel";
 import { PredictionBadge } from "@/components/FeaturePanels";

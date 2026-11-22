@@ -377,12 +377,6 @@ export async function lastRuns(limit = 15) {
     { kind: string; started_at: string; finished_at: string | null; status: string; summary: string | null }[];
 }
 
-export async function lastSyncAt(): Promise<string | null> {
-  const db = sql();
-  const [r] = await db`select max(finished_at) as t from run_log where kind = 'sync' and status = 'ok'`;
-  return (r?.t as string) ?? null;
-}
-
 export async function channelRequests() {
   const db = sql();
   return (await db`select id, query, status, error, created_at from channel_requests order by created_at desc limit 30`) as unknown as

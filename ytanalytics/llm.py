@@ -196,8 +196,26 @@ class LLMRouter:
         day = quota_day()
         row = self.s.get(LlmUsage, (day, slot.key))
         if row is None:
-            row = LlmUsage(day=day, model_key=slot.key, requests=0, tokens=0, exhausted=False)
-            self.s.add(row)
+            # Parallel workers (e.g. the 3 archive readers) can reach a new day at the same moment. Create the
+            # row in its own short transaction with "insert if missing", so two workers never collide on the
+            # primary key and none waits on another's long-running transaction.
+            bind = self.s.get_bind()
+            if bind.dialect.name in ("postgresql", "sqlite"):
+                if bind.dialect.name == "postgresql":
+                    from sqlalchemy.dialects.postgresql import insert
+                else:
+                    from sqlalchemy.dialects.sqlite import insert
+                stmt = insert(LlmUsage).values(day=day, model_key=slot.key, requests=0, tokens=0,
+                                               exhausted=False).on_conflict_do_nothing()
+                if bind.dialect.name == "postgresql":
+                    with bind.engine.begin() as conn:
+                        conn.execute(stmt)
+                else:  # SQLite (tests, local): one writer at a time, so the session itself is fine
+                    self.s.execute(stmt)
+                row = self.s.get(LlmUsage, (day, slot.key), populate_existing=True)
+            if row is None:
+                row = LlmUsage(day=day, model_key=slot.key, requests=0, tokens=0, exhausted=False)
+                self.s.add(row)
         return row
 
     def available(self, slot: ModelSlot) -> bool:
