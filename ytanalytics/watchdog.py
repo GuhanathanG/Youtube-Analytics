@@ -38,7 +38,7 @@ JOBS = [
     Job("archive-read.yml", "Archive reading", 6, 4),
     Job("model.yml", "Creator Model", 24, 6),
     Job("reader.yml", "Pulse Reader", 24 * 7, 24),
-    Job("analyst.yml", "Pulse Analyst", 24 * 14, 48),
+    Job("analyst.yml", "Pulse Analyst", 24, 24),  # daily check; trains only when there is enough new data
 ]
 KEEP_ALIVE = [j.file for j in JOBS] + ["sync.yml"]
 ACTIVE = {"queued", "in_progress", "waiting", "requested", "pending"}

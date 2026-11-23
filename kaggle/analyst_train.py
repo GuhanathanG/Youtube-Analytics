@@ -11,6 +11,23 @@ import sys
 import time
 
 t0 = time.time()
+
+
+def _online(host="pypi.org"):
+    import socket
+    try:
+        socket.create_connection((host, 443), timeout=10).close()
+        return True
+    except OSError:
+        return False
+
+
+# Kaggle gives notebooks internet and GPUs only on phone-verified accounts. Say so plainly instead of failing later.
+_gpu = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True).returncode == 0
+if not _online() or not _gpu:
+    print(f"NEEDS_PHONE_VERIFICATION internet={_online()} gpu={_gpu}: verify the phone number at "
+          "kaggle.com -> Settings -> Phone verification (free), then the next run trains by itself.", flush=True)
+    sys.exit(3)
 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "unsloth"], check=True)
 
 import torch  # noqa: E402
