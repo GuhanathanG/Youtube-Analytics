@@ -98,7 +98,7 @@ export default async function LabPage() {
         </div>
         <div className="bg-[var(--bg)] p-6 md:p-8">
           <div className="mono" style={{ fontSize: 10.5 }}>Train</div>
-          <p className="mt-3 text-[13.5px] text-ink-2">{TRAINERS.reader.what} Runs by itself every Sunday.</p>
+          <p className="mt-3 text-[13.5px] text-ink-2">{TRAINERS.reader.what} Checks every night and retrains by itself when the cloud AI has read 2,000+ new comments.</p>
           <div className="mt-4">{canStart ? <TrainButton which="reader" label="Train Pulse Reader now" /> : <p className="text-[13px] text-ink-3">Add GITHUB_TOKEN in Vercel to start runs from here.</p>}</div>
           <RunList runs={readerRuns} />
         </div>

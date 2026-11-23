@@ -90,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("watchdog", help="start skipped or failed scheduled jobs (training included) and keep schedules switched on")
     ad = sub.add_parser("analyst-due", help="print 1 if there are enough new examples to retrain the Pulse Analyst, else 0")
     ad.add_argument("--out", default="analyst-data")
+    sub.add_parser("reader-due", help="print 1 if there are enough new AI-read comments to retrain the Pulse Reader, else 0")
     sub.add_parser("reader-status", help="the Pulse Reader in use: download URL and held-out results")
     rs = sub.add_parser("reader-save", help="record a published Pulse Reader (download URL + metrics) for the analyse step")
     rs.add_argument("--out", default="reader-out")
@@ -316,6 +317,12 @@ def main(argv: list[str] | None = None) -> int:
             from .analyst import due
 
             ok, why = due(session, json.loads((Path(args.out) / "counts.json").read_text()))
+            print(why, file=sys.stderr)
+            print(1 if ok else 0)
+        elif args.cmd == "reader-due":
+            from .reader import due as reader_due
+
+            ok, why = reader_due(session)
             print(why, file=sys.stderr)
             print(1 if ok else 0)
         elif args.cmd == "reader-status":

@@ -74,3 +74,29 @@ def test_analyst_due_needs_ten_percent_more(tmp_path):
         s.execute(text("insert into local_models values ('pulse-analyst', '', :m, '{}')"), {"m": json.dumps({"train_pairs": 800})})
         assert not due(s, {"train": 850})[0]
         assert due(s, {"train": 880})[0]
+
+
+
+def test_reader_due_counts_main_and_archive_reads():
+    import json
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import Session
+
+    from ytanalytics.reader import due, labelled_total
+
+    eng = create_engine("sqlite://")
+    with Session(eng) as s:
+        s.execute(text("create table local_models (name text primary key, trained_at text, metrics text, payload text)"))
+        s.execute(text("create table comments (id text, ai_at text, ai_model text)"))
+        s.execute(text("create table archive_stats (ai_read integer)"))
+        assert due(s, min_new=3)[0]  # no model yet
+        s.execute(text("insert into local_models values ('pulse-reader', '', '{}', '{}')"))
+        assert due(s, min_new=3)[0]  # older record without a count: train once
+        s.execute(text("insert into comments values ('a', 'x', 'gemini'), ('b', 'x', 'rules/v1'), ('c', null, null)"))
+        s.execute(text("insert into archive_stats values (10)"))
+        assert labelled_total(s) == 11
+        s.execute(text("update local_models set metrics = :m"), {"m": json.dumps({"labelled_total": 10})})
+        assert not due(s, min_new=3)[0]
+        s.execute(text("update archive_stats set ai_read = 12"))
+        assert due(s, min_new=3)[0]
