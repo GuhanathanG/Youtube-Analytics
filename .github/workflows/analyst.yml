@@ -86,7 +86,13 @@ jobs:
           if grep -qiE "authentication required|unauthorized|forbidden|error" /tmp/ds.txt; then
             python -m ytanalytics progress analyst x --failed --note "Kaggle upload failed"; exit 1
           fi
-          sleep 60   # Kaggle processes new dataset versions before notebooks can read them
+          # Kaggle processes a new dataset version before notebooks can read it: wait until it says ready (max 15 min).
+          for i in $(seq 1 30); do
+            S=$(kaggle datasets status "$U/pulse-analyst-data" 2>&1 | tail -1); echo "dataset: $S"
+            echo "$S" | grep -qi ready && break
+            sleep 30
+          done
+          sleep 30
       - name: Train on Kaggle's GPU (private notebook)
         if: steps.due.outputs.due == '1'
         run: |
@@ -107,6 +113,10 @@ jobs:
             if echo "$S" | grep -qiE 'error|cancel'; then
               kaggle kernels output "$U/pulse-analyst" -p kaggle-out || true
               tail -c 3000 kaggle-out/*.log 2>/dev/null || true
+              if grep -qs NO_TRAINING_DATA kaggle-out/*.log; then
+                python -m ytanalytics progress analyst x --failed --note "Kaggle notebook couldn't see the training data (dataset not attached yet); the next run retries"
+                exit 1
+              fi
               if grep -qs NEEDS_PHONE_VERIFICATION kaggle-out/*.log; then
                 echo "::error::Kaggle gives notebooks internet and a GPU only after phone verification: kaggle.com → Settings → Phone verification. The next daily run then trains by itself."
                 python -m ytanalytics progress analyst x --failed --note "Waiting for Kaggle phone verification (kaggle.com → Settings → Phone verification); then it trains by itself the next day"
