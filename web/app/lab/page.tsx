@@ -152,7 +152,7 @@ export default async function LabPage() {
         <div className="bg-[var(--bg)] p-6 md:p-8">
           <div className="mono" style={{ fontSize: 10.5 }}>04 · Writing</div>
           <h2 className="display mt-3 text-[22px]">Pulse Analyst</h2>
-          <p className="mt-3 text-[14px] text-ink-2">{TRAINERS.analyst.what} Runs by itself on the 1st and 15th; it skips itself until there are 10% more insights to learn from.</p>
+          <p className="mt-3 text-[14px] text-ink-2">{TRAINERS.analyst.what} Checks every night and trains by itself when there is no model yet or 10% more insights to learn from. Needs a phone-verified Kaggle account (Kaggle&apos;s rule for GPUs).</p>
           {analyst ? (
             <p className="mt-3 text-[14px] text-ink-2">Trained {ago(analyst.trainedAt)} on {compact(analyst.trainPairs)} insights · on {analyst.testPairs} held-out videos it wrote valid
               answers {pct(analyst.validJson)} of the time, with {pct(analyst.fields)} of the sections, sharing {pct(analyst.overlap)} of the summary&apos;s words with the cloud AI.</p>

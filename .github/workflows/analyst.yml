@@ -12,7 +12,7 @@ on:
         description: "Training passes over the data"
         default: "2"
   schedule:
-    - cron: "11 22 1,15 * *"   # twice a month; skips itself unless there are 10%+ more examples than last time
+    - cron: "11 22 * * *"   # daily check; it only trains when there is no model yet or 10%+ more examples than last time
 
 concurrency:
   group: analyst
@@ -107,6 +107,11 @@ jobs:
             if echo "$S" | grep -qiE 'error|cancel'; then
               kaggle kernels output "$U/pulse-analyst" -p kaggle-out || true
               tail -c 3000 kaggle-out/*.log 2>/dev/null || true
+              if grep -qs NEEDS_PHONE_VERIFICATION kaggle-out/*.log; then
+                echo "::error::Kaggle gives notebooks internet and a GPU only after phone verification: kaggle.com → Settings → Phone verification. The next daily run then trains by itself."
+                python -m ytanalytics progress analyst x --failed --note "Waiting for Kaggle phone verification (kaggle.com → Settings → Phone verification); then it trains by itself the next day"
+                exit 1
+              fi
               python -m ytanalytics progress analyst x --failed --note "Kaggle notebook stopped: $S"
               exit 1
             fi

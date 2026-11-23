@@ -9,7 +9,7 @@ Nothing below needs a button press. All of it runs on free plans (public GitHub 
 | Archive reading | archive-read.yml | every 6 h | reads archived comments |
 | Creator Model | model.yml | nightly | retrains the prediction engine; keeps the better feature set |
 | Pulse Reader | reader.yml | Sundays | retrains the comment reader; switches only if it is not worse |
-| Pulse Analyst | analyst.yml | 1st and 15th | retrains the writing model on Kaggle; skips itself unless there are 10%+ more examples |
+| Pulse Analyst | analyst.yml | nightly check | trains on Kaggle when there is no model yet or 10%+ more examples; needs a phone-verified Kaggle account |
 
 ## Watchdog (ytanalytics/watchdog.py, last step of every sync)
 
