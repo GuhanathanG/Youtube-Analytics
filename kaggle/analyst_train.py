@@ -30,14 +30,21 @@ if not _online() or not _gpu:
     sys.exit(3)
 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "unsloth"], check=True)
 
+from unsloth import FastLanguageModel  # noqa: E402  (unsloth first, so it can patch the others)
 import torch  # noqa: E402
 from datasets import Dataset  # noqa: E402
 from trl import SFTConfig, SFTTrainer  # noqa: E402
-from unsloth import FastLanguageModel  # noqa: E402
 
 BASE = os.environ.get("ANALYST_BASE", "unsloth/Qwen2.5-1.5B-Instruct")
 MAX_LEN = 4096
-data_dir = next(d for d in glob.glob("/kaggle/input/*") if os.path.exists(os.path.join(d, "train.jsonl")))
+# Kaggle mounts datasets at /kaggle/input/<slug> or, newer, /kaggle/input/datasets/<owner>/<slug>: search all of it.
+_found = sorted(glob.glob("/kaggle/input/**/train.jsonl", recursive=True))
+if not _found:
+    print("NO_TRAINING_DATA: nothing named train.jsonl under /kaggle/input:", flush=True)
+    for root, _dirs, files in os.walk("/kaggle/input"):
+        print(" ", root, files[:10], flush=True)
+    sys.exit(4)
+data_dir = os.path.dirname(_found[0])
 rows = lambda f: [json.loads(x) for x in open(os.path.join(data_dir, f)) if x.strip()]  # noqa: E731
 train, test = rows("train.jsonl"), rows("test.jsonl")
 print(f"train {len(train)} test {len(test)} gpu {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'none'}", flush=True)
