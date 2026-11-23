@@ -67,15 +67,17 @@ trainer = SFTTrainer(model=model, tokenizer=tok, train_dataset=ds, args=SFTConfi
     num_train_epochs=float(os.environ.get("ANALYST_EPOCHS", "2")), learning_rate=2e-4, warmup_ratio=0.05, logging_steps=5,
     lr_scheduler_type="cosine", optim="adamw_8bit", fp16=not torch.cuda.is_bf16_supported(), bf16=torch.cuda.is_bf16_supported(),
     output_dir="/kaggle/working/ckpt", report_to=[], seed=7))
+print(f"stage setup {(time.time() - t0) / 60:.1f} min", flush=True)
 stats = trainer.train()
 print(f"trained in {(time.time() - t0) / 60:.0f} min, loss {stats.training_loss:.3f}", flush=True)
+print(f"stage trained {(time.time() - t0) / 60:.1f} min", flush=True)
 
 # ---- test on held-out videos against the cloud AI's own answers
 FastLanguageModel.for_inference(model)
 KEYS = ["summary", "mood", "liked", "complaints", "requests", "questions", "topics", "language_notes"]
 words = lambda s: set(re.findall(r"[a-z]{3,}", s.lower()))  # noqa: E731
 results, valid, keys_ok, overlap = [], 0, 0.0, 0.0
-for r in test[: int(os.environ.get("ANALYST_TEST_N", "40"))]:
+for r in test[: int(os.environ.get("ANALYST_TEST_N", "25"))]:
     ids = tok(chat(r, with_answer=False), return_tensors="pt").to("cuda")
     out = model.generate(**ids, max_new_tokens=900, do_sample=False, temperature=None, top_p=None)
     text = tok.decode(out[0][ids["input_ids"].shape[1]:], skip_special_tokens=True).strip()
@@ -94,7 +96,9 @@ for r in test[: int(os.environ.get("ANALYST_TEST_N", "40"))]:
 n = max(1, len(results))
 metrics = {"base_model": BASE, "train_pairs": len(train), "test_pairs": len(results), "train_loss": round(stats.training_loss, 4),
            "valid_json": round(valid / n, 3), "fields_present": round(keys_ok / max(1, valid), 3),
-           "summary_word_overlap": round(overlap / max(1, valid), 3), "minutes": round((time.time() - t0) / 60, 1)}
+           "summary_word_overlap": round(overlap / max(1, valid), 3), "minutes": round((time.time() - t0) / 60, 1),
+           "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+print(f"stage tested {(time.time() - t0) / 60:.1f} min", flush=True)
 print(json.dumps(metrics), flush=True)
 json.dump(metrics, open("/kaggle/working/metrics.json", "w"), indent=2)
 json.dump(results[:12], open("/kaggle/working/samples.json", "w"), ensure_ascii=False, indent=2)
@@ -103,5 +107,5 @@ json.dump(results[:12], open("/kaggle/working/samples.json", "w"), ensure_ascii=
 model.save_pretrained_gguf("/kaggle/working/gguf", tok, quantization_method="q4_k_m")
 g = sorted(glob.glob("/kaggle/working/gguf*/*.gguf") + glob.glob("/kaggle/working/*.gguf"), key=os.path.getsize)[-1]
 os.replace(g, "/kaggle/working/pulse-analyst.gguf")
-subprocess.run("rm -rf /kaggle/working/ckpt /kaggle/working/gguf*", shell=True)
+subprocess.run("rm -rf /kaggle/working/ckpt /kaggle/working/gguf* /kaggle/working/unsloth_compiled_cache", shell=True)
 print("done", round((time.time() - t0) / 60, 1), "min", flush=True)

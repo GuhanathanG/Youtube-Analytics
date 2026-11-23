@@ -63,12 +63,27 @@ jobs:
           USER_NAME="${KAGGLE_USERNAME:-$(python -c 'from kaggle.api.kaggle_api_extended import KaggleApi as K; a=K(); a.authenticate(); print(a.get_config_value("username"))')}"
           [ -n "$USER_NAME" ] || { echo "::error::Couldn't tell the Kaggle username: add the KAGGLE_USERNAME secret."; python -m ytanalytics progress analyst x --failed --note "Kaggle username missing"; exit 1; }
           echo "user=$USER_NAME" >> "$GITHUB_OUTPUT"
+      - name: Collect a finished Kaggle run, or leave one that is still training
+        id: prev
+        run: |
+          U="${{ steps.who.outputs.user }}"
+          S=$(kaggle kernels status "$U/pulse-analyst" 2>&1 | tail -1 || true); echo "Kaggle: $S"
+          if echo "$S" | grep -qiE 'running|queued'; then
+            python -m ytanalytics progress analyst "still training on Kaggle; a later run collects the result"
+            echo "busy=1" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if echo "$S" | grep -qiE 'complete'; then
+            R=$(kaggle/collect.sh "$U" "pulse-analyst-${{ github.run_number }}-prev"); echo "collect: $R"
+          fi
+          echo "busy=0" >> "$GITHUB_OUTPUT"
       - name: Build the training pairs
+        if: steps.prev.outputs.busy != '1'
         run: |
           python -m ytanalytics progress analyst "building training pairs from the cloud AI's video insights"
           python -m ytanalytics analyst-export --out analyst-data
           cat analyst-data/counts.json
       - name: Enough new examples to retrain?
+        if: steps.prev.outputs.busy != '1'
         id: due
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.triggering_actor }}" != "github-actions[bot]" ]; then D=1; else D=$(python -m ytanalytics analyst-due --out analyst-data); fi
@@ -109,9 +124,13 @@ jobs:
             echo "$S"
             MIN=$(( ($(date +%s) - start) / 60 ))
             python -m ytanalytics progress analyst "Kaggle: $(echo "$S" | sed -E 's/.*has status "?([A-Za-z_.]+)"?.*/\1/') · ${MIN} min" >/dev/null
-            echo "$S" | grep -qiE 'complete' && break
+            if echo "$S" | grep -qiE 'complete'; then
+              R=$(kaggle/collect.sh "$U" "pulse-analyst-${{ github.run_number }}"); echo "collect: $R"
+              [ "$R" = "no-output" ] && { python -m ytanalytics progress analyst x --failed --note "Kaggle finished but produced no model file"; exit 1; }
+              exit 0
+            fi
             if echo "$S" | grep -qiE 'error|cancel'; then
-              kaggle kernels output "$U/pulse-analyst" -p kaggle-out || true
+              kaggle kernels output "$U/pulse-analyst" -p kaggle-out -q --file-pattern '\.log$' || true
               tail -c 3000 kaggle-out/*.log 2>/dev/null || true
               if grep -qs NO_TRAINING_DATA kaggle-out/*.log; then
                 python -m ytanalytics progress analyst x --failed --note "Kaggle notebook couldn't see the training data (dataset not attached yet); the next run retries"
@@ -125,23 +144,16 @@ jobs:
               python -m ytanalytics progress analyst x --failed --note "Kaggle notebook stopped: $S"
               exit 1
             fi
-            [ "$MIN" -gt 320 ] && { python -m ytanalytics progress analyst x --failed --note "Kaggle run took too long"; exit 1; }
+            if [ "$MIN" -gt 290 ]; then
+              # Kaggle allows 12 h; this GitHub job doesn't. Leave it training: the next nightly run collects it.
+              python -m ytanalytics progress analyst "still training on Kaggle after ${MIN} min; the next run collects the result"
+              exit 0
+            fi
           done
-      - name: Download the model and publish it
-        if: steps.due.outputs.due == '1'
-        run: |
-          U="${{ steps.who.outputs.user }}"
-          kaggle kernels output "$U/pulse-analyst" -p analyst-out
-          ls -la analyst-out
-          cat analyst-out/metrics.json
-          TAG="pulse-analyst-${{ github.run_number }}"
-          gh release create "$TAG" analyst-out/pulse-analyst.gguf analyst-out/metrics.json analyst-out/samples.json \
-            --title "Pulse Analyst #${{ github.run_number }}" --latest=false --notes "Our own writing model (GGUF, CPU). Test results in metrics.json."
-          python -m ytanalytics analyst-save --out analyst-out --url "https://github.com/${{ github.repository }}/releases/download/$TAG/pulse-analyst.gguf"
-          python -m ytanalytics progress analyst x --done --note "$(python -c "import json; m=json.load(open('analyst-out/metrics.json')); print(f\"valid JSON {m['valid_json']:.0%}, summary overlap with the cloud AI {m['summary_word_overlap']:.0%} on {m['test_pairs']} held-out videos\")")"
       - name: Summary
         if: always()
         run: |
           echo '### Pulse Analyst' >> "$GITHUB_STEP_SUMMARY"
           cat analyst-data/counts.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
           cat analyst-out/metrics.json >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          grep -hoE 'stage [a-z]+ [0-9.]+ min|trained in [^"]*|done [0-9.]+ min' analyst-out/*.log kaggle-out/*.log 2>/dev/null >> "$GITHUB_STEP_SUMMARY" || true
