@@ -88,6 +88,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--done", action="store_true")
     ap.add_argument("--failed", action="store_true")
     sub.add_parser("watchdog", help="start skipped or failed scheduled jobs (training included) and keep schedules switched on")
+    ak = sub.add_parser("analyst-known", help="exit 0 if these Pulse Analyst results are the ones already recorded")
+    ak.add_argument("--out", default="analyst-out")
     ad = sub.add_parser("analyst-due", help="print 1 if there are enough new examples to retrain the Pulse Analyst, else 0")
     ad.add_argument("--out", default="analyst-data")
     sub.add_parser("reader-due", help="print 1 if there are enough new AI-read comments to retrain the Pulse Reader, else 0")
@@ -311,6 +313,18 @@ def main(argv: list[str] | None = None) -> int:
             from .watchdog import run as watchdog_run
 
             print("\n".join(watchdog_run(session)))
+        elif args.cmd == "analyst-known":
+            from pathlib import Path
+
+            from sqlalchemy import text as _t
+
+            new = json.loads((Path(args.out) / "metrics.json").read_text())
+            try:
+                row = session.execute(_t("select metrics from local_models where name = 'pulse-analyst'")).first()
+            except Exception:
+                session.rollback()
+                row = None
+            return 0 if row and json.loads(row[0]) == new else 1
         elif args.cmd == "analyst-due":
             from pathlib import Path
 
