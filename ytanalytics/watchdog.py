@@ -37,7 +37,7 @@ JOBS = [
     Job("training.yml", "Training channels", 6, 3),
     Job("archive-read.yml", "Archive reading", 6, 4),
     Job("model.yml", "Creator Model", 24, 6),
-    Job("reader.yml", "Pulse Reader", 24 * 7, 24),
+    Job("reader.yml", "Pulse Reader", 24, 12),  # nightly; trains only when there are enough new AI-read comments
     Job("analyst.yml", "Pulse Analyst", 24, 24),  # daily check; trains only when there is enough new data
 ]
 KEEP_ALIVE = [j.file for j in JOBS] + ["sync.yml"]

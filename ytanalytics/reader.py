@@ -367,7 +367,7 @@ def train(session: Session, out_dir: str | Path = "reader-out") -> TrainResult:
     preds = _predict(model, tok, [r["text"] for r in test])
     metrics = {"trained": True, "base_model": BASE_MODEL, "train_rows": len(train_rows), "test_rows": len(test),
                "steps": step, "planned_steps": steps, "minutes": round((time.time() - t0) / 60, 1),
-               "target_agreement": TARGET, "tasks": evaluate(preds, test)}
+               "target_agreement": TARGET, "tasks": evaluate(preds, test), "labelled_total": labelled_total(session)}
     out = Path(out_dir)
     prog.update("exporting and shrinking the model", step, steps, force=True)
     export(model, tok, out)
@@ -519,3 +519,33 @@ def load_record(session: Session) -> dict | None:
     payload = json.loads(row.payload)
     payload["metrics"] = json.loads(row.metrics or "{}")
     return payload
+
+
+
+def labelled_total(session: Session) -> int:
+    """Comments the cloud AI has read so far, in the main database and the archives (archive_stats counts those)."""
+    main = session.execute(text(
+        "select count(*) from comments where ai_at is not null and coalesce(ai_model, '') not like 'rules%' "
+        "and coalesce(ai_model, '') not like 'local%'")).scalar() or 0
+    try:
+        arch = session.execute(text("select coalesce(sum(ai_read), 0) from archive_stats")).scalar() or 0
+    except Exception:
+        session.rollback()
+        arch = 0
+    return int(main) + int(arch)
+
+
+def due(session: Session, min_new: int | None = None) -> tuple[bool, str]:
+    """Whether the nightly run should train: no model yet, or enough comments the cloud AI read (main + archives)
+    since the model in use was trained."""
+    min_new = int(os.environ.get("READER_MIN_NEW", "2000")) if min_new is None else min_new
+    rec = load_record(session)
+    if rec is None:
+        return True, "no Pulse Reader yet: training"
+    before = rec.get("metrics", {}).get("labelled_total")
+    if before is None:
+        return True, "the model in use didn't record its data size: training once to start counting"
+    new = labelled_total(session) - int(before)
+    if new >= min_new:
+        return True, f"{new:,} more comments read by the cloud AI since the last model: training"
+    return False, f"only {new:,} new AI-read comments since the last model (needs {min_new:,}): skipped today"

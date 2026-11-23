@@ -7,7 +7,7 @@ name: Pulse Reader (our own comment model)
 # ytanalytics/reader.py and docs/RESEARCH_API_INDEPENDENCE.md.
 on:
   schedule:
-    - cron: "17 21 * * 6"   # Sunday 02:47 India time, weekly
+    - cron: "17 21 * * *"   # nightly, 02:47 India time; skips itself unless 2,000+ new comments were read by the cloud AI
   workflow_dispatch:
     inputs:
       max_train:
@@ -42,13 +42,23 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements*.txt
+      - name: Enough new comments to retrain?
+        id: due
+        run: |
+          pip install -q -r requirements.txt
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.triggering_actor }}" != "github-actions[bot]" ]; then D=1; else D=$(python -m ytanalytics reader-due); fi
+          echo "due=$D" >> "$GITHUB_OUTPUT"
+          [ "$D" = "1" ] || python -m ytanalytics progress reader x --done --note "Skipped today: not enough new comments read by the cloud AI since the last model"
       - name: Install (CPU torch first)
+        if: steps.due.outputs.due == '1'
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements-reader.txt
       - name: Train and test on the held-out comments
+        if: steps.due.outputs.due == '1'
         run: python -m ytanalytics reader-train --out reader-out
       - name: Publish the model as a release
+        if: steps.due.outputs.due == '1'
         id: publish
         run: |
           test -f reader-out/pulse-reader.tar.gz || { echo "No model produced"; exit 1; }
@@ -58,8 +68,10 @@ jobs:
             --notes "Our own comment-reading model, trained $(date -u +%F). Held-out results are in metrics.json."
           echo "url=https://github.com/${{ github.repository }}/releases/download/$TAG/pulse-reader.tar.gz" >> "$GITHUB_OUTPUT"
       - name: Switch to it if it isn't worse than the current model
+        if: steps.due.outputs.due == '1'
         run: python -m ytanalytics reader-save --out reader-out --url "${{ steps.publish.outputs.url }}"
       - name: Keep only the newest 3 model releases
+        if: steps.due.outputs.due == '1'
         continue-on-error: true
         run: |
           IN_USE=$(python -m ytanalytics reader-status | python -c "import sys,json; u=json.load(sys.stdin).get('url') or ''; print(u.split('/download/')[-1].split('/')[0])")

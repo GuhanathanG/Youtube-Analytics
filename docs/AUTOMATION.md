@@ -8,7 +8,7 @@ Nothing below needs a button press. All of it runs on free plans (public GitHub 
 | Training channels | training.yml | every 6 h | adds queued Lab channels, refreshes the training database |
 | Archive reading | archive-read.yml | every 6 h | reads archived comments |
 | Creator Model | model.yml | nightly | retrains the prediction engine; keeps the better feature set |
-| Pulse Reader | reader.yml | Sundays | retrains the comment reader; switches only if it is not worse |
+| Pulse Reader | reader.yml | nightly check | retrains when 2,000+ new comments were read by the cloud AI; switches only if it is not worse |
 | Pulse Analyst | analyst.yml | nightly check | trains on Kaggle when there is no model yet or 10%+ more examples; needs a phone-verified Kaggle account |
 
 ## Watchdog (ytanalytics/watchdog.py, last step of every sync)
