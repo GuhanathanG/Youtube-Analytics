@@ -14,6 +14,7 @@ async function ensureTable() {
     token text primary key, channel_id text not null references channels(id) on delete cascade,
     created_at timestamp not null default (now() at time zone 'utc'), expires_at timestamp, revoked boolean not null default false,
     views integer not null default 0)`;
+  await db`create index if not exists ix_share_links_channel on share_links (channel_id)`;
   await ensureRls("share_links");
   ready = true;
 }

@@ -92,6 +92,11 @@ def main(argv: list[str] | None = None) -> int:
     ak.add_argument("--out", default="analyst-out")
     ad = sub.add_parser("analyst-due", help="print 1 if there are enough new examples to retrain the Pulse Analyst, else 0")
     ad.add_argument("--out", default="analyst-data")
+    aw = sub.add_parser("analyst-write", help="our own writing model (Pulse Analyst, CPU) writes video insights the cloud AI couldn't")
+    aw.add_argument("--max", type=int, default=3)
+    aw.add_argument("--until", type=float, default=None, help="stop by this unix time")
+    sub.add_parser("analyst-waiting", help="videos waiting for an insight that our own writer could write (0 = nothing to do)")
+    sub.add_parser("analyst-sha", help="the Pulse Analyst in use (sha256), for caching its file")
     sub.add_parser("reader-due", help="print 1 if there are enough new AI-read comments to retrain the Pulse Reader, else 0")
     sub.add_parser("reader-status", help="the Pulse Reader in use: download URL and held-out results")
     rs = sub.add_parser("reader-save", help="record a published Pulse Reader (download URL + metrics) for the analyse step")
@@ -167,9 +172,12 @@ def main(argv: list[str] | None = None) -> int:
             from .ai import run_ai
             from .llm import LLMRouter, slots_from_env
 
+            blocked_file = os.environ.get("AI_BLOCKED_FILE")
             slots = slots_from_env(discover=True)
             if not slots:
                 print("No AI key set (GEMINI_API_KEY / GROQ_API_KEY); skipping AI step.")
+                if blocked_file:
+                    open(blocked_file, "w").write("no keys")
                 return 0
             router = LLMRouter(session, slots)
             stats = run_ai(
@@ -179,6 +187,8 @@ def main(argv: list[str] | None = None) -> int:
                 channel_insight_hours=int(os.environ.get("AI_CHANNEL_INSIGHT_HOURS", "24")),
             )
             print(json.dumps(stats, indent=2))
+            if blocked_file and stats.get("insights_blocked"):
+                open(blocked_file, "w").write("cloud AI out")
             print("\nFree AI models today:")
             for slot in slots:
                 usage = router._usage(slot)
@@ -295,7 +305,12 @@ def main(argv: list[str] | None = None) -> int:
             from .reader import sha256
 
             out = Path(args.out)
-            save_record(session, json.loads((out / "metrics.json").read_text()), args.url, sha256(out / "pulse-analyst.gguf"))
+            m = json.loads((out / "metrics.json").read_text())
+            save_record(session, m, args.url, sha256(out / "pulse-analyst.gguf"))
+            from .runlog import record
+
+            record(session, "pulse-analyst", m.get("summary_word_overlap"), "summary overlap with the cloud AI", adopted=True, metrics=m,
+                   note=f"valid JSON {m.get('valid_json', 0):.0%} on {m.get('test_pairs')} held-out videos")
             print(json.dumps({"saved": args.url}))
         elif args.cmd == "progress":
             from .progress import Progress
@@ -333,6 +348,18 @@ def main(argv: list[str] | None = None) -> int:
             ok, why = due(session, json.loads((Path(args.out) / "counts.json").read_text()))
             print(why, file=sys.stderr)
             print(1 if ok else 0)
+        elif args.cmd == "analyst-write":
+            from .analyst_local import write_insights
+
+            print(json.dumps(write_insights(session, args.max, deadline=getattr(args, "until", None))))
+        elif args.cmd == "analyst-waiting":
+            from .analyst_local import waiting
+
+            print(len(waiting(session)))
+        elif args.cmd == "analyst-sha":
+            from .analyst_local import record
+
+            print((record(session) or {}).get("sha256", "none"))
         elif args.cmd == "reader-due":
             from .reader import due as reader_due
 
@@ -355,6 +382,11 @@ def main(argv: list[str] | None = None) -> int:
             ok, why = should_replace(metrics, (current or {}).get("metrics"))
             if ok:
                 save_record(session, metrics, args.url, sha256(out / "pulse-reader.tar.gz"))
+            from .runlog import record
+
+            prev = ((current or {}).get("metrics") or {}).get("tasks", {}).get("mood", {}).get("macro_f1")
+            record(session, "pulse-reader", metrics.get("tasks", {}).get("mood", {}).get("macro_f1"), "mood macro-F1", adopted=ok,
+                   metrics=metrics, baseline=prev, note=why)
             print(json.dumps({"saved": ok, "why": why, "url": args.url if ok else None}))
         elif args.cmd == "forecast-refresh":
             from .model import refresh_forecasts

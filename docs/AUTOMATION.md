@@ -11,6 +11,18 @@ Nothing below needs a button press. All of it runs on free plans (public GitHub 
 | Pulse Reader | reader.yml | nightly check | retrains when 2,000+ new comments were read by the cloud AI; switches only if it is not worse |
 | Pulse Analyst | analyst.yml | nightly check | trains on Kaggle when there is no model yet or 10%+ more examples; needs a phone-verified Kaggle account |
 
+## Our own writing model at work
+
+When every free cloud AI model is out for now, the sync's AI step leaves a marker and the next step runs the
+Pulse Analyst (the GGUF from its latest release, cached by checksum) on the runner's CPU with llama.cpp: up to 3
+waiting video insights per run, ~25 s each. They are saved as model `local/pulse-analyst`, labelled "written by our own
+model" on the site, replaced by the cloud AI when it is back, and never used as training examples.
+
+## Score history
+
+Every training run (Pulse Reader, Pulse Analyst, Creator Model per platform, Tanglish head) adds a row to
+`model_runs`: its held-out score, what it was compared with, and whether it was adopted. The Model Lab charts it.
+
 ## Watchdog (ytanalytics/watchdog.py, last step of every sync)
 
 - Starts a job whose last run is older than its schedule plus slack (GitHub sometimes skips scheduled runs).

@@ -100,3 +100,33 @@ def test_reader_due_counts_main_and_archive_reads():
         assert not due(s, min_new=3)[0]
         s.execute(text("update archive_stats set ai_read = 12"))
         assert due(s, min_new=3)[0]
+
+
+def test_score_history_records_runs_and_never_raises():
+    from datetime import datetime
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import Session
+
+    from ytanalytics.runlog import record
+
+    eng = create_engine("sqlite://")
+    with Session(eng) as s:
+        record(s, "pulse-reader", 0.733, "mood macro-F1", adopted=True, at=datetime(2026, 11, 24))
+        record(s, "pulse-reader", 0.722, "mood macro-F1", adopted=False, baseline=0.733, note="worse", at=datetime(2026, 11, 25))
+        record(s, "pulse-reader", 0.722, "mood macro-F1", adopted=False, at=datetime(2026, 11, 25))  # same run twice: kept once
+        rows = s.execute(text("select score, adopted, baseline from model_runs order by run_at")).all()
+        assert [(round(r[0], 3), bool(r[1])) for r in rows] == [(0.733, True), (0.722, False)] and rows[1][2] == 0.733
+        s.execute(text("drop table model_runs"))
+        s.execute(text("create view model_runs as select 1 as x"))  # broken table: logged, not raised
+        record(s, "x", 1, "y", adopted=True)
+
+
+def test_local_writer_parses_and_cloud_replaces_local_insights():
+    import json
+
+    from ytanalytics.analyst_local import MODEL_TAG, parse
+
+    assert parse('noise {"summary": "Fans loved it", "mood": "positive", "bogus": 1} tail')["summary"] == "Fans loved it"
+    assert "bogus" not in parse('{"summary": "x"}') and parse('{"summary": ""}') is None and parse("no json") is None
+    assert MODEL_TAG.startswith("local/") and json.loads(json.dumps(parse('{"summary": "தமிழ் ok"}')))

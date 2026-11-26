@@ -221,6 +221,7 @@ class AIRunner:
             try:
                 self._video_insight(video)
             except NoModelAvailable:
+                self.stats["insights_blocked"] = 1  # every free cloud model is out for now: our own writer steps in
                 return written
             written += 1
         for channel in self.s.scalars(select(Channel).where(Channel.active.is_(True), not_training())).all():
@@ -247,7 +248,9 @@ class AIRunner:
             .order_by(Insight.created_at.desc()).limit(1)
         ).first()
 
-    def _videos_needing_insight(self) -> list[Video]:
+    def _videos_needing_insight(self, replace_local: bool = True) -> list[Video]:
+        """Videos due a new insight. With replace_local, one written by our own model (model "local/...") counts as due, so
+        the cloud AI upgrades it when it is available again; our own writer passes False so it doesn't redo its own."""
         counts = dict(self.s.execute(
             select(Comment.video_id, func.count()).group_by(Comment.video_id)
             .having(func.count() >= self.insight_min_comments)
@@ -262,7 +265,8 @@ class AIRunner:
         for vid, n in counts.items():
             last = latest.get(vid)
             # New video insight when there is none yet, or comments grew by 25% (and 20+).
-            if last is None or (n >= last.comment_count * 1.25 and n - last.comment_count >= 20):
+            if last is None or (n >= last.comment_count * 1.25 and n - last.comment_count >= 20) \
+                    or (replace_local and (last.model or "").startswith("local/")):
                 due.append(vid)
         if not due:
             return []

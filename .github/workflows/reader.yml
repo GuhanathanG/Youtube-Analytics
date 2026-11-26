@@ -12,10 +12,10 @@ on:
     inputs:
       max_train:
         description: "Training comments (more = better, slower)"
-        default: "120000"
+        default: "200000"
       max_minutes:
         description: "Training time budget in minutes"
-        default: "200"
+        default: "240"
 
 concurrency:
   group: reader
@@ -31,8 +31,8 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ARCHIVE_DATABASE_URL: ${{ secrets.ARCHIVE_DATABASE_URL }}
-      READER_MAX_TRAIN: ${{ inputs.max_train || '120000' }}
-      READER_MAX_MINUTES: ${{ inputs.max_minutes || '200' }}
+      READER_MAX_TRAIN: ${{ inputs.max_train || '200000' }}
+      READER_MAX_MINUTES: ${{ inputs.max_minutes || '240' }}
       PYTHONUNBUFFERED: "1"
       GH_TOKEN: ${{ github.token }}
     steps:
