@@ -379,3 +379,36 @@ def test_local_model_is_opt_in_and_last():
                             "LOCAL_LLM_BASE_URL": "http://box:8080/v1/"})
     assert slots[-1].key == "local/local" and slots[-1].base_url == "http://box:8080/v1/"
     assert "reasoning_effort" not in slots[-1].extra
+
+
+class FakeLlama:
+    def __init__(self, reply):
+        self.reply, self.calls = reply, 0
+
+    def create_chat_completion(self, messages, max_tokens, temperature):
+        self.calls += 1
+        return {"choices": [{"message": {"content": self.reply}}]}
+
+
+def test_own_writer_fills_in_and_cloud_replaces_it_later(session):
+    from ytanalytics.analyst_local import MODEL_TAG, write_insights
+
+    seed(session, n=30)
+    llm = FakeLlama('{"summary": "Viewers liked the review", "mood": "positive"}')
+    assert write_insights(session, 3, llm=llm)["written"] == 1
+    ins = session.scalars(select(Insight)).one()
+    assert ins.model == MODEL_TAG and json.loads(ins.data)["written_by"].startswith("Pulse Analyst")
+    assert write_insights(session, 3, llm=llm)["written"] == 0 and llm.calls == 1  # never redoes its own
+    runner = AIRunner(session, FakeRouter())
+    assert [v.id for v in runner._videos_needing_insight()] == ["v1"]  # the cloud AI upgrades it when it can
+    assert write_insights(session, 3, llm=FakeLlama("not json"))["written"] == 0
+
+
+def test_analyst_training_skips_own_writeups(session, tmp_path):
+    from ytanalytics.analyst import export
+
+    seed(session, n=30)
+    session.add(Insight(scope="video", target_id="v1", comment_count=30, model="local/pulse-analyst", data='{"summary": "x"}'))
+    session.commit()
+    c = export(session, tmp_path)
+    assert c["train"] + c["test"] == 0

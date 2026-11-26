@@ -1,9 +1,10 @@
 import { within } from "@/lib/cache";
 import { ago, compact } from "@/lib/format";
 import { workflowRuns, githubConfigured, type LabRun } from "@/lib/github";
-import { TRAINERS, analystModel, engineModels, readerModel, tanglishModel, trainingData, type EngineScore, type ReaderTask } from "@/lib/lab";
+import { TRAINERS, analystModel, modelRuns, engineModels, readerModel, tanglishModel, trainingData, type EngineScore, type ReaderTask } from "@/lib/lab";
 import { TrainButton } from "./LabControls";
 import { LiveTraining } from "./LiveTraining";
+import { ScoreHistory } from "./ScoreHistory";
 
 export const metadata = { title: "Models" };
 
@@ -47,8 +48,8 @@ export default async function LabPage() {
     within(readerModel(), 6000, null), within(engineModels(), 6000, []), within(tanglishModel(), 6000, null),
     within(trainingData(), 8000, null), within(workflowRuns(TRAINERS.reader.file, 4), 6000, null), within(workflowRuns(TRAINERS.engine.file, 4), 6000, null),
   ]);
-  const [channelRuns, analystRuns, analyst] = await Promise.all([within(workflowRuns(TRAINERS.channels.file, 3), 6000, null),
-    within(workflowRuns(TRAINERS.analyst.file, 3), 6000, null), within(analystModel(), 6000, null)]);
+  const [channelRuns, analystRuns, analyst, history] = await Promise.all([within(workflowRuns(TRAINERS.channels.file, 3), 6000, null),
+    within(workflowRuns(TRAINERS.analyst.file, 3), 6000, null), within(analystModel(), 6000, null), within(modelRuns(), 6000, [])]);
   const canStart = githubConfigured();
   return (
     <>
@@ -61,6 +62,15 @@ export default async function LabPage() {
 
       <LiveTraining />
       <p className="mt-3 text-[13px] text-ink-3">Everything here trains by itself. A watchdog checks every 30 minutes: it starts any run GitHub&apos;s timer skipped, retries a failed run once, and alerts you after two failures in a row.</p>
+
+      {/* Score history */}
+      <section className="mt-14" aria-labelledby="score-history">
+        <div className="mono" style={{ fontSize: 10.5 }}>Is it improving?</div>
+        <h2 id="score-history" className="display mt-3 text-[26px]">Score history</h2>
+        <p className="mt-2 max-w-[70ch] text-[14px] text-ink-2">Every training run&apos;s score on data the model never saw. Magenta diamonds are runs that
+          scored lower, so the previous model stayed in use.</p>
+        <ScoreHistory runs={history ?? []} />
+      </section>
 
       {/* Pulse Reader */}
       <section className="mt-14 grid gap-px bg-[var(--hair)] lg:grid-cols-[1.4fr_1fr]">

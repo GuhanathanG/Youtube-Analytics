@@ -120,7 +120,35 @@ jobs:
 
       - name: AI deep analysis and insights (free Gemini / Mistral / Groq)
         if: steps.alive.outputs.alive != '1'
+        env:
+          AI_BLOCKED_FILE: ${{ runner.temp }}/ai_insights_blocked
         run: python -m ytanalytics ai --until ${{ steps.plan.outputs.ai_until }}
+
+      # When every free cloud model is out for now, our own writing model (Pulse Analyst, trained on Kaggle) writes the
+      # waiting video insights on this free CPU. The cloud AI replaces them when it is back.
+      - name: Is our own writer needed?
+        if: steps.alive.outputs.alive != '1'
+        id: writer
+        continue-on-error: true
+        run: |
+          if [ -f "${{ runner.temp }}/ai_insights_blocked" ] && [ "$(python -m ytanalytics analyst-waiting)" != "0" ]; then
+            echo "need=1" >> "$GITHUB_OUTPUT"; echo "sha=$(python -m ytanalytics analyst-sha)" >> "$GITHUB_OUTPUT"
+          else echo "need=0" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Cache our writing model
+        if: steps.writer.outputs.need == '1' && steps.writer.outputs.sha != 'none'
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pulse-analyst
+          key: pulse-analyst-${{ steps.writer.outputs.sha }}
+
+      - name: Our own writing model writes the waiting insights (free, CPU)
+        if: steps.writer.outputs.need == '1' && steps.writer.outputs.sha != 'none'
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          pip install -q --only-binary :all: --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python==0.3.38
+          python -m ytanalytics analyst-write --max 3 --until $(( $(date +%s) + 540 ))
 
       - name: Transcripts of new uploads (free captions; backs off for a day if YouTube refuses this machine)
         if: steps.alive.outputs.alive != '1'

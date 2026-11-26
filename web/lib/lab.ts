@@ -147,7 +147,21 @@ export async function trainingChannels(): Promise<{ configured: boolean; channel
 export const TRAINERS = {
   reader: { file: "reader.yml", name: "Pulse Reader", what: "Our own comment-reading model. Fine-tunes on comments the cloud AI already read (~1–3 h on GitHub's free CPU)." },
   channels: { file: "training.yml", name: "Training channels", what: "Adds the researched niche channels and your Lab requests to the training database, then refreshes their uploads and stats (every 6 hours)." },
-  analyst: { file: "analyst.yml", name: "Pulse Analyst", what: "Our own writing model: fine-tuned on Kaggle's free GPU (private) from the cloud AI's video insights, tested on held-out videos, exported to run on CPU (~1–2 h)." },
+  analyst: { file: "analyst.yml", name: "Pulse Analyst", what: "Our own writing model: fine-tuned on Kaggle's free GPU (private) from the cloud AI's video insights, tested on held-out videos, exported to run on CPU (~1–2 h). When the free cloud AI is out, it writes the waiting video insights itself." },
   engine: { file: "model.yml", name: "Creator Model", what: "Prediction engine: learns from every tracked channel's videos, thumbnails and early hours; keeps the better feature set (~5–15 min)." },
 } as const;
 export type TrainerKey = keyof typeof TRAINERS;
+
+export type ModelRun = { model: string; runAt: string; score: number | null; scoreName: string | null; baseline: number | null;
+  adopted: boolean; note: string | null };
+
+/** Score history: every training run of our own models (oldest first). */
+export async function modelRuns(): Promise<ModelRun[]> {
+  try {
+    const rows = await sql()`select model, run_at::text as run_at, score, score_name, baseline, adopted, note from model_runs
+      where run_at > now() - interval '180 days' order by model, run_at`;
+    return rows.map((r) => ({ model: String(r.model), runAt: String(r.run_at).replace(" ", "T"), score: r.score == null ? null : Number(r.score),
+      scoreName: (r.score_name as string) ?? null, baseline: r.baseline == null ? null : Number(r.baseline), adopted: !!r.adopted,
+      note: (r.note as string) ?? null }));
+  } catch { return []; } // table appears with the first recorded run
+}

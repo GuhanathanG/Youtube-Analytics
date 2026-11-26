@@ -37,8 +37,8 @@ def export(session: Session, out_dir: str | Path) -> dict:
     runner = AIRunner(session, router=None)  # only its prompt building is used
     latest: dict[str, Insight] = {}
     for ins in session.scalars(select(Insight).where(Insight.scope == "video").order_by(Insight.created_at)):
-        if (ins.model or "").startswith("rules"):
-            continue
+        if (ins.model or "").startswith(("rules", "local/")):
+            continue  # never learn from our own (or rule-based) write-ups
         latest[ins.target_id] = ins  # newest insight per video
     counts = {"train": 0, "test": 0, "skipped_thin": 0, "skipped_missing": 0}
     with open(out / "train.jsonl", "w") as tr, open(out / "test.jsonl", "w") as te:

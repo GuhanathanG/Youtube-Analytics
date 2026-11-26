@@ -147,6 +147,10 @@ def train_tanglish(session: Session, embed=None, baseline=None, extra=None) -> d
                     {"t": now, "m": json.dumps(metrics), "p": json.dumps(payload)})
     session.commit()
     log.info("Tanglish mood model: %s", metrics)
+    from .runlog import record
+
+    record(session, "tanglish", metrics["macro_f1"], "mood macro-F1", adopted=use, baseline=metrics["current_macro_f1"], metrics=metrics,
+           note="in use" if use else "the current mood model is still better", at=now)
     return {"trained": True, **metrics}
 
 

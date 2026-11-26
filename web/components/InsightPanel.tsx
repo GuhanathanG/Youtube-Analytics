@@ -46,7 +46,7 @@ export function InsightPanel({ insight, scope }: { insight: Insight | null; scop
         </div>
         {typeof d.mood === "string" && <Tag tone="accent">{d.mood}</Tag>}
         {typeof d.trend === "string" && <Tag tone="accent">{d.trend}</Tag>}
-        <span className="ml-auto text-[12px] text-ink-3">{ago(insight.created_at)} · {insight.comment_count.toLocaleString("en")} comments · {insight.model}</span>
+        <span className="ml-auto text-[12px] text-ink-3">{ago(insight.created_at)} · {insight.comment_count.toLocaleString("en")} comments · {insight.model?.startsWith("local/") ? "written by our own model (Pulse Analyst)" : insight.model}</span>
       </div>
       {typeof d.summary === "string" && <p className="relative mt-4 max-w-[85ch] text-[15px] leading-relaxed text-ink">{d.summary}</p>}
       {typeof d.audience_profile === "string" && (

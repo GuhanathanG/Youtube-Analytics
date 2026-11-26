@@ -605,6 +605,11 @@ def _train_platform(session, platform: str, now: datetime) -> dict:
         errs = [abs(math.log(r.f) - math.log(r.a)) for r in graded]
         metrics["live_graded"] = len(graded)
         metrics["live_within_2x"] = sum(x <= math.log(2) for x in errs) / len(errs)
+    from .runlog import record
+
+    record(session, f"creator-{platform}", metrics.get("within_2x"), "forecasts within 2x of real views", adopted=True,
+           baseline=metrics.get("baseline_within_2x"), metrics={k: v for k, v in metrics.items() if k != "candidates"} | {"videos": len(train_set)},
+           note=f"{winner} features, ranking {metrics.get('rank_corr') or 0:.2f}", at=now)
     model = _fit(matrix(train_set), np.array([e.target for e in train_set]))
     linear = fit_linear(train_set)
     stamp = now.replace(microsecond=0)
