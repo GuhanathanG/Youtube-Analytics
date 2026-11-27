@@ -59,7 +59,8 @@ def test_new_model_only_replaces_when_not_worse():
 
     new = {"trained": True, "tasks": {"mood": {"macro_f1": 0.80}}}
     assert should_replace(new, None)[0]
-    assert should_replace(new, {"tasks": {"mood": {"macro_f1": 0.805}}})[0]
+    assert should_replace(new, {"tasks": {"mood": {"macro_f1": 0.80}}})[0]  # a tie keeps the newer one
+    assert not should_replace(new, {"tasks": {"mood": {"macro_f1": 0.805}}})[0]  # slightly worse never takes over
     assert not should_replace(new, {"tasks": {"mood": {"macro_f1": 0.85}}})[0]
     assert not should_replace({"trained": False, "reason": "x"}, None)[0]
 

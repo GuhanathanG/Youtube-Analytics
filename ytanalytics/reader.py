@@ -417,8 +417,9 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def should_replace(new: dict, old: dict | None, slack: float = 0.01) -> tuple[bool, str]:
-    """A newly trained model takes over only if its mood agreement isn't worse than the one in use."""
+def should_replace(new: dict, old: dict | None, slack: float = 0.0) -> tuple[bool, str]:
+    """A newly trained model takes over only if its mood agreement is at least as good as the one in use (no slack:
+    a 1-point allowance once let a slightly worse model in)."""
     if not new.get("trained"):
         return False, new.get("reason", "not trained")
     new_f1 = new["tasks"]["mood"]["macro_f1"]

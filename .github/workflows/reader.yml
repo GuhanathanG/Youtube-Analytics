@@ -15,7 +15,7 @@ on:
         default: "200000"
       max_minutes:
         description: "Training time budget in minutes"
-        default: "240"
+        default: "275"
 
 concurrency:
   group: reader
@@ -27,12 +27,12 @@ permissions:
 jobs:
   train:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 355   # GitHub's limit is 360; training gets 275 min, loading/testing/export the rest
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ARCHIVE_DATABASE_URL: ${{ secrets.ARCHIVE_DATABASE_URL }}
       READER_MAX_TRAIN: ${{ inputs.max_train || '200000' }}
-      READER_MAX_MINUTES: ${{ inputs.max_minutes || '240' }}
+      READER_MAX_MINUTES: ${{ inputs.max_minutes || '275' }}
       PYTHONUNBUFFERED: "1"
       GH_TOKEN: ${{ github.token }}
     steps:
