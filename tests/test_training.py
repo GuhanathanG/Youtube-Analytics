@@ -79,3 +79,38 @@ def test_young_tracks_new_uploads_hourly(monkeypatch):
         assert s.query(VideoSnapshot).count() == 2  # the two young videos, not the old one
     with Session() as main:  # an hour hasn't passed: nothing is re-read
         assert training.young(main, Settings.from_env(), yt=YT(), fetch=lambda url: feed)["checked"] == 0
+
+
+def test_accuracy_check_flags_missed_uploads_stale_views_and_missing_comments():
+    from datetime import timedelta
+
+    from ytanalytics.accuracy import check
+    from ytanalytics.db import Channel, Comment, Video, init_db, make_engine, make_session_factory, utcnow
+
+    eng = make_engine("sqlite://")
+    init_db(eng)
+    now = utcnow()
+    with make_session_factory(eng)() as s:
+        s.add(Channel(id="UCme", title="Me", active=True, subscriber_count=1000))
+        s.add(Channel(id="UCriv", title="Rival", active=True, role="competitor"))
+        s.commit()
+        s.add(Video(id="vidA0000001", channel_id="UCme", title="A", published_at=now - timedelta(days=2), view_count=100,
+                    stats_updated_at=now - timedelta(hours=10)))
+        s.commit()
+        for i in range(5):
+            s.add(Comment(id=f"c{i}", video_id="vidA0000001", channel_id="UCme", text="x", published_at=now))
+        s.commit()
+
+        class YT:
+            def get_channels(self, ids):
+                return [{"id": "UCme", "statistics": {"subscriberCount": "1100", "videoCount": "2"}}]
+
+            def get_videos(self, ids):
+                live = {"vidA0000001": ("2026-11-20T00:00:00Z", "1000", "40"), "vidB0000001": ("2026-11-20T00:00:00Z", "5", "0")}
+                return [{"id": i, "snippet": {"publishedAt": live[i][0]}, "statistics": {"viewCount": live[i][1], "commentCount": live[i][2]}}
+                        for i in ids if i in live]
+
+        rep = check(s, YT(), fetch=lambda url: "<yt:videoId>vidA0000001</yt:videoId><yt:videoId>vidB0000001</yt:videoId>")
+    assert [c["id"] for c in rep["channels"]] == ["UCme"]  # rivals aren't checked
+    text = " ".join(rep["problems"])
+    assert "subscribers off by +9.1%" in text and "1 upload(s)" in text and "views 100 vs live 1000" in text and "5 of 40 comments" in text

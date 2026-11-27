@@ -1,0 +1,70 @@
+name: Live site check
+
+# Daily check of the live site for the month-long test (docs/TEST_PLAN.md): signs in, opens every page for the real
+# channels on desktop and iPhone, records status / load time / errors, and saves a screenshot of each page as an
+# artifact (kept 14 days), and compares the dashboard's numbers with YouTube right now (accuracy.json). Read-only.
+# Needs the GitHub secret SITE_PW (the site password) for the page check; the accuracy check runs without it.
+on:
+  schedule:
+    - cron: "47 3 * * *"   # 09:17 India time, after the nightly training
+  workflow_dispatch: {}
+
+concurrency:
+  group: prod-check
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PW: ${{ secrets.SITE_PW }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      BASE: https://youtube-analytics-web-jet.vercel.app
+      OUT: ${{ github.workspace }}/prod-check
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements.txt
+      - name: Accuracy - the dashboard's numbers vs YouTube right now
+        run: |
+          mkdir -p prod-check
+          python -m ytanalytics accuracy-check > prod-check/accuracy.json
+          python3 -c "import json; d=json.load(open('prod-check/accuracy.json')); print('\n'.join(d['problems']) or 'no accuracy problems')"
+      - name: Needs the site password
+        run: |
+          [ -n "$PW" ] || { echo "::error::Add the GitHub secret SITE_PW (the password you sign in to the site with)."; exit 1; }
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - working-directory: web
+        run: npm ci
+      - working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Check every page
+        working-directory: web
+        run: node tests/prod-check.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prod-check
+          path: prod-check
+          retention-days: 14
+      - name: Summary
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY" || true
+          import json
+          s = json.load(open("prod-check/results.json"))["summary"]
+          print(f"### Live site: {s['checks'] - s['failed']}/{s['checks']} checks passed, median {s['median_ms']} ms")
+          PY
