@@ -43,6 +43,9 @@ jobs:
       SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       SENTIMENT_MODEL: cardiffnlp/twitter-xlm-roberta-base-sentiment
+      # Our own comment model reads archived comments too, keeping only the labels it is trusted on (mood, at the
+      # confidence that agrees with the cloud AI 90% of the time). Comments stay in the cloud AI's queue for the rest.
+      ARCHIVE_READER: "1"
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v6

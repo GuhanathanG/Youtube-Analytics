@@ -36,3 +36,46 @@ def test_resolve_prefers_cheap_exact_lookups():
     assert item["id"] == "UCmic" and how == "search" and yt.searches == 1
     item, how = resolve(yt, "Totally Unknown Name")
     assert item is None
+
+
+def test_young_tracks_new_uploads_hourly(monkeypatch):
+    from datetime import timedelta
+
+    from sqlalchemy import select
+
+    from ytanalytics import training
+    from ytanalytics.config import Settings
+    from ytanalytics.db import Channel, Video, VideoSnapshot, init_db, make_engine, make_session_factory, utcnow
+
+    eng = make_engine("sqlite://")
+    init_db(eng)
+    monkeypatch.setattr(training, "training_engine", lambda main: eng)
+    now = utcnow()
+    Session = make_session_factory(eng)
+    with Session() as s:
+        s.add(Channel(id="UCt", title="T", active=True, role="training"))
+        s.commit()
+        s.add(Video(id="old0000000a", channel_id="UCt", title="old", published_at=now - timedelta(days=10)))
+        s.add(Video(id="young00000a", channel_id="UCt", title="y", published_at=now - timedelta(hours=5),
+                    stats_updated_at=now - timedelta(hours=2)))
+        s.commit()
+
+    class YT:
+        calls = []
+
+        def get_videos(self, ids):
+            self.calls.append(sorted(ids))
+            pub = {"young00000a": now - timedelta(hours=5), "brandnew00a": now - timedelta(hours=1), "resurfaced": now - timedelta(days=40)}
+            return [{"id": i, "snippet": {"channelId": "UCt", "title": i, "publishedAt": pub[i].strftime("%Y-%m-%dT%H:%M:%SZ")},
+                     "statistics": {"viewCount": "100"}} for i in ids if i in pub]
+
+    feed = "<yt:videoId>brandnew00a</yt:videoId><yt:videoId>young00000a</yt:videoId><yt:videoId>resurfaced</yt:videoId>"
+    with Session() as main:
+        out = training.young(main, Settings.from_env(), yt=YT(), fetch=lambda url: feed)
+    assert out == {"checked": 3, "new": 1} or out["new"] >= 1
+    with Session() as s:
+        ids = set(s.scalars(select(Video.id)).all())
+        assert "brandnew00a" in ids and "resurfaced" not in ids
+        assert s.query(VideoSnapshot).count() == 2  # the two young videos, not the old one
+    with Session() as main:  # an hour hasn't passed: nothing is re-read
+        assert training.young(main, Settings.from_env(), yt=YT(), fetch=lambda url: feed)["checked"] == 0

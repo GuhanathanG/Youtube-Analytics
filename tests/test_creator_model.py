@@ -43,3 +43,29 @@ def test_fit_survives_a_signal_missing_everywhere():
     X[:, 2] = np.nan
     m = _fit(X, X[:, 0] * 2)
     assert np.isfinite(m.predict(X)).all()
+
+
+def test_first_day_comment_features():
+    from datetime import timedelta
+
+    from ytanalytics.db import Channel, Comment, Video, init_db, make_engine, make_session_factory, utcnow
+    from ytanalytics.model import COMMENT_FEATURES, PLUS_FEATURES, first_day_comments
+
+    assert set(COMMENT_FEATURES) <= set(PLUS_FEATURES)
+    eng = make_engine("sqlite://")
+    init_db(eng)
+    now = utcnow().replace(microsecond=0)
+    with make_session_factory(eng)() as s:
+        s.add(Channel(id="UC1", title="c", active=True))
+        s.commit()
+        s.add(Video(id="v1", channel_id="UC1", title="a", published_at=now - timedelta(days=3)))
+        s.add(Video(id="v2", channel_id="UC1", title="b", published_at=now - timedelta(hours=5)))  # day not finished
+        s.commit()
+        for i, (h, val, q) in enumerate([(1, 1.0, False), (10, 0.0, True), (40, -1.0, False)]):
+            s.add(Comment(id=f"c{i}", video_id="v1", channel_id="UC1", text="x", published_at=now - timedelta(days=3) + timedelta(hours=h),
+                          sentiment_value=val, is_question=q))
+        s.add(Comment(id="c9", video_id="v2", channel_id="UC1", text="x", published_at=now - timedelta(hours=4), sentiment_value=1.0))
+        s.commit()
+        f = first_day_comments(s)
+    assert set(f) == {"v1"}
+    assert abs(f["v1"]["c24_mood"] - 0.5) < 1e-9 and abs(f["v1"]["c24_questions"] - 0.5) < 1e-9  # the 40 h comment is outside

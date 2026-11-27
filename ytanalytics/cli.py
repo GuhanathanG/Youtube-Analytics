@@ -74,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     rt.add_argument("--out", default="reader-out")
     ts_ = sub.add_parser("training-seed", help="add researched niche channels (and Model Lab requests) to the training database")
     ts_.add_argument("--file", default="data/training/tamil_channels.json")
+    sub.add_parser("training-young", help="early-hours views of training channels' new uploads (RSS + ~1 quota unit)")
     tsy = sub.add_parser("training-sync", help="keep the training database's channels and videos fresh")
     tsy.add_argument("--minutes", type=float, default=20)
     ae = sub.add_parser("analyst-export", help="write Pulse Analyst training pairs (prompt -> cloud AI insight) for Kaggle")
@@ -290,6 +291,10 @@ def main(argv: list[str] | None = None) -> int:
 
             yt = YouTubeClient(settings.youtube_api_key, QuotaTracker(session, settings.daily_quota))
             print(json.dumps(seed(session, yt, args.file or None)))
+        elif args.cmd == "training-young":
+            from .training import young
+
+            print(json.dumps(young(session, settings), default=str))
         elif args.cmd == "training-sync":
             from .training import sync as training_sync
 
