@@ -74,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
     rt.add_argument("--out", default="reader-out")
     ts_ = sub.add_parser("training-seed", help="add researched niche channels (and Model Lab requests) to the training database")
     ts_.add_argument("--file", default="data/training/tamil_channels.json")
+    sub.add_parser("accuracy-check", help="the dashboard's numbers vs YouTube right now (month-long test; ~2 units per channel)")
     sub.add_parser("training-young", help="early-hours views of training channels' new uploads (RSS + ~1 quota unit)")
     tsy = sub.add_parser("training-sync", help="keep the training database's channels and videos fresh")
     tsy.add_argument("--minutes", type=float, default=20)
@@ -291,6 +292,10 @@ def main(argv: list[str] | None = None) -> int:
 
             yt = YouTubeClient(settings.youtube_api_key, QuotaTracker(session, settings.daily_quota))
             print(json.dumps(seed(session, yt, args.file or None)))
+        elif args.cmd == "accuracy-check":
+            from .accuracy import main as accuracy_main
+
+            print(accuracy_main(session, settings))
         elif args.cmd == "training-young":
             from .training import young
 
