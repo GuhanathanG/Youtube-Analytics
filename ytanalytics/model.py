@@ -185,7 +185,10 @@ BASE_FEATURES = list(FEATURES)
 THUMB_FEATURES = ["thumb_face", "thumb_faces", "thumb_happy_face", "thumb_text", "thumb_text_words", "thumb_bright",
                   "thumb_dark", "thumb_high_contrast", "thumb_clickbait", "thumb_emoji", "thumb_arrow", "thumb_english_text"]
 EARLY_FEATURES = ["early_6h", "early_24h", "early_48h"]
-PLUS_FEATURES = sorted(set(BASE_FEATURES) | set(THUMB_FEATURES) | set(EARLY_FEATURES))
+# First-day comments (count, mood, share of questions): known only while a video's comments are still in the main
+# database (~85 days; older ones move to the archive), NaN otherwise.
+COMMENT_FEATURES = ["c24_comments", "c24_mood", "c24_questions"]
+PLUS_FEATURES = sorted(set(BASE_FEATURES) | set(THUMB_FEATURES) | set(EARLY_FEATURES) | set(COMMENT_FEATURES))
 NAN = float("nan")
 
 
@@ -688,9 +691,32 @@ def add_creator_features(session, examples: list[Example], snaps: list[dict]) ->
     for sn in snaps:
         if sn["age_h"] is not None and sn["views"] is not None:
             points.setdefault(sn["video_id"], []).append((float(sn["age_h"]), float(sn["views"])))
+    first_day = first_day_comments(session)
     for e in examples:
         e.features.update(thumb_features(thumbs.get(e.video_id)))
         e.features.update(early_features(points.get(e.video_id, []), e.baseline))
+        e.features.update(first_day.get(e.video_id, dict.fromkeys(COMMENT_FEATURES, NAN)))
+
+
+def first_day_comments(session, days: int = 85) -> dict[str, dict[str, float]]:
+    """Per video: comments in its first 24 h (log count), their average mood (-1..1) and share of questions."""
+    from sqlalchemy import text
+
+    pg = session.get_bind().dialect.name == "postgresql"
+    within = "c.published_at <= v.published_at + interval '24 hours'" if pg else "c.published_at <= datetime(v.published_at, '+24 hours')"
+    since = f"now() - interval '{int(days)} days'" if pg else f"datetime('now', '-{int(days)} days')"
+    # Only videos at least a day old, so a forecast never sees a half-finished first day.
+    day_old = "now() - interval '24 hours'" if pg else "datetime('now', '-24 hours')"
+    try:
+        rows = session.execute(text(f"""select v.id, count(c.id) n, avg(c.sentiment_value) mood,
+                avg(case when c.is_question then 1.0 else 0.0 end) q
+            from videos v join comments c on c.video_id = v.id and {within}
+            where v.published_at > {since} and v.published_at < {day_old} group by v.id""")).all()
+    except Exception:  # noqa: BLE001
+        session.rollback()
+        return {}
+    return {r[0]: {"c24_comments": math.log1p(r[1]), "c24_mood": NAN if r[2] is None else float(r[2]),
+                   "c24_questions": float(r[3] or 0.0)} for r in rows}
 
 
 def pick_feature_set(candidates: dict[str, dict]) -> str:

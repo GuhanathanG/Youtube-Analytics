@@ -20,6 +20,9 @@
     {"category": "Movies & cinema", "query": "UCe6rihes8pZgJqGKpKUsNJQ", "note": "Cinemapettai"},
     {"category": "Finance & stock market", "query": "Trading Tamil"},
     {"category": "Finance & stock market", "query": "Tamil Stock Market"},
-    {"category": "Short-form entertainment", "query": "Mabu Crush"}
+    {"category": "Short-form entertainment", "query": "Mabu Crush"},
+    {"category": "Tech & gadgets", "query": "UCe_-TsRz3GH8UVjN0ApzXJQ", "note": "Tech Shan Tamil (~926K, vidIQ)"},
+    {"category": "Finance & stock market", "query": "@moneypechu", "note": "Money Pechu (~1.6M, Qoruz Aug 2026)"},
+    {"category": "Finance & stock market", "query": "UCg5ssK9SChvZ9EBcciOIS1Q", "note": "Share Market Academy (~181K, vidIQ)"}
   ]
 }

@@ -16,13 +16,14 @@ import logging
 import os
 import re
 import time
+from datetime import timedelta
 from pathlib import Path
 
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, or_, select, text
 from sqlalchemy.orm import Session
 
 from .config import normalize_db_url
-from .db import Channel, init_db, utcnow
+from .db import Channel, Video, init_db, parse_ts, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -172,3 +173,57 @@ def sync(main: Session, settings, minutes: float = 20) -> dict:
         out["at"] = utcnow().isoformat()
     prog.done(f"{out['channels']} channels, {out.get('videos', 0):,} videos in the training database (+{out.get('new_videos', 0):,})")
     return out
+
+
+RSS = "https://www.youtube.com/feeds/videos.xml?channel_id="
+
+
+def rss_video_ids(channel_id: str, fetch=None) -> list[str]:
+    """Newest upload IDs from the channel's public RSS feed (free: no API quota)."""
+    import re
+    import urllib.request
+
+    if fetch is None:
+        def fetch(url):
+            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=15) as r:
+                return r.read().decode("utf-8", "replace")
+    try:
+        return re.findall(r"<yt:videoId>([\w-]{11})</yt:videoId>", fetch(RSS + channel_id))
+    except Exception as e:  # noqa: BLE001  (a feed hiccup only delays one video by a run)
+        log.debug("RSS for %s failed: %s", channel_id, e)
+        return []
+
+
+def young(main: Session, settings, hours: float = 50, every_minutes: float = 50, yt=None, fetch=None) -> dict:
+    """Early-hours views for training channels: new uploads found through RSS within minutes, and every video
+    younger than `hours` re-read about hourly (one videos.list call per 50 videos: ~1 quota unit per run)."""
+    from .sync import QuotaTracker, Syncer, YouTubeClient  # noqa: PLC0415
+
+    engine = training_engine(main)
+    if engine is None:
+        return {"error": "no training database"}
+    if yt is None:
+        yt = YouTubeClient(settings.youtube_api_key, QuotaTracker(main, settings.daily_quota))
+    now = utcnow()
+    with Session(engine) as ts:
+        chans = list(ts.scalars(select(Channel).where(Channel.active.is_(True), Channel.role == "training")).all())
+        known = set(ts.scalars(select(Video.id).where(Video.published_at >= now - timedelta(days=3))).all())
+        fresh = {vid: ch.id for ch in chans for vid in rss_video_ids(ch.id, fetch)[:3] if vid not in known}
+        due = dict(ts.execute(select(Video.id, Video.channel_id).join(Channel, Channel.id == Video.channel_id).where(
+            Channel.role == "training", Channel.active.is_(True), Video.published_at >= now - timedelta(hours=hours),
+            or_(Video.stats_updated_at.is_(None), Video.stats_updated_at < now - timedelta(minutes=every_minutes)))).all())
+        ids = list({**due, **fresh})
+        if not ids:
+            return {"checked": 0, "new": 0}
+        syncer = Syncer(ts, yt, settings, time.monotonic() + 180)
+        items = yt.get_videos(ids)
+        by_channel: dict[str, list[dict]] = {}
+        for it in items:
+            published = parse_ts(it.get("snippet", {}).get("publishedAt"))
+            if it["id"] in fresh and (published is None or published < now - timedelta(hours=hours)):
+                continue  # an old video resurfacing in the feed: the 6-hourly sync handles it
+            by_channel.setdefault(it.get("snippet", {}).get("channelId") or due.get(it["id"]) or fresh.get(it["id"]), []).append(it)
+        for ch_id, its in by_channel.items():
+            syncer._write_videos(ch_id, its, young_snapshots_only=True)
+        new = sum(1 for it in items if it["id"] in fresh)
+    return {"checked": len(items), "new": new}

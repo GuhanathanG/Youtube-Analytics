@@ -76,6 +76,10 @@ jobs:
         if: steps.alive.outputs.alive != '1'
         run: python -m ytanalytics sync --until ${{ steps.plan.outputs.sync_until }}
 
+      - name: Early-hours views of training channels' new uploads (RSS + ~1 quota unit; feeds the Creator Model)
+        continue-on-error: true
+        run: python -m ytanalytics training-young
+
       - name: Mark copy-paste spam (same text from 3+ accounts)
         if: steps.alive.outputs.alive != '1'
         continue-on-error: true
