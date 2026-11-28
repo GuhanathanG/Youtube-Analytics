@@ -43,8 +43,10 @@ export function date(ts: string | null | undefined, withTime = false): string {
 
 export function duration(iso: string | null | undefined): string {
   if (!iso) return "";
-  const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(iso);
+  const m = /PT(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?/.exec(iso);
   if (!m) return "";
-  const [h, mi, s] = [Number(m[1] ?? 0), Number(m[2] ?? 0), Number(m[3] ?? 0)];
+  // Instagram durations arrive as plain seconds ("PT94S"): normalise, so 94 s shows as 1:34, not 0:94.
+  const total = Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Math.round(Number(m[3] ?? 0));
+  const [h, mi, s] = [Math.floor(total / 3600), Math.floor((total % 3600) / 60), total % 60];
   return h ? `${h}:${String(mi).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${mi}:${String(s).padStart(2, "0")}`;
 }

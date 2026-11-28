@@ -41,8 +41,10 @@ for (const [device, opts] of [["desktop", { viewport: { width: 1440, height: 900
   for (const p of PAGES) {
     const errs = [];
     const onErr = (e) => errs.push(e.message.slice(0, 160));
-    const onCon = (m) => { if (m.type() === "error" && !/Failed to load resource.*(ytimg|ggpht|cdninstagram|fbcdn|youtube|googleusercontent)/.test(m.text())) errs.push(m.text().slice(0, 160)); };
-    page.on("pageerror", onErr); page.on("console", onCon);
+    const bad = []; // failed requests, by address (the console only says "403")
+    const onResp = (r) => { if (r.status() >= 400) { const u = new URL(r.url()); bad.push(`${r.status()} ${u.host}${u.pathname.slice(0, 50)}`); } };
+    const onCon = (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errs.push(m.text().slice(0, 160)); };
+    page.on("pageerror", onErr); page.on("console", onCon); page.on("response", onResp);
     let status = 0; const t0 = Date.now();
     try {
       const res = await page.goto(B + p, { waitUntil: "load", timeout: 90000 }); status = res?.status() ?? 0;
@@ -57,11 +59,11 @@ for (const [device, opts] of [["desktop", { viewport: { width: 1440, height: 900
     }).catch(() => ({ login: false, overflow: false, broken: true, empty: true, h1: "" }));
     const problems = [status !== 200 && `HTTP ${status}`, info.login && "sent back to sign-in", info.broken && "error state shown",
       info.empty && "almost empty page", info.overflow && device === "iphone" && "sideways scroll on phone",
-      ms > 15000 && "slow (>15 s)", errs.length && `JS: ${errs[0]}`].filter(Boolean);
+      ms > 15000 && "slow (>15 s)", errs.length && `JS: ${errs[0]}`, bad.length && `${bad.length} failed request(s): ${bad[0]}`].filter(Boolean);
     const name = `${device}${p.replace(/[^a-z0-9]+/gi, "_")}`.slice(0, 120);
-    await page.screenshot({ path: `${OUT}/shots/${name}.png`, fullPage: false }).catch(() => {});
-    log({ ok: problems.length === 0, device, path: p, status, ms, h1: info.h1, problem: problems.join("; "), errors: errs.slice(0, 3), shot: `shots/${name}.png` });
-    page.off("pageerror", onErr); page.off("console", onCon);
+    await page.screenshot({ path: `${OUT}/shots/${name}.png`, fullPage: true }).catch(() => {});
+    log({ ok: problems.length === 0, device, path: p, status, ms, h1: info.h1, problem: problems.join("; "), errors: errs.slice(0, 3), failed_requests: bad.slice(0, 5), shot: `shots/${name}.png` });
+    page.off("pageerror", onErr); page.off("console", onCon); page.off("response", onResp);
   }
   await ctx.close();
 }
@@ -99,7 +101,7 @@ if (ytTitles.length) {
     await pg.waitForLoadState("networkidle").catch(() => {}); return mainText();
   });
   await step("Packaging Lab: score the last 5 real titles", async () => {
-    await pg.goto(`${B}/studio?c=${yt}`); await pg.fill("#titles", ytTitles.map((t) => t.title).join("\n"));
+    await pg.goto(`${B}/studio?tab=lab&c=${yt}`); await pg.fill("#titles", ytTitles.map((t) => t.title).join("\n"));
     await pg.getByRole("button", { name: /Score titles/ }).click();
     await pg.waitForFunction(() => !/Scoring…/.test(document.body.innerText), null, { timeout: 60000 }); await pg.waitForTimeout(1500);
     return mainText();

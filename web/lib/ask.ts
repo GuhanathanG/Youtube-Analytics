@@ -1,4 +1,5 @@
 import "server-only";
+import { dayOf, timeWindow } from "./ask-time";
 import { sql } from "./db";
 import { aiSlots, chatJson } from "./ai";
 import { memoryContext } from "./memory";
@@ -52,11 +53,13 @@ export async function askComments(question: string, channelId: string | null, hi
   const timings: Record<string, number> = {};
   const lap = (k: string) => { timings[k] = Date.now() - t0; };
   const convo = historyText(history);
-  const scope = channelId ? db`c.channel_id = ${channelId}` : db`true`;
+  const days = timeWindow(question);
+  // A question about a time ("this week") only gets comments from then; otherwise everything.
+  const scope = db`${channelId ? db`c.channel_id = ${channelId}` : db`true`} and ${days ? db`c.published_at >= (now() at time zone 'utc') - make_interval(days => ${days})` : db`true`}`;
   const spam = db`(c.is_spam is null or not c.is_spam)`;
   // These don't depend on the AI's search words: start them now, while the AI plans the search.
   const popularP = db`
-    select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, v.title as video_title
+    select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, c.published_at, v.title as video_title
     from comments c join videos v on v.id = c.video_id
     where ${scope} and ${spam} and c.published_at >= (now() at time zone 'utc') - interval '60 days'
     order by c.like_count desc limit 60`;
@@ -77,21 +80,21 @@ export async function askComments(question: string, channelId: string | null, hi
 
   const [matched, fromArchive, popularAll, [stats], memory, near] = await Promise.all([
     terms.length ? db`
-      select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, v.title as video_title
+      select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, c.published_at, v.title as video_title
       from comments c join videos v on v.id = c.video_id
       where ${scope} and ${spam} and (${terms
         .map((t) => { const like = "%" + t.replace(/[%_]/g, "\\$&") + "%"; return db`(c.text ilike ${like} or c.translation ilike ${like})`; })
         .reduce((acc, f) => db`${acc} or ${f}`)})
       order by c.like_count desc, c.published_at desc limit 90` : Promise.resolve([]),
     // Older comments live in the archive databases (far away, may be asleep): never wait more than 3 s for them.
-    terms.length ? within(searchArchive(terms, channelId, 40), 3000, []) : Promise.resolve([]),
+    terms.length && !days ? within(searchArchive(terms, channelId, 40), 3000, []) : Promise.resolve([]), // the archive only has comments 90+ days old
     popularP, statsP, memoryP, nearP,
   ]);
   // Close-in-meaning comments (only the clearly related ones), fetched with the same columns as the rest.
   const nearIds = near.filter((n) => n.distance <= Number(process.env.EMBED_MAX_DISTANCE ?? 0.55)).map((n) => n.id);
   const byMeaning = nearIds.length ? await db`
-    select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, v.title as video_title
-    from comments c join videos v on v.id = c.video_id where c.id in ${db(nearIds)}` : [];
+    select c.id, c.text, c.translation, c.author_name, c.like_count, c.sentiment, c.video_id, c.published_at, v.title as video_title
+    from comments c join videos v on v.id = c.video_id where c.id in ${db(nearIds)} and ${scope}` : [];
   const rank = new Map(nearIds.map((id, i) => [id, i]));
   byMeaning.sort((a, b) => (rank.get(a.id as string) ?? 0) - (rank.get(b.id as string) ?? 0));
   timings.meaning = byMeaning.length;
@@ -109,12 +112,15 @@ export async function askComments(question: string, channelId: string | null, hi
   if (!pool.length) return { error: "There are no comments to answer from yet." };
 
   const lines = pool.map((r, i) => {
-    let t = `${i + 1}. (${r.sentiment ?? "?"}, ${r.like_count} likes, on "${String(r.video_title).slice(0, 60)}") ${String(r.text).split(/\s+/).join(" ").slice(0, 280)}`;
+    const when = dayOf(r.published_at);
+    let t = `${i + 1}. (${when}, ${r.sentiment ?? "?"}, ${r.like_count} likes, on "${String(r.video_title).slice(0, 60)}") ${String(r.text).split(/\s+/).join(" ").slice(0, 280)}`;
     if (r.translation) t += ` [EN: ${String(r.translation).slice(0, 160)}]`;
     return t;
   });
   const prompt = [convo ? `Conversation so far:\n${convo}\n` : "", `Question: ${question}`,
-    standalone !== question ? `(Meaning: ${standalone})` : "", `Statistics: ${stats.n} comments in scope, ${stats.pos}% positive, ${stats.neg}% negative.`,
+    standalone !== question ? `(Meaning: ${standalone})` : "",
+    `Today is ${new Date().toISOString().slice(0, 10)}. ${days ? `The question is about the last ${days} day(s): only comments from then are listed.` : "Each comment shows the date it was posted: say so when old comments are the evidence."}`,
+    `Statistics: ${stats.n} comments in scope, ${stats.pos}% positive, ${stats.neg}% negative.`,
     memory ? `\nCreator memory:\n${memory}\n` : "",
     terms.length ? `Search terms used: ${terms.join(", ")}` : "", "", "Comments:", ...lines].join("\n");
   const out = await chatJson(ANSWER, prompt, 2500, deadline);
