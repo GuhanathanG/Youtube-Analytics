@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { isInstagram } from "@/lib/platform";
 import { CommentCard } from "@/components/CommentCard";
 import { ExplorerFilters } from "@/components/ExplorerFilters";
 import { Empty } from "@/components/ui";
@@ -78,7 +79,7 @@ export default async function CommentsPage({ searchParams }: { searchParams: Pro
         <SigHead n={4} of={OF} label="Search" title="Find any comment." />
         <Suspense>
           <ExplorerFilters
-            channels={chs.map((c) => ({ value: c.id, label: c.title }))}
+            channels={chs.map((c) => ({ value: c.id, label: `${c.title} · ${isInstagram(c.id) ? "Instagram" : "YouTube"}` }))}
             languages={langs.filter((l) => l.code).map((l) => ({ value: l.code, label: `${l.name} (${l.comments.toLocaleString("en")})` }))}
             emotions={Object.entries(EMOTIONS).map(([k, icon]) => ({ value: k, label: `${icon} ${k}` }))}
             count={rows.length} defaultChannel={focus ?? undefined}

@@ -5,9 +5,18 @@ export const LANGUAGE_NAMES: Record<string, string> = {
   pa: "Punjabi", ur: "Urdu", ar: "Arabic", fa: "Persian", si: "Sinhala", ne: "Nepali", or: "Odia",
   es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian", ru: "Russian",
   ja: "Japanese", ko: "Korean", zh: "Chinese", id: "Indonesian", tl: "Tagalog", vi: "Vietnamese",
-  th: "Thai", tr: "Turkish", nl: "Dutch", und: "Unknown / emoji",
+  th: "Thai", tr: "Turkish", nl: "Dutch", ro: "Romanian", pl: "Polish", sv: "Swedish", ms: "Malay", sw: "Swahili",
+  und: "Unknown / emoji",
 };
-export const languageName = (c: string | null) => (c ? LANGUAGE_NAMES[c] ?? c : "Pending");
+/** "en-Latn" → English, "ml-Latn" → "Malayalam (English letters)", "ro" → "ro" (unknown codes stay as they are). */
+export const languageName = (c: string | null) => {
+  if (!c) return "Pending";
+  if (LANGUAGE_NAMES[c]) return LANGUAGE_NAMES[c];
+  const [base, script] = c.split("-");
+  const name = LANGUAGE_NAMES[base];
+  if (!name) return c;
+  return script === "Latn" ? (base === "en" ? name : `${name} (English letters)`) : name;
+};
 
 export const ASPECT_LABELS: Record<string, string> = {
   content: "Content", host: "Host / creator", editing: "Editing", audio: "Audio",

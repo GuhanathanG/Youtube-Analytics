@@ -39,6 +39,7 @@ JOBS = [
     Job("model.yml", "Creator Model", 24, 6),
     Job("reader.yml", "Pulse Reader", 24, 12),  # nightly; trains only when there are enough new AI-read comments
     Job("analyst.yml", "Pulse Analyst", 24, 24),  # daily check; trains only when there is enough new data
+    Job("prod-check.yml", "Live site check", 24, 6),  # the month-long test's daily check
 ]
 KEEP_ALIVE = [j.file for j in JOBS] + ["sync.yml"]
 ACTIVE = {"queued", "in_progress", "waiting", "requested", "pending"}

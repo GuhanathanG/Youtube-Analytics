@@ -268,3 +268,17 @@ console.log("nav: ok");
   assert.deepEqual(findSocialLinks(null), []);
   console.log("social-links: ok");
 }
+
+{
+  // Ask AI understands time words, and comment dates print as days
+  const { timeWindow, dayOf } = await import("../lib/ask-time.ts");
+  assert.equal(timeWindow("What are people complaining about this week?"), 7);
+  assert.equal(timeWindow("any comments today?"), 1);
+  assert.equal(timeWindow("What did viewers say last month"), 31);
+  assert.equal(timeWindow("What do people say about my recent videos"), 14);
+  assert.equal(timeWindow("What do viewers want me to make next?"), null);
+  assert.equal(dayOf(new Date("2022-10-14T02:55:12Z")), "2022-10-14");
+  assert.equal(dayOf("2026-09-19 16:37:33"), "2026-09-19");
+  assert.equal(dayOf(null), "?");
+  console.log("ask-time: ok");
+}

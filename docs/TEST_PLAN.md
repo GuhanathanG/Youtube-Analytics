@@ -11,8 +11,8 @@ The secrets stay unchanged until 27 Dec, then are rotated (`docs/SECURITY_ROTATI
 
 ## 1. The customer (who Claude plays)
 
-**Primary: "Kavya", a Tamil creator.** Based on the channels the site tracks (Keerthi Shrathah, Deepika Venkatachalam,
-Ram With Jaanu).
+**Primary: "Kavya", a Tamil creator.** Based on the channels the site tracks: Keerthi Shrathah and Ram With Jaanu
+(YouTube and Instagram), Karpagam and Vijay Murugadoss (Instagram). Deepika Venkatachalam is tracked as a rival.
 - Runs a YouTube channel with 100K–1M subscribers, plus its Instagram. Posts 2–3 long videos a week, plus Shorts and
   Reels. The audience comments in Tamil, Tanglish and English.
 - No analyst. Checks things on her **iPhone** in the morning and before and after uploads, and plans on a laptop on
