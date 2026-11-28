@@ -50,7 +50,9 @@ jobs:
       - working-directory: web
         run: npm ci
       - working-directory: web
-        run: npx playwright install --with-deps chromium
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
       - name: Check every page
         working-directory: web
         run: node tests/prod-check.mjs
